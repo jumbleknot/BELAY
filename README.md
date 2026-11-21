@@ -20,3 +20,7 @@ Putting this tooling in one repo means that:
 ## Status
 
 Early setup. Tooling will be added here as it is developed.
+
+## License
+
+[MIT](LICENSE) © 2026 Jumbleknot
