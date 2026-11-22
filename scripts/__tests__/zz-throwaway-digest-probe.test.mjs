@@ -3,6 +3,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-test('digest probe: deliberate failure #1', () => {
-  assert.equal('probe-one', 'expected-value', 'deliberate failure #1 for the live digest check');
+test('digest probe: deliberate failure #2', () => {
+  assert.equal('probe-two', 'expected-value', 'deliberate failure #2 for the live digest check');
 });
