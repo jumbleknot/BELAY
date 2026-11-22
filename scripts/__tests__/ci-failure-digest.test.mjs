@@ -1876,3 +1876,26 @@ test('(scope-c) the step-log and last-failure directories carry the same prefix'
   assert.equal(stepLogDir(env, '/h').replace(/\\/g, '/'), '/h/belay-ci-step-logs/7/guardrails');
   assert.equal(lastFailureDir(env, '/h').replace(/\\/g, '/'), '/h/belay-ci-last-failure');
 });
+
+// ── The failing step's own output is always shown ────────────────────────────────────────────────
+// Measured on BELAY's first live failure: the job wrapped four steps, the digest named
+// `guardrails-test` as the failing step, and then showed the three PASSING steps' output. Every
+// step log ranks equally and sorts by name, so the failing one fell past DIGEST_MAX_SOURCES and was
+// "held back". The step that failed is the one excerpt a reader cannot do without.
+test('(failing-step-first) the failing step\'s excerpt is shown even when other step logs sort ahead of it', () => {
+  const excerpts = ['guardrails-install-deps', 'guardrails-install-pnpm', 'guardrails-lint', 'guardrails-test']
+    .map((s) => ({ source: `step:${s}`, text: s === 'guardrails-test' ? 'AssertionError: the real failure' : `${s} ok` }));
+  const d = buildDigest(ctx({ job: 'guardrails', step: 'guardrails-test' }), { excerpts });
+  assert.match(d.markdown, /AssertionError: the real failure/, 'the failing step\'s output was held back');
+  assert.ok(
+    d.markdown.indexOf('step:guardrails-test') < d.markdown.indexOf('step:guardrails-install-deps'),
+    'the failing step\'s excerpt should lead the digest',
+  );
+});
+
+test('(failing-step-first) without a known failing step the ranked order is unchanged', () => {
+  const excerpts = ['a', 'b', 'c', 'd'].map((s) => ({ source: `step:${s}`, text: `${s} out` }));
+  const d = buildDigest(ctx({ step: '' }), { excerpts });
+  assert.match(d.markdown, /a out/);
+  assert.doesNotMatch(d.markdown, /d out/);
+});
