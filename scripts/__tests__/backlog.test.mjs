@@ -686,3 +686,52 @@ test('(no-leak) a planted FORGE_ISSUE_TOKEN never appears in a request error or 
   assert.equal(out.length, answers.length + 2, 'every path must have produced something to check');
   assert.equal(out.join('\n').includes(PLANT), false, 'the planted token appeared in a result or an error');
 });
+
+// ── dep, end to end through the command: the cycle is refused BEFORE any write ───────────────────
+// The unit tests above prove wouldCreateCycle; these prove the COMMAND consults it before writing,
+// counting the write requests a stubbed forge receives. Every item in a dependency cycle becomes
+// permanently uncloseable, so a cycle that reached the forge could not be undone by closing.
+import { main as backlogMain } from '../backlog.mjs';
+
+async function runDep(argv, dependencies = {}) {
+  const writes = [];
+  const realFetch = globalThis.fetch;
+  const realToken = process.env.FORGE_ISSUE_TOKEN;
+  const realLog = console.log;
+  process.env.FORGE_ISSUE_TOKEN = 'test-token';
+  console.log = () => {};
+  globalThis.fetch = async (url, init = {}) => {
+    const method = init.method ?? 'GET';
+    if (method !== 'GET') writes.push(`${method} ${new URL(url).pathname}`);
+    const m = new URL(url).pathname.match(/\/issues\/(\d+)\/dependencies$/);
+    const data = method === 'GET' && m ? (dependencies[m[1]] ?? []) : {};
+    return { ok: true, status: method === 'GET' ? 200 : 201, headers: new Headers(), text: async () => JSON.stringify(data) };
+  };
+  try {
+    const code = await backlogMain(argv).catch((e) => e.code ?? -1);
+    return { code, writes };
+  } finally {
+    globalThis.fetch = realFetch;
+    console.log = realLog;
+    if (realToken === undefined) delete process.env.FORGE_ISSUE_TOKEN; else process.env.FORGE_ISSUE_TOKEN = realToken;
+  }
+}
+
+test('(dep-cmd) a cycle-forming dep is refused with exit 2 and ZERO write requests', async () => {
+  // #2 is already blocked by #1; recording "#1 blocked by #2" would close the loop.
+  const { code, writes } = await runDep(['dep', '1', '--blocked-by', '2'], { 2: [{ number: 1 }] });
+  assert.equal(code, 2);
+  assert.deepEqual(writes, [], 'a cycle must be refused before anything is written');
+});
+
+test('(dep-cmd) a valid dep is recorded with exactly one POST, and --remove with exactly one DELETE', async () => {
+  const add = await runDep(['dep', '1', '--blocked-by', '2']);
+  assert.equal(add.code, 0);
+  assert.equal(add.writes.length, 1);
+  assert.match(add.writes[0], /^POST .*\/issues\/1\/dependencies$/);
+
+  const remove = await runDep(['dep', '1', '--blocked-by', '2', '--remove']);
+  assert.equal(remove.code, 0);
+  assert.equal(remove.writes.length, 1);
+  assert.match(remove.writes[0], /^DELETE .*\/issues\/1\/dependencies$/);
+});

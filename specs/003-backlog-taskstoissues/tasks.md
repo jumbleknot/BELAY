@@ -91,11 +91,12 @@ None. `backlog.mjs`'s dependencies (`forgeEndpoint`, `stripControlChars`, `redac
 
 **Independent Test**: quickstart §4.
 
-- [ ] T007 [US2] Live refusals (quickstart §4), after T008 has created the labels:
+- [X] T007 [US2] Live refusals (quickstart §4), after T008 has created the labels:
   - `create … --label type/nope` exits 2;
   - `update 1 --milestone 999-nope` exits 2;
   - `comment` without `FORGE_ISSUE_TOKEN` exits 3.
   - **Done when:** all three exit codes match, and `show 1` is unchanged afterwards (SC-003).
+  - **Done 2026-11-22:** unknown label → exit 2; unknown milestone → exit 2; no token → exit 3, naming `FORGE_ISSUE_TOKEN`. Afterwards issue #1 was unchanged, and `list --q "refusal probe"` found 0 items.
 
 ---
 
@@ -105,24 +106,30 @@ None. `backlog.mjs`'s dependencies (`forgeEndpoint`, `stripControlChars`, `redac
 
 **Independent Test**: quickstart §3.
 
-- [ ] T008 [US4] Live label setup:
+- [X] T008 [US4] Live label setup:
   1. `setup-labels --dry-run`, which lists nine labels and creates none;
   2. `setup-labels`, which creates them;
   3. `setup-labels` again, which creates nothing.
   - **Done when:** the forge's label list for BELAY is exactly the nine in [data-model.md](data-model.md) → Label set.
-- [ ] T009 [US4] Label issue #1: `node scripts/backlog.mjs update 1 --add-label type/tech-debt --add-label priority/p2`.
+  - **Done 2026-11-22:** the dry run listed 9 labels and created none; the real run created 9; a second run reported "all taxonomy labels already present".
+- [X] T009 [US4] Label issue #1: `node scripts/backlog.mjs update 1 --add-label type/tech-debt --add-label priority/p2`.
   - **Done when:** `show 1` lists both labels, and `ready` includes #1 (SC-005).
+  - **Done 2026-11-22:** `show 1` lists `priority/p2 type/tech-debt`, and `ready` lists #1 first. Issue #2, the topology-scrub port, has no labels; it was left for the maintainer.
 
 ---
 
 ## Phase 6: User Story 5 - Ordering with dependencies (Priority: P2)
 
-- [ ] T010 [US5] Confirm `backlog.test.mjs` (T003) covers:
+- [X] T010 [US5] Confirm `backlog.test.mjs` (T003) covers:
   - a `dep` that adds a link and removes it;
   - a cycle refused with **zero** write requests sent;
   - a blocked close refused, using the `blocked-close-412.json` fixture;
   - `ready` excluding an item with an open blocker.
   - **Done when:** each case is present. Add any missing case test-first, watched RED, then GREEN.
+  - **Done 2026-11-22:**
+    - Cycles (`wouldCreateCycle`), the 412 blocked close (fixture), and `ready` with open blockers were already covered at unit level.
+    - **Missing, so added:** `(dep-cmd)` tests that run the `dep` command through an exported `main` against a stubbed forge, counting writes. A cycle exits 2 with zero writes; add is one POST; remove is one DELETE.
+    - The test went RED on the missing `main` export, then GREEN. A mutation that disabled the cycle check made it fail, and it passed on the restored code.
 
 ---
 

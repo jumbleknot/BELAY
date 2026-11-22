@@ -865,7 +865,7 @@ export function classifyUpdateFailure(error, n) {
   return error;
 }
 
-async function main(argv) {
+export async function main(argv) {
   const opts = parseArgs(argv);
   const command = opts._.shift();
   if (opts.help || !command) {
