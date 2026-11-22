@@ -70,7 +70,7 @@
     {
       "id": 29,
       "status": "failure",
-      "context": "ci / trigger-cd (pull_request)",
+      "context": "ci / notify (pull_request)",
       "description": "Has been cancelled",
       "target_url": "/jumbleknot/belay/actions/runs/914/jobs/5",
       "url": "http://forge.tailnet-example.ts.net/api/v1/repos/jumbleknot/belay/statuses/6c44fe4a66085844c94416184334d42c74f0d42d"

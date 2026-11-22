@@ -189,7 +189,7 @@ test('(m) a plain git SHA is NOT withheld (avoid false-positive that drops every
 // is the redaction re-check that US2 owes: wrapping 85 more `run:` steps widens what CI
 // captures and therefore what may be published, and the task is explicit that existing redaction
 // must NOT be assumed to generalise. It did not. Probing the rules against the output shapes the
-// newly wrapped SAST, infra-image-scan, wiki-maintain and cd-deploy steps actually produce, two of
+// newly wrapped SAST, image-scan, wiki-maintain and deploy steps actually produce, two of
 // twelve passed through completely unredacted — these two.
 //
 // Neither is caught by the fail-closed backstop either: that withholds an excerpt only when a
@@ -212,7 +212,7 @@ test('(n) credentials in a URL userinfo section are redacted', () => {
 });
 
 test('(o) a credential passed as a command-line flag is redacted', () => {
-  // `docker login -u ci -p <token>` from the newly wrapped Trivy and cd-deploy steps. The argv-secret
+  // `docker login -u ci -p <token>` from the newly wrapped Trivy and deploy steps. The argv-secret
   // gate stops us WRITING this shape into a workflow; it cannot stop a third-party tool printing it.
   const tok = 'c'.repeat(40);
   for (const line of [

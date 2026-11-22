@@ -184,7 +184,7 @@ description: "Task list for feature 002: PR and CI-status tooling"
 
 **Independent Test**: quickstart §7.
 
-- [ ] T012 [P] [US6] Update the "Open the PR" task in `.specify/templates/overrides/tasks-template.md` (sweep hit `:193`) to [contracts/cli.md](contracts/cli.md) → the "Open the PR" task.
+- [X] T012 [P] [US6] Update the "Open the PR" task in `.specify/templates/overrides/tasks-template.md` (sweep hit `:193`) to [contracts/cli.md](contracts/cli.md) → the "Open the PR" task.
   - **Commands named:** the push, `forge-pr open`, `ci-status watch --pr <n>` until it exits 0, and `forge-pr merge <n> --expect-head <full sha>`.
   - **Kept:** the tick-in-last-commit rule and the rule that CI evidence goes in the PR's closing comment.
   - **Unchanged:** line 1 (the fork point), the sweep task and the TDD sample.
@@ -192,12 +192,12 @@ description: "Task list for feature 002: PR and CI-status tooling"
     - `node scripts/check-speckit-overrides.mjs` passes;
     - the resolver output (`.specify/scripts/powershell/resolve-template.ps1 tasks-template -Json`) contains `forge-pr.mjs open`;
     - `git diff` shows line 1 untouched.
-- [ ] T013 [P] [US6] Add a "Pull requests and CI status" section to `docs/runbooks/ci.md` (sweep hits `:55` and `:93`, FR-019).
+- [X] T013 [P] [US6] Add a "Pull requests and CI status" section to `docs/runbooks/ci.md` (sweep hits `:55` and `:93`, FR-019).
   - **Section content:** every `ci-status` and `forge-pr` command, its exit codes and its credential, and the open → watch → merge sequence.
   - **Line 93:** reads now say `FORGE_TOKEN`, used by `ci-status`; writes use the git credential through `forge-pr`; and `FORGE_ISSUE_TOKEN` is used by feature 003's backlog.
   - **Line 55:** "Reading a failure digest" gains `node scripts/ci-status.mjs failure --run <id> [--full]` above the `curl` fallback.
   - **Done when:** every command in [contracts/cli.md](contracts/cli.md) appears in the runbook with its exit codes.
-- [ ] T014 [P] [US6] Update row 1 of `docs/runbooks/spec-kit.md` (sweep hit `:61`): the "Open the PR" task now runs through `forge-pr` / `ci-status`.
+- [X] T014 [P] [US6] Update row 1 of `docs/runbooks/spec-kit.md` (sweep hit `:61`): the "Open the PR" task now runs through `forge-pr` / `ci-status`.
   - **Done when:** the row names the tools, and `node scripts/check-speckit-overrides.mjs` passes, which keeps the inventory check green.
 
 ---
@@ -214,12 +214,18 @@ description: "Task list for feature 002: PR and CI-status tooling"
 
 ## Phase 9: Polish & Cross-Cutting Concerns
 
-- [ ] T016 [P] Update `AGENTS.md`: the `scripts/` layout row names `ci-status.mjs`, `forge-pr.mjs` and `lib/forge-credential.mjs`.
+- [X] T016 [P] Update `AGENTS.md`: the `scripts/` layout row names `ci-status.mjs`, `forge-pr.mjs` and `lib/forge-credential.mjs`.
   - **Done when:** the row lists them.
-- [ ] T017 No-MCM check (spec FR-020). Run `git grep -niE 'mcm|movie|mc-service|app-ci|app-e2e|cd-deploy|trigger-cd|MCM_FORGE' -- scripts docs/runbooks/ci.md .specify/templates/overrides`.
+- [X] T017 No-MCM check (spec FR-020). Run `git grep -niE 'mcm|movie|mc-service|app-ci|app-e2e|cd-deploy|trigger-cd|MCM_FORGE' -- scripts docs/runbooks/ci.md .specify/templates/overrides`.
   - **Done when:** only the deliberate `themoviedb` vendor regex in `secret-scan.mjs` matches.
-- [ ] T018 **Close-out re-search**: re-run T001's searches.
+  - **Done 2026-11-22:**
+    - The grep (widened with `cd-deploy`, `infra-image` and `trigger-cd`) also caught feature 001 leftovers in comments and fixtures: `check-ci-digest-coverage` and `ci-digest-redact` with their tests, and `status-cancelled.json`. They were neutralized, and all tests pass.
+    - **Kept on purpose:** the `themoviedb` vendor regex, the runner history in `docs/runbooks/ci.md`, and the two provenance notes in `ci-failure-digest.mjs` (the code is the same as MovieCollectionManager's; the legacy shared package belongs to MovieCollectionManager).
+- [X] T018 **Close-out re-search**: re-run T001's searches.
   - **Done when:** every remaining hit in a doc that states current procedure has been fixed, or is justified here.
+  - **Done 2026-11-22:** re-searched.
+    - `feature 002`, `features 002`, `PR and backlog`, `bundlePackage`: no hits.
+    - `ci-status` and `forge-pr` appear only in the updated `AGENTS.md`, `docs/runbooks/ci.md`, `docs/runbooks/spec-kit.md` row 1, and the override's "Open the PR" task.
 - [ ] T019 **Open the PR** with this feature's own tools (quickstart §5 and §6; SC-001, SC-003):
   1. `git push origin HEAD:002-pr-ci-tooling`.
   2. `node scripts/forge-pr.mjs open --head 002-pr-ci-tooling --title "Feature 002: PR and CI-status tooling" --body-file <file>`.

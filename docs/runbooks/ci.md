@@ -49,7 +49,14 @@ When a guardrails job fails, the digest publishes:
 - **On a push to `main`:** a commit status carrying the same summary.
 - **Fuller evidence:** a bundle in the generic package `belay-ci-failures`, at version `<runId>--<job>`. The digest links to it.
 
-To fetch a bundle by hand:
+To read it, use `ci-status` (see "Pull requests and CI status" below):
+
+```bash
+node scripts/ci-status.mjs failure --run <runId>          # the digest from the bundle
+node scripts/ci-status.mjs failure --run <runId> --full   # every file in the bundle
+```
+
+Or fetch it by hand:
 
 ```bash
 curl -fsS -H "Authorization: token $FORGE_TOKEN" \
@@ -90,7 +97,51 @@ The repository is private, and Forgejo gives no secrets (`CI_DIGEST_TOKEN`) to f
 
 No repository variables are needed. If `CI_DIGEST_TOKEN` is missing or empty, the digest falls back to the run token, then to the job log. CI never fails because of it.
 
-On your machine, the PR and backlog scripts (features 002 and 003) read `FORGE_TOKEN` (read-only) and `FORGE_ISSUE_TOKEN` (`write:issue`) from the environment. CI doesn't need them.
+On your machine, CI doesn't need any of these:
+- `scripts/ci-status.mjs` reads with `FORGE_TOKEN`, a read-only token with `read:repository`, `read:issue` and `read:package`.
+- `scripts/forge-pr.mjs` writes (open, merge, dispatch) with the git credential stored for `origin`, through `git credential fill`.
+- The backlog script (feature 003) will write issues with `FORGE_ISSUE_TOKEN` (`write:issue`).
+
+None of these ever appear in command output.
+
+## Pull requests and CI status
+
+The whole loop runs from a terminal. Every feature's **Open the PR** task follows it:
+
+```bash
+git push origin HEAD:<branch>
+node scripts/forge-pr.mjs open --head <branch> --title "<title>" --body-file <file>   # prints the PR number and URL
+node scripts/ci-status.mjs watch --pr <n> --timeout 900                              # waits for the verdict
+node scripts/forge-pr.mjs merge <n> --expect-head "$(git rev-parse HEAD)"            # merges only what was checked
+```
+
+### `ci-status.mjs` (reads, `FORGE_TOKEN`)
+
+| Command | What it does |
+| --- | --- |
+| `status --sha <sha> \| --pr <n> \| --branch <name> \| --run <id>` | Gives the merge verdict for that commit, against the checks branch protection on `main` requires. `--event push\|pull_request` narrows only what is displayed. |
+| `watch <target> [--timeout <s>] [--required-only]` | Polls until the verdict is known. By default it also waits for non-required checks. |
+| `failure <target> [--job <name>] [--full]` | Prints the failure digest from `belay-ci-failures`. `--full` prints every file in the bundle. |
+| `durations [--job guardrails] [--runs <n>] [--propose]` | Lists per-step timings from recent bundles. |
+
+| Exit | `status` / `watch` | `failure` |
+| --- | --- | --- |
+| 0 | mergeable | nothing failed |
+| 1 | a required check failed | a failure was found and its evidence printed |
+| 2 | bad arguments, or `FORGE_TOKEN` missing or lacking a scope (the message names the scope) | same |
+| 3 | still waiting (never a failure); `watch` returns it at `--timeout` | — |
+
+### `forge-pr.mjs` (writes, the git credential)
+
+| Command | What it does |
+| --- | --- |
+| `open --head <branch> --title <t> --body-file <f> [--base main]` | Opens a PR from a pushed branch. A `refs/…` (AGit) head is refused, because its runs get no secrets. |
+| `merge <n> --expect-head <full sha>` | Merges only when all three hold: the PR's head is that sha, `ci-status status` says mergeable, and the forge says mergeable. It then deletes the branch and prints the merge sha. |
+| `dispatch <workflow.yml> --ref <branch> [--input k=v]` | Starts a `workflow_dispatch` run. That run posts **no** commit status, so follow it in the Actions tab. |
+
+Exit codes: 0 done · 1 refused or failed · 2 bad arguments.
+
+`forge-pr` reads the forge, owner and repository from `git remote get-url origin`, and asks `git credential fill` for that exact scheme and host. If the helper returns no password, it fails at once and names what it asked for.
 
 ## Branch protection for `main`
 

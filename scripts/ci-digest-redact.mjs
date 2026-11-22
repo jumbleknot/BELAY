@@ -74,7 +74,7 @@ const REWRITES = [
   // --- added by an earlier change, after MEASURING the shapes the newly wrapped steps emit ---------
   //
   // Wrapping 85 more `run:` steps widened what CI captures. Probing these rules against the output
-  // the newly instrumented SAST, infra-image-scan, wiki-maintain and cd-deploy steps actually
+  // the newly instrumented SAST, image-scan, wiki-maintain and deploy steps actually
   // produce, two shapes of twelve passed through completely unredacted. Neither is caught by the
   // fail-closed backstop either: that withholds an excerpt only when a HIGH_SIGNAL_SECRET *prefix*
   // survives, and an ordinary 40-character token has none.

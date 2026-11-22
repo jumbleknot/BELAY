@@ -312,7 +312,7 @@ test('(m3) the same job retried in a NEW run gets its own bundle', () => {
 });
 
 test('(m4) a job name with characters unsafe for a package version is normalised', () => {
-  const v = bundleVersion(1, 'infra-image-scan / infra-image-scan');
+  const v = bundleVersion(1, 'image-scan / image-scan');
   assert.equal(/[^A-Za-z0-9._-]/.test(v), false, `unsafe characters survived into the version: ${v}`);
   assert.match(v, /^1--/);
 });

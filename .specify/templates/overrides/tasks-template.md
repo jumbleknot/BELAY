@@ -190,8 +190,13 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] TXXX [P] Additional unit tests (if requested) in tests/unit/
 - [ ] TXXX Security hardening
 - [ ] TXXX Run quickstart.md validation
-- [ ] TXXX **Open the PR** from a real branch (`git push origin HEAD:<branch>`). Tick this task in
-  the branch's LAST commit and quote the branch, the PR number and that commit's sha. **CI evidence
+- [ ] TXXX **Open the PR** from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
+  1. `git push origin HEAD:<branch>`
+  2. `node scripts/forge-pr.mjs open --head <branch> --title "…" --body-file <file>`
+  3. `node scripts/ci-status.mjs watch --pr <n>`, until it exits 0
+  4. `node scripts/forge-pr.mjs merge <n> --expect-head <full sha>`
+
+  Tick this task in the branch's LAST commit and quote the branch and the PR number. **CI evidence
   is never recorded here**: a file cannot hold the CI result of the commit that contains it, and a
   commit added to record it is a new head that reruns every required CI job. The run ids, the CI
   verdict and the merge sha go in the PR's closing comment, and in the closing comment of each

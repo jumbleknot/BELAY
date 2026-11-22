@@ -214,7 +214,7 @@ export function commandLines(run) {
  * unwrapped — no log, and no `_failed-step` marker either, so the digest named nothing.
  *
  * MEASURED 2026-08-29: three live steps had a failure path outside their wrapper —
- * `cd-deploy / prod-apk` (`exit 1` on the BASE_DOMAIN guard), `devcontainer-image / build-publish`
+ * a deploy job (`exit 1` on the BASE_DOMAIN guard), `devcontainer-image / build-publish`
  * (`: "${REGISTRY:?…}"`), and `wiki-maintain / maintain` (`exit 2` on a malformed dispatch input,
  * plus the step's final exit expression). The gate reported all three clean.
  *
