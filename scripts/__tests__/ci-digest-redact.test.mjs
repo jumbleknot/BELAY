@@ -16,7 +16,7 @@ const ANTHROPIC = 'sk-ant-' + 'api03-' + 'A'.repeat(95);
 const BEARER = 'Bearer ' + 'q'.repeat(40);
 // A REAL-shaped tailnet host: a random id containing neither "tailnet" nor "example", which is
 // exactly what the redactor must rewrite. Assembled from fragments so no contiguous `.ts.net`
-// literal appears in this file — a tree-wide host scan (MCM's topology-scrub gate, issue #1) scans the whole tree and cannot
+// literal appears in this file — a tree-wide host scan (a topology-scrub gate, issue #1) scans the whole tree and cannot
 // distinguish an invented host from a real one (by design: it holds no literal to compare against),
 // so spelling one out here fails that gate. Do not "tidy" this into a single string.
 const tsNetHost = (label) => label + '.ts' + '.net';

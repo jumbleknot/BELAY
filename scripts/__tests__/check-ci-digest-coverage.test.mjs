@@ -267,10 +267,8 @@ test('(j) the two exemption markers are INDEPENDENT — one does not waive the o
 // --- (r)-(v) PER-STEP coverage --------------------------------------------------
 //
 // The old rule asked, per JOB: does it publish a digest, and is AT LEAST ONE step wrapped? One was
-// enough. `guardrails / naming` passed with 2 of 16 steps wrapped — and NEITHER of the two was a
-// gate. The resource-naming gate, the Komodo-sync gate, the topology scrub, the argv-secret gate,
-// the port-collision gate, the restart-policy gate, the CI-digest coverage gate itself, the
-// toolchain gate, the scan selftest and the realm-consistency gate all ran bare. So when that job
+// enough. A job once passed with 2 of 16 steps wrapped — and NEITHER of the two was a gate. Every
+// gate in that job, including this coverage gate itself, ran bare. So when that job
 // failed for the reason it exists to catch, the digest faithfully published the logs of two
 // UNRELATED steps and said nothing about the failure. Fully compliant, completely undiagnosable.
 //

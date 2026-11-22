@@ -21,6 +21,18 @@ Putting this tooling in one repo means that:
 
 Early setup. Tooling will be added here as it is developed.
 
+## Development
+
+BELAY is a pnpm + Nx workspace. With Node 24 or later:
+
+```bash
+pnpm install --frozen-lockfile   # install the workspace (pnpm version comes from package.json)
+pnpm nx run scripts:lint         # gates and selftests
+pnpm nx run scripts:test         # script unit tests
+```
+
+Every pull request runs the same checks in CI. See [docs/runbooks/ci.md](docs/runbooks/ci.md).
+
 ## License
 
 [MIT](LICENSE) © 2026 Jumbleknot

@@ -181,7 +181,7 @@ description: "Task list for feature 001: guardrails CI"
 
 **Independent Test**: quickstart §6.
 
-- [ ] T015 [US4] Write `docs/runbooks/ci.md` (FR-017). Sections:
+- [X] T015 [US4] Write `docs/runbooks/ci.md` (FR-017). Sections:
   - **What guardrails runs:** the triggers, the job, and the two Nx targets.
   - **Running it locally:** `pnpm install --frozen-lockfile`, then the targets.
   - **Reading a failure digest:** the PR comment, the commit status, and the `belay-ci-failures` evidence and how to fetch it.
@@ -230,23 +230,28 @@ description: "Task list for feature 001: guardrails CI"
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T020 [P] Update `AGENTS.md` (sweep hits `AGENTS.md:9`, `:20`, `:51`; FR-018, FR-024).
+- [X] T020 [P] Update `AGENTS.md` (sweep hits `AGENTS.md:9`, `:20`, `:51`; FR-018, FR-024).
   - **Line 9:** replace the "no toolchains chosen" sentence with the pnpm + Nx convention. That's: `pnpm install --frozen-lockfile`; `pnpm nx run scripts:lint` / `scripts:test`; the lock file is committed; version pinning per constitution "Dependency Security".
   - **`scripts/` row:** mention the Nx project and the CI scripts.
   - **Layout:** add `.forgejo/workflows/`.
   - **"Run the gate":** CI runs it on every PR. Locally, run it before committing; it still needs no install.
   - **Link:** add `docs/runbooks/ci.md`.
   - **Done when:** the sweep terms `No language toolchains` and `no CI` no longer appear in `AGENTS.md`.
-- [ ] T021 [P] Update `docs/runbooks/spec-kit.md` (sweep hits `:18-20`, `:24`).
+- [X] T021 [P] Update `docs/runbooks/spec-kit.md` (sweep hits `:18-20`, `:24`).
   - **Local commands (lines 18-20):** add the `pnpm nx run scripts:lint` / `scripts:test` equivalents.
   - **Line 24:** replace "no CI yet, so run the gate by hand" with "the guardrails workflow runs the gate and its selftest on every PR and every push to `main` (see `docs/runbooks/ci.md`)".
   - **Done when:** `node scripts/check-speckit-overrides.mjs` passes, which keeps the inventory check green.
-- [ ] T022 [P] Update `README.md` "Status": add a short "Development" section covering pnpm + Nx install and the two targets, linking `docs/runbooks/ci.md`.
+- [X] T022 [P] Update `README.md` "Status": add a short "Development" section covering pnpm + Nx install and the two targets, linking `docs/runbooks/ci.md`.
   - **Done when:** the README names the install command and both targets.
-- [ ] T023 SC-008 check. Run `git grep -niE 'mcm|movie|mc-service|komodo|kvm' -- scripts .forgejo package.json nx.json pnpm-workspace.yaml docs/runbooks/ci.md`.
+- [X] T023 SC-008 check. Run `git grep -niE 'mcm|movie|mc-service|komodo|kvm' -- scripts .forgejo package.json nx.json pnpm-workspace.yaml docs/runbooks/ci.md`.
   - **Done when:** there are no hits. The `tmdb-*` vendor-key rule names in `secret-scan.mjs` and its tests are the only expected matches for `tmdb`.
-- [ ] T024 **Close-out re-search**: re-run T003's searches.
+  - **Done 2026-11-22:** the only hit is `themoviedb` inside the `tmdb-v4-token` vendor-key regex in `scripts/secret-scan.mjs`. That's the TMDB vendor domain, kept deliberately (research R6). Two comment leftovers were fixed: a Komodo-gate list in the coverage test, and an "MCM's" in the redactor test.
+- [X] T024 **Close-out re-search**: re-run T003's searches.
   - **Done when:** every remaining hit in a doc that states current procedure has been fixed, or is justified in this task.
+  - **Done 2026-11-22:**
+    - `no CI`, `No language toolchains`, `build system`, `run the gate by`, `ci-step-logs`: no hits.
+    - `node --test`: `docs/runbooks/spec-kit.md:20` is still a valid direct command. Kept, and the Nx equivalents were added beside it.
+    - `ci-failures`: only `docs/runbooks/ci.md`, which is the new, correct `belay-ci-failures` name.
 - [ ] T025 **Open the PR** from a real branch: `git push origin HEAD:001-guardrails-ci`, then open a PR to `main`. This is by hand: the PR tooling is feature 002. Use Forgejo's UI, or one `POST /repos/jumbleknot/BELAY/pulls` with `FORGE_ISSUE_TOKEN` from the environment.
   - Confirm exactly one `guardrails` run, green, on `ci-homelab` (quickstart §2, SC-001). If it stays queued, change `runs-on` to the label `ci-homelab` advertises.
   - Tick this task in the branch's LAST commit, quoting the branch, the PR number and that commit's sha.
