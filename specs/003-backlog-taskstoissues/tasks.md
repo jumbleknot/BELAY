@@ -154,11 +154,17 @@ None. `backlog.mjs`'s dependencies (`forgeEndpoint`, `stripControlChars`, `redac
   - **Runbook:** add its row to the customisation table in `docs/runbooks/spec-kit.md`.
   - Prerequisite: T011 verified RED.
   - **Verify GREEN:** `node scripts/check-speckit-overrides.mjs` → expected: exit 0, with "2 project-owned file(s)"; then `node scripts/check-speckit-overrides.mjs --selftest` passes.
-- [ ] T013 [US3] Live run (quickstart §5, SC-001). Run `/speckit-taskstoissues` on this `tasks.md` after T008, so the labels exist, and after this file is committed.
+- [X] T013 [US3] Live run (quickstart §5, SC-001). Run `/speckit-taskstoissues` on this `tasks.md` after T008, so the labels exist, and after this file is committed.
   - **Done when:**
     - milestone `003-backlog-taskstoissues` exists, with one issue per task, titled `T0NN: …`, carrying `type/chore` and `priority/p2`;
     - the ordering dependencies are set, so `ready` shows the lowest open task first;
     - a second run reports 0 created, and the milestone's issue count is unchanged.
+
+  - **Done 2026-11-22.** Run through the skill's flow, driving `scripts/backlog.mjs` for every step.
+    - **First run:** created milestone `003-backlog-taskstoissues` and 21 issues (#5–#25), each `type/chore` and `priority/p2`, plus 20 `dep` links chaining each task to the one before.
+    - **Second run:** `created=0 already-filed=21`; the milestone lists 21 items.
+    - `ready` lists #5 (T001) as the only ready task in the chain. It warns that the blocked items have no `status/blocked` label, which is MCM's tool saying the graph is authoritative.
+    - **Ruling:** tasks already ticked in `tasks.md` were mirrored as **open** issues, with "Status in tasks.md when filed: done" in the body. Closing them would be a bulk operation, which the `forgejo-issues` rules leave to the maintainer.
 
 **Checkpoint**: the task list and the tracker agree.
 
