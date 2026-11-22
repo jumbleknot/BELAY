@@ -83,7 +83,7 @@ Do this once, after the first green guardrails run on a pull request. The status
 
 1. In BELAY, go to **Settings → Branches**, then **Add new rule**. Use rule name or pattern `main`.
 2. **Push:** choose **Disable push**, so nobody pushes directly to `main`. Changes go through PRs.
-3. **Status checks:** enable **Enable status check**, then add the guardrails context exactly as it appears on the PR's checks: `<!-- STATUS-CONTEXT: recorded after the first run -->`.
+3. **Status checks:** enable **Enable status check**, then add the guardrails context exactly as it appears on the PR's checks: `guardrails / guardrails (pull_request)`. This was recorded from the first green run, on PR #3, on 2026-11-22.
 4. Optional: enable **Block merge on outdated branch**, so a PR must include the latest `main` before it merges.
 5. **Save rule**.
 
