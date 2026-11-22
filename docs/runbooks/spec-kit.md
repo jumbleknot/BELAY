@@ -134,6 +134,20 @@ The procedure, all in one PR:
    You do not need to hunt for local edits before `--force`: the gate compares every managed file
    against its manifest hash, accepting both LF and CRLF, so a Windows checkout's line endings are
    not counted as edits.
+2a. **Reinstall the extensions** (rows 5, 5a, 5b): `specify extension add git --force`, then
+   `specify extension add agent-context --force`, then run the gate again. A reinstall rewrites
+   `.specify/extensions.yml` and `.specify/extensions/.registry` from the extension manifests and
+   **preserves** existing config files such as `agent-context-config.yml` (checked 2026-11-22 with
+   git 1.0.5 and agent-context 1.0.3). Expect:
+   - `hook-lost` for `before_converge` and `after_converge`, which the reinstall drops. Re-add the
+     two entries at the end of `hooks:`, as in row 5a (`git diff HEAD -- .specify/extensions.yml`
+     shows them).
+   - `extension-changed` if the new CLI bundles a newer extension. Update its `version` in
+     `EXTENSIONS` and row 5, and check its hooks.
+   - `hook-unregistered` or `hook-lost` if the new version adds, drops or changes a hook. Update
+     `EXTENSION_HOOKS` and row 5a to match the installed file, after reading why upstream changed it.
+   - `project-file-lost` for `agent-context-config.yml` if a future version stops preserving
+     config. Restore it with `git checkout HEAD -- <file>`.
 3. **Merge the upstream change into the override.** Keep the **Doc-impact sweep**,
    **Close-out re-search** and **Open the PR** tasks, the User Story 1 test pair with its
    **Verify RED** / **Verify GREEN** fields and the pointer to
