@@ -122,4 +122,5 @@ out/
 crash.log
 .terragrunt-cache/
 
+# Claude Code worktrees (claude --worktree) are scratch checkouts, never committed
 .claude/worktrees

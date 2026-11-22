@@ -31,7 +31,7 @@ Most top-level folders are still empty placeholders.
 | `scripts/` | Repository scripts, as the Nx project `scripts` (`scripts/project.json`): the gates, the CI scripts, the PR, CI-status and backlog tools, and their tests in `scripts/__tests__/` |
 | `.forgejo/` | CI workflows (`workflows/guardrails.yml`) and the backlog issue form (see [CI guardrails](../runbooks/ci.md)) |
 | `.specify/` | Spec Kit: templates, overrides, extensions and the constitution (see [Spec Kit](../runbooks/spec-kit.md)) |
-| `.claude/` | Shared Claude Code config: `settings.json` (the Nx plugin; see [Nx](../invariants/nx-task-runner.md)) and `skills/` (the `/speckit-*` commands and `forgejo-issues`). `settings.local.json` stays local |
+| `.claude/skills/` | Assistant skills: the `/speckit-*` commands and `forgejo-issues`. `.claude/settings.local.json` stays local |
 | `api-specs/` | API specifications |
 | `secrets/` | Local secrets. Only `.gitkeep`, `README.md` and `*.example` files are tracked |
 | `agents/` | AI agents |

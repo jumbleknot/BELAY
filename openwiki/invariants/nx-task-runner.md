@@ -51,17 +51,12 @@ them locally reproduces the required check.
   state Nx cannot see, such as a live forge or a running database, must not be cached. Mark such a
   target `cache: false` when one is added, or a stale pass is replayed from cache.
 
-- **The Nx plugin for coding assistants is enabled in `.claude/settings.json`**
-  (`nx@nx-claude-plugins`, from the `nrwl/nx-ai-agents-config` marketplace). It provides the Nx MCP
-  server and the `nx-workspace` and `nx-generate` skills that the Nx block in `AGENTS.md` refers to.
-  `pnpm nx configure-ai-agents --agents claude --no-interactive` installed it. It also wrote that
-  block, and `.claude/worktrees` in `.gitignore`.
-- **`configure-ai-agents` writes its block into `CLAUDE.md`, and it belongs in `AGENTS.md`.** The
-  block lives between `<!-- nx configuration start-->` and `<!-- nx configuration end-->` at the end
-  of `AGENTS.md`, so every assistant reads it and the `CLAUDE.md` shim stays a shim. After any re-run
-  of the generator, move the block back and restore the shim. `configure-ai-agents --check` therefore
-  always reports Claude Code as "update available", as it does in MovieCollectionManager. That is
-  expected, not drift. Never edit inside the markers by hand.
+- **No Nx plugin for coding assistants is installed, by decision.** `nx configure-ai-agents` would
+  enable the `nx@nx-claude-plugins` Claude Code plugin in `.claude/settings.json` and write an Nx
+  block into `CLAUDE.md`. BELAY tried it on 2026-11-22 and removed it, as MovieCollectionManager did,
+  because it went unused there for a long time. It also pulled an unpinned third-party marketplace
+  into every session. Don't re-run the generator without asking. `configure-ai-agents --check`
+  reporting agents as "not configured" is expected.
 
 See [package-manager enforcement](./package-manager-enforcement.md) for how dependencies get
 installed in the first place.
