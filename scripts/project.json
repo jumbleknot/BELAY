@@ -13,7 +13,8 @@
           "node scripts/check-speckit-overrides.mjs --selftest",
           "node scripts/check-speckit-overrides.mjs",
           "node scripts/secret-scan.mjs --selftest",
-          "node scripts/ci-digest-redact.mjs --selftest"
+          "node scripts/ci-digest-redact.mjs --selftest",
+          "node scripts/ci-failure-digest.mjs --selftest"
         ]
       }
     },

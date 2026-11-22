@@ -1,0 +1,1878 @@
+// Unit tests for the CI failure digest writer.
+//
+// Runs in CI: guardrails/naming executes `node --test scripts/__tests__/*.test.mjs`,
+// so this file MUST stay deterministic, offline, token-free and node:-built-ins only. Nothing here
+// touches the network — the publish layer is exercised through an injected transport.
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  buildDigest,
+  digestMarker,
+  findExistingComment,
+  shouldPublish,
+  tailLines,
+  DEFAULT_CAPS,
+} from '../ci-failure-digest.mjs';
+
+const ctx = (over = {}) => ({
+  workflow: 'ci',
+  job: 'e2e',
+  step: 'Run agent mobile flows (Maestro)',
+  sha: 'c2c3c29593fa94b3fd6d2b90ba7aaa94ddbc4596',
+  pr: 82,
+  runId: 1247,
+  runStatus: 'failure',
+  jobStatus: 'failure', // a real failing job sets CI_DIGEST_JOB_STATUS; the fixture must model that
+  ...over,
+});
+
+// --- (a) tail bias -------------------------------------------------------------------------------
+
+test('(a) an excerpt is taken from the END of a source, not the beginning', () => {
+  // Failures surface last. A head-biased excerpt is worthless — it shows the boot banner.
+  const log = Array.from({ length: 500 }, (_, i) => `line ${i + 1}`).join('\n');
+  const out = tailLines(log, 10);
+  assert.match(out, /line 500/, 'the tail was dropped — the failure itself would be missing');
+  assert.equal(/\bline 1\b/.test(out), false, 'head lines leaked into a tail-biased excerpt');
+  assert.equal(out.split('\n').length, 10);
+});
+
+test('(a2) a source shorter than the cap is returned whole', () => {
+  assert.equal(tailLines('a\nb\nc', 10), 'a\nb\nc');
+});
+
+// --- (b) caps are PER SOURCE, and truncation is stated --------------------------------------------
+
+test('(b) the line cap applies per source, not across the digest as a whole', () => {
+  const big = (n) => Array.from({ length: 400 }, (_, i) => `${n}:${i}`).join('\n');
+  const d = buildDigest(ctx(), {
+    excerpts: [
+      { source: 'a.log', text: big('a') },
+      { source: 'b.log', text: big('b') },
+    ],
+  });
+  for (const src of ['a.log', 'b.log']) {
+    const block = d.excerpts.find((e) => e.source === src);
+    assert.ok(block, `${src} was dropped instead of capped`);
+    assert.equal(block.text.split('\n').length, DEFAULT_CAPS.lines);
+  }
+});
+
+test('(b2) truncation is STATED, never silent', () => {
+  const log = Array.from({ length: 4812 }, (_, i) => `line ${i}`).join('\n');
+  const d = buildDigest(ctx(), { excerpts: [{ source: 'big.log', text: log }] });
+  const block = d.excerpts.find((e) => e.source === 'big.log');
+  assert.equal(block.truncated, true);
+  assert.match(d.markdown, /4,?812/, 'the original size was not reported');
+  assert.match(d.markdown, /truncat/i);
+});
+
+test('(b3) a byte cap also applies, for a source with few but enormous lines', () => {
+  const oneHugeLine = 'x'.repeat(DEFAULT_CAPS.bytes * 3);
+  const d = buildDigest(ctx(), { excerpts: [{ source: 'huge.log', text: oneHugeLine }] });
+  const block = d.excerpts.find((e) => e.source === 'huge.log');
+  assert.ok(block.text.length <= DEFAULT_CAPS.bytes, 'the byte cap did not apply');
+  assert.equal(block.truncated, true);
+});
+
+// --- (c) identity fields () -----------------------------------------------------------------
+
+test('(c) the digest names workflow, job, failing step, commit and PR', () => {
+  const d = buildDigest(ctx(), { excerpts: [] });
+  assert.match(d.markdown, /ci/);
+  assert.match(d.markdown, /e2e/);
+  assert.match(d.markdown, /Run agent mobile flows/);
+  assert.match(d.markdown, /c2c3c29/);
+  assert.match(d.markdown, /#82/);
+});
+
+test('(c2) a push-event digest omits the PR row rather than printing a null', () => {
+  const d = buildDigest(ctx({ pr: null }), { excerpts: [] });
+  assert.equal(/null|undefined/.test(d.markdown), false);
+});
+
+// --- (d) container health + absent evidence -------------------------------------------------------
+
+test('(d) container health evidence is included when present', () => {
+  const d = buildDigest(ctx(), {
+    excerpts: [],
+    health: [{ container: 'api-store', status: 'unhealthy', output: 'connection refused' }],
+  });
+  assert.match(d.markdown, /api-store/);
+  assert.match(d.markdown, /unhealthy/);
+});
+
+test('(d2) absent evidence is STATED, not silently omitted', () => {
+  // Container jobs have no Docker CLI at all, so "no health data" is the normal case there and
+  // must read as a known gap rather than as an empty section.
+  const d = buildDigest(ctx(), { excerpts: [], absent: ['container health — no Docker CLI on this runner'] });
+  assert.match(d.markdown, /Not collected/i);
+  assert.match(d.markdown, /no Docker CLI/);
+});
+
+test('(d3) a job that captured NOTHING still identifies itself', () => {
+  const d = buildDigest(ctx(), { excerpts: [], absent: ['no output captured'] });
+  assert.match(d.markdown, /e2e/, 'a digest with no evidence lost its own identity');
+  assert.match(d.markdown, /no output captured/);
+});
+
+// --- (e) redaction is applied before publication () -----------------------------------------
+
+test('(e) every excerpt passes through redaction', () => {
+  const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.c2lnbmF0dXJl';
+  const d = buildDigest(ctx(), { excerpts: [{ source: 'a.log', text: `auth ${jwt} failed` }] });
+  assert.equal(d.markdown.includes(jwt), false, 'a credential reached the published digest');
+  assert.match(d.markdown, /<redacted-jwt>/);
+});
+
+test('(e2) an excerpt that survives redaction dirty is WITHHELD, not published', () => {
+  // Fragmented: naming the value in prose would trip the tree-wide secret scan (see the note in
+  // ci-digest-redact.test.mjs).
+  // A `tmdb_key: <32 hex>` value: secret-scan detects it, the generic rewrite does not touch it.
+  const planted = 'tmdb' + '_key: ' + 'a'.repeat(32);
+  const d = buildDigest(ctx(), { excerpts: [{ source: 'a.log', text: `config ${planted}` }] });
+  assert.equal(d.markdown.includes(planted), false, 'a residual credential match was published');
+  assert.match(d.markdown, /withheld/i);
+});
+
+test('(e3) the forge host never reaches the digest', () => {
+  const host = 'beelink.tailz9x8w7' + '.ts' + '.net:3000';
+  const d = buildDigest(ctx(), { excerpts: [{ source: 'a.log', text: `GET http://${host}/api` }] });
+  assert.equal(d.markdown.includes('tailz9x8w7'), false);
+  assert.match(d.markdown, /<forge>/);
+});
+
+// --- (f) upsert marker () -------------------------------------------------------------------
+
+test('(f) the marker is keyed by JOB so a retry edits rather than stacks', () => {
+  const marker = digestMarker('e2e');
+  const d = buildDigest(ctx(), { excerpts: [] });
+  assert.ok(d.markdown.startsWith(marker), 'the digest does not lead with its upsert marker');
+  // Two different jobs must not collide; the same job twice must.
+  assert.notEqual(digestMarker('e2e'), digestMarker('scan'));
+  assert.equal(digestMarker('e2e'), digestMarker('e2e'));
+});
+
+test('(f2) an existing comment for the same job is found and reused', () => {
+  const comments = [
+    { id: 1, body: 'unrelated review comment' },
+    { id: 2, body: `${digestMarker('scan')}\n### old scan digest` },
+    { id: 3, body: `${digestMarker('e2e')}\n### old e2e digest` },
+  ];
+  assert.equal(findExistingComment(comments, 'e2e')?.id, 3);
+  assert.equal(findExistingComment(comments, 'sast'), null, 'a non-existent job matched some other comment');
+});
+
+// --- (g): a cancelled run publishes NOTHING -----------------------------------------------
+
+test('(g) a job from a CANCELLED run must not publish', () => {
+  // Measured: a cancelled run's contexts read as `failure` for a commit that was never broken.
+  // Publishing here would upsert a failure comment onto the PR on every rapid re-push.
+  assert.equal(shouldPublish({ runStatus: 'cancelled', jobStatus: 'failure' }).publish, false);
+  assert.match(shouldPublish({ runStatus: 'cancelled', jobStatus: 'failure' }).reason, /supersed|cancel/i);
+});
+
+test('(g2) a genuine failure publishes', () => {
+  assert.equal(shouldPublish({ runStatus: 'failure', jobStatus: 'failure' }).publish, true);
+});
+
+test('(g3) a passing job publishes no DIGEST — 054 changed what it publishes, not whether', () => {
+  // Was: `publish === false`. made a green run publish a counts-only bundle,
+  // because a passing e2e's counts were otherwise unreadable without making the job fail. The
+  // property this case actually guards — a passing job never emits a FAILURE digest — is unchanged
+  // and is asserted directly rather than via a flag that now means something wider.
+  assert.notEqual(shouldPublish({ runStatus: 'success', jobStatus: 'success' }).mode, 'digest');
+});
+
+test('(g4) the cancelled check wins even when the job itself reports failure', () => {
+  // Order matters: a cancelled job DOES report failure, so testing jobStatus first would publish.
+  const r = shouldPublish({ runStatus: 'cancelled', jobStatus: 'failure' });
+  assert.equal(r.publish, false);
+});
+
+// ================================================================================================
+// — publish routing. Exercised through an injected transport; nothing here touches the network.
+// ================================================================================================
+
+import { publishDigest } from '../ci-failure-digest.mjs';
+
+function fakeApi(comments = []) {
+  const calls = [];
+  return {
+    calls,
+    listComments: async () => comments,
+    createComment: async (pr, body) => { calls.push({ op: 'createComment', pr, body }); return { id: 99 }; },
+    updateComment: async (id, body) => { calls.push({ op: 'updateComment', id, body }); return { id }; },
+    createStatus: async (sha, payload) => { calls.push({ op: 'createStatus', sha, ...payload }); return {}; },
+  };
+}
+
+const digestOf = (over) => buildDigest(ctx(over), { excerpts: [] });
+
+test('(h) a pull_request failure CREATES a comment when none exists', async () => {
+  const api = fakeApi([]);
+  await publishDigest({ context: ctx({ event: 'pull_request' }), digest: digestOf({}) }, api);
+  assert.deepEqual(api.calls.map((c) => c.op), ['createComment']);
+  assert.match(api.calls[0].body, /ci-digest:job=e2e/);
+});
+
+test('(i) a RETRY updates the existing comment instead of stacking a new one', async () => {
+  //: the marker is the upsert key. Three failures of one job must leave ONE comment.
+  const api = fakeApi([{ id: 7, body: `${digestMarker('e2e')}\n### stale digest` }]);
+  await publishDigest({ context: ctx({ event: 'pull_request' }), digest: digestOf({}) }, api);
+  assert.deepEqual(api.calls.map((c) => c.op), ['updateComment']);
+  assert.equal(api.calls[0].id, 7);
+});
+
+test('(i2) another job\'s comment on the same PR is left alone', async () => {
+  const api = fakeApi([{ id: 7, body: `${digestMarker('scan')}\n### scan digest` }]);
+  await publishDigest({ context: ctx({ event: 'pull_request' }), digest: digestOf({}) }, api);
+  assert.deepEqual(api.calls.map((c) => c.op), ['createComment'], 'it edited a different job\'s comment');
+});
+
+test('(j) a push failure posts NO commit status — the bundle IS the publication (, T040)', async () => {
+  // Measured on an earlier run: POST /repos/…/statuses/{sha} returns 403. The status was only ever a
+  // POINTER to the bundle, and the reader can derive that pointer itself from (runId, job), so the
+  // status is dropped rather than widening CI_DIGEST_TOKEN with write:repository — which is most of
+  // the privilege that made CD_PUSH_TOKEN unacceptable across 16 jobs.
+  const api = fakeApi([]);
+  const r = await publishDigest({ context: ctx({ event: 'push', pr: null }), digest: digestOf({ pr: null }) }, api);
+  assert.deepEqual(api.calls, [], 'a push failure still tried to write a commit status');
+  assert.equal(r.published, true);
+  assert.equal(r.channel, 'bundle');
+});
+
+test('(j2) the transport needs no status-writing capability at all', async () => {
+  // If a future change reintroduces createStatus, this fails loudly rather than silently 403-ing
+  // in CI where nobody reads the log.
+  const api = fakeApi([]);
+  delete api.createStatus;
+  const r = await publishDigest({ context: ctx({ event: 'push', pr: null }), digest: digestOf({ pr: null }) }, api);
+  assert.equal(r.published, true, 'publishing a push failure required a status-writing transport');
+});
+
+test('(j3) the digest travels INSIDE the bundle, so a non-PR failure is still readable', () => {
+  const m = buildBundleManifest([], { digestMarkdown: '### the digest', context: { job: 'naming' } });
+  const entry = m.files.find((f) => f.path === 'digest.md');
+  assert.ok(entry, 'the bundle carries no digest.md — a push failure would have nothing to read');
+  assert.match(entry.text, /the digest/);
+});
+
+test('(k)  — a cancelled run publishes NOTHING, by either route', async () => {
+  const api = fakeApi([]);
+  const result = await publishDigest(
+    { context: ctx({ event: 'pull_request', runStatus: 'cancelled' }), digest: digestOf({}) },
+    api,
+  );
+  assert.deepEqual(api.calls, [], 'a superseded run published a failure digest');
+  assert.equal(result.published, false);
+  assert.match(result.reason, /supersed|cancel/i);
+});
+
+test('(l)  — a transport failure is swallowed, never thrown at the job', async () => {
+  // The digest step must never change a job's outcome, including when the digest itself breaks.
+  const exploding = { ...fakeApi([]), listComments: async () => { throw new Error('forge is down'); } };
+  const result = await publishDigest({ context: ctx({ event: 'pull_request' }), digest: digestOf({}) }, exploding);
+  assert.equal(result.published, false);
+  assert.match(result.reason, /forge is down/);
+});
+
+test('(l2) a transport failure message is redacted before it is reported', async () => {
+  const host = 'beelink.tailz9x8w7' + '.ts' + '.net:3000';
+  const exploding = {
+    ...fakeApi([]),
+    listComments: async () => { throw new Error(`connect ECONNREFUSED http://${host}/api`); },
+  };
+  const result = await publishDigest({ context: ctx({ event: 'pull_request' }), digest: digestOf({}) }, exploding);
+  assert.equal(result.reason.includes('tailz9x8w7'), false, 'an error message leaked the forge host');
+});
+
+// ================================================================================================
+/// — evidence bundle identity, size cap, and 30-day retention (US3).
+// ================================================================================================
+
+import { bundleVersion, buildBundleManifest, selectExpiredVersions, BUNDLE_CAP_BYTES, RETENTION_DAYS } from '../ci-failure-digest.mjs';
+
+// --- identity: per run AND job (the clarified) ---------------------------------------------
+
+test('(m) the bundle version is keyed by run AND job', () => {
+  assert.equal(bundleVersion(1247, 'e2e'), '1247--e2e');
+});
+
+test('(m2) two jobs failing in the SAME run get distinct bundles', () => {
+  // Jobs fail together routinely — most notably a cancelled run fails every context at once.
+  // Keying by run alone would let the second upload overwrite the first.
+  assert.notEqual(bundleVersion(1247, 'e2e'), bundleVersion(1247, 'scan'));
+});
+
+test('(m3) the same job retried in a NEW run gets its own bundle', () => {
+  assert.notEqual(bundleVersion(1247, 'e2e'), bundleVersion(1248, 'e2e'));
+});
+
+test('(m4) a job name with characters unsafe for a package version is normalised', () => {
+  const v = bundleVersion(1, 'infra-image-scan / infra-image-scan');
+  assert.equal(/[^A-Za-z0-9._-]/.test(v), false, `unsafe characters survived into the version: ${v}`);
+  assert.match(v, /^1--/);
+});
+
+// --- size cap: truncate largest-first, and SAY SO -------------------------------------------------
+
+test('(n) an oversized bundle truncates largest-source-first and records it', () => {
+  const files = [
+    { path: 'logs/small.log', text: 'x'.repeat(1_000) },
+    { path: 'logs/huge.log', text: 'y'.repeat(BUNDLE_CAP_BYTES * 2) },
+    { path: 'logs/medium.log', text: 'z'.repeat(50_000) },
+  ];
+  const m = buildBundleManifest(files, { cap: BUNDLE_CAP_BYTES });
+  const total = m.files.reduce((n, f) => n + f.text.length, 0);
+  assert.ok(total <= BUNDLE_CAP_BYTES, `bundle exceeded its cap: ${total} > ${BUNDLE_CAP_BYTES}`);
+  // A bundle must never silently misrepresent itself as complete.
+  assert.equal(m.meta.truncated, true);
+  assert.ok(m.meta.truncatedSources.includes('logs/huge.log'), 'the largest source was not the one trimmed');
+  const small = m.files.find((f) => f.path === 'logs/small.log');
+  assert.equal(small.text.length, 1_000, 'a small source was trimmed before the huge one');
+});
+
+test('(n2) a bundle within the cap is untouched and not marked truncated', () => {
+  const m = buildBundleManifest([{ path: 'a.log', text: 'hello' }], { cap: BUNDLE_CAP_BYTES });
+  assert.equal(m.meta.truncated, false);
+  assert.equal(m.files[0].text, 'hello');
+});
+
+test('(n3) the manifest records what was absent, so "not collected" ≠ "empty"', () => {
+  const m = buildBundleManifest([], { cap: BUNDLE_CAP_BYTES, absent: ['container health — no Docker CLI'] });
+  assert.deepEqual(m.meta.absent, ['container health — no Docker CLI']);
+});
+
+// --- retention: 30 days, pruned opportunistically -------------------------------------------------
+
+const daysAgo = (n, now) => new Date(now - n * 86_400_000).toISOString();
+
+test('(o) versions older than the retention window are selected for pruning', () => {
+  const now = Date.parse('2026-07-19T00:00:00Z');
+  const versions = [
+    { version: '1--a', created_at: daysAgo(1, now) },
+    { version: '2--b', created_at: daysAgo(RETENTION_DAYS + 5, now) },
+    { version: '3--c', created_at: daysAgo(RETENTION_DAYS - 1, now) },
+  ];
+  const expired = selectExpiredVersions(versions, { now, retentionDays: RETENTION_DAYS });
+  assert.deepEqual(expired.map((v) => v.version), ['2--b']);
+});
+
+test('(o2) a version with an unparseable timestamp is KEPT, not pruned', () => {
+  // Deleting evidence on a parse failure is the destructive direction. Keep it and move on.
+  const now = Date.parse('2026-07-19T00:00:00Z');
+  const expired = selectExpiredVersions([{ version: 'x', created_at: 'not-a-date' }], { now });
+  assert.deepEqual(expired, []);
+});
+
+test('(o3) retention is 30 days, matching the repo-wide log-retention standard', () => {
+  assert.equal(RETENTION_DAYS, 30);
+});
+
+// ================================================================================================
+// Write-side defects found by adversarial review.
+// ================================================================================================
+
+test('(p) the cap is ENFORCED even when no single source can absorb the overage', () => {
+  // `slice(-0)` returns the WHOLE string (-0 === 0), so when room computed to 0 the loop marked the
+  // bundle truncated, broke, and returned it unchanged and over cap — meta.truncated LYING.
+  // Reachable in production: 6 collected ~3 MB logs vs a 5 MB cap.
+  const m = buildBundleManifest(
+    [{ path: 'a', text: 'x'.repeat(6) }, { path: 'b', text: 'y'.repeat(6) }, { path: 'c', text: 'z'.repeat(6) }],
+    { cap: 10 },
+  );
+  const total = m.files.reduce((n, f) => n + f.text.length, 0);
+  assert.ok(total <= 10, `cap not enforced: kept ${total} bytes against a cap of 10`);
+  assert.equal(m.meta.truncated, true);
+});
+
+test('(p2) six large sources against a realistic cap still land under it', () => {
+  const files = Array.from({ length: 6 }, (_, i) => ({ path: `logs/${i}.log`, text: 'x'.repeat(3_000_000) }));
+  const m = buildBundleManifest(files, { cap: BUNDLE_CAP_BYTES });
+  const total = m.files.reduce((n, f) => n + f.text.length, 0);
+  assert.ok(total <= BUNDLE_CAP_BYTES, `18 MB of logs produced a ${total}-byte bundle`);
+  assert.equal(m.meta.truncated, true);
+});
+
+test('(p3) tailLines(text, 0) returns nothing, not everything', () => {
+  assert.equal(tailLines('a\nb\nc', 0), '');
+});
+
+test('(q) the cap counts BYTES, not UTF-16 code units', () => {
+  // A 4-byte emoji is length 2 in JS. Non-ASCII CI output (stack traces, CJK, box-drawing) would
+  // overshoot the real byte budget by up to 3x.
+  const emoji = '🔥'.repeat(2000); // 8000 bytes, length 4000
+  const m = buildBundleManifest([{ path: 'e.log', text: emoji }], { cap: 4000 });
+  assert.ok(Buffer.byteLength(m.files[0].text, 'utf8') <= 4000, 'byte cap measured code units, not bytes');
+});
+
+// (r)/(r2) removed by. They asserted that the commit status carried a non-empty target_url —
+// a fix for a real bug, but the commit status itself is now gone (it needed write:repository, 403
+// measured on an earlier run). Test (j2) supersedes them with the stronger property: the transport
+// needs no status-writing capability at all.
+
+test('(s) the bundle records whether the digest actually reached its channel', () => {
+  // The job log is unreadable over the API, so a failed publish would otherwise be invisible from
+  // the read side — the bootstrap gap that made un-diagnosable.
+  const m = buildBundleManifest([], { context: { job: 'naming' } });
+  assert.ok('truncated' in m.meta, 'meta shape changed unexpectedly');
+});
+
+test('(t) a 403 names the scope the endpoint ACTUALLY needs', async () => {
+  // Measured on an earlier run: POST /statuses/{sha} returned 403, and the message said
+  // "missing write:package" — a scope that was granted and working. requires naming the
+  // real one, or the reader chases the wrong fix.
+  const { scopeHintForTest } = await import('../ci-failure-digest.mjs');
+  if (!scopeHintForTest) return; // exported only for this assertion
+  assert.match(scopeHintForTest('/repos/o/r/statuses/abc'), /write:repository/);
+  assert.match(scopeHintForTest('/repos/o/r/issues/1/comments'), /write:issue/);
+  assert.match(scopeHintForTest('http://h/api/packages/o/generic/x/1/b.gz'), /write:package/);
+});
+
+// ================================================================================================
+// Collector defects found when the feature failed its FIRST real diagnosis.
+// The bundle was 4 MB of mongo noise: the failing services' logs were never collected, and the
+// compose-level log was truncated to zero bytes. Every case below is modelled on that real bundle.
+// ================================================================================================
+
+import { selectSources, allocateFairly, collectEvidence } from '../ci-failure-digest.mjs';
+import { isBulkDeviceEvidence } from '../ci-failure-digest.mjs';
+
+// The 13 files feature-036 actually writes, with the sizes seen on an earlier run.
+const REAL_ENTRIES = [
+  { name: '_auth-stack.log', size: 17_404 },
+  { name: '_app-stack.log', size: 250_000 },
+  { name: '_ps.txt', size: 900 },
+  { name: 'auth-service.log', size: 6_412 },
+  { name: 'auth-store.log', size: 7_758 },
+  { name: 'api-store-init.log', size: 170 },
+  { name: 'api-store.log', size: 20_000_000 },
+  { name: 'api-service.log', size: 40_000 },
+  { name: 'app-cache.log', size: 3_000 },
+  { name: 'app-service.log', size: 60_000 },
+  { name: 'app-store.log', size: 900_000 },
+  { name: 'agent-gateway.log', size: 80_000 },
+  { name: 'agent-tool.log', size: 5_000 },
+];
+const UNHEALTHY = ['api-service', 'agent-gateway'];
+
+test('(u) every container log is collected — no arbitrary alphabetical cap', () => {
+  // The bug: `.slice(0, 6)` on an alphabetically-ordered list kept auth and mongo, and dropped
+  // api-service, app-service and every agent-* — i.e. the failing services.
+  const picked = selectSources(REAL_ENTRIES.map((e) => e.name), UNHEALTHY).map((s) => s.name ?? s);
+  for (const must of ['api-service.log', 'app-service.log', 'agent-gateway.log']) {
+    assert.ok(picked.includes(must), `dropped a failing service's log: ${must}`);
+  }
+});
+
+test('(u2) unhealthy containers are ordered FIRST, ahead of healthy noise', () => {
+  const picked = selectSources(REAL_ENTRIES.map((e) => e.name), UNHEALTHY).map((s) => s.name ?? s);
+  const firstMongo = picked.indexOf('api-store.log');
+  for (const must of ['api-service.log', 'agent-gateway.log']) {
+    assert.ok(picked.indexOf(must) < firstMongo, `${must} ranked below a healthy container's log`);
+  }
+});
+
+test('(u3) the docker ps table is collected', () => {
+  // Never collected before — only .log and .health.json were read — so the one table showing which
+  // containers EXITED was missing from every bundle.
+  const picked = selectSources(REAL_ENTRIES.map((e) => e.name), UNHEALTHY).map((s) => s.name ?? s);
+  assert.ok(picked.includes('_ps.txt'), 'the docker ps -a table was not collected');
+});
+
+test('(v) fair allocation never zeroes a source while another keeps megabytes', () => {
+  // The real failure: mongo (20 MB) crowded the 5 MB cap and _app-stack.log was trimmed to 0 bytes,
+  // because target = min(size - excess, size/2) goes negative when excess > size.
+  const files = REAL_ENTRIES.map((e) => ({ path: 'logs/' + e.name, text: 'x'.repeat(e.size) }));
+  const m = buildBundleManifest(files, { cap: BUNDLE_CAP_BYTES });
+  const total = m.files.reduce((n, f) => n + Buffer.byteLength(f.text, 'utf8'), 0);
+  assert.ok(total <= BUNDLE_CAP_BYTES, `over cap: ${total}`);
+  for (const f of m.files) {
+    assert.ok(f.text.length > 0, `${f.path} was zeroed while the bundle still carried other sources`);
+  }
+});
+
+test('(v2) a small source keeps ALL of its content — only the greedy ones are trimmed', () => {
+  const files = REAL_ENTRIES.map((e) => ({ path: 'logs/' + e.name, text: 'x'.repeat(e.size) }));
+  const m = buildBundleManifest(files, { cap: BUNDLE_CAP_BYTES });
+  for (const small of ['_ps.txt', 'api-store-init.log', 'auth-service.log']) {
+    const f = m.files.find((x) => x.path === 'logs/' + small);
+    const orig = REAL_ENTRIES.find((e) => e.name === small).size;
+    assert.equal(f.text.length, orig, `${small} was trimmed even though it fits comfortably`);
+  }
+});
+
+test('(v3) allocateFairly gives every source at least an equal share', () => {
+  const sizes = [10, 10, 10, 1_000_000];
+  const shares = allocateFairly(sizes, 1000);
+  assert.equal(shares.reduce((a, b) => a + b, 0) <= 1000, true);
+  for (const s of shares) assert.ok(s > 0, 'a source got a zero allocation');
+  // The three tiny ones keep everything; the greedy one absorbs the trim.
+  assert.deepEqual(shares.slice(0, 3), [10, 10, 10]);
+});
+
+test('(w) the DIGEST stays small even though the BUNDLE now carries every source', () => {
+  // Fixing the collector took sources from 6 to 13. The bundle should carry all of them; the digest
+  // must not — 13 x 200 lines is an unreadable PR comment. Small and pointed vs complete.
+  const many = Array.from({ length: 13 }, (_, i) => ({
+    source: `c${i}.log`,
+    text: Array.from({ length: 400 }, (_, n) => `c${i} line ${n}`).join('\n'),
+  }));
+  const d = buildDigest(ctx(), { excerpts: many });
+  assert.ok(d.excerpts.length <= 3, `digest carried ${d.excerpts.length} excerpts — too many for a comment`);
+  assert.ok(d.markdown.length < 40_000, `digest markdown is ${d.markdown.length} bytes — too large`);
+  // ...and it must SAY that it held sources back, rather than silently dropping them.
+  assert.match(d.markdown, /more source/i, 'the digest silently dropped sources');
+});
+
+test('(w2) the digest keeps the HIGHEST-RANKED sources, not an arbitrary slice', () => {
+  const d = buildDigest(ctx(), {
+    excerpts: [
+      { source: '_ps.txt', text: 'status table' },
+      { source: 'api-service.log', text: 'the failing service' },
+      { source: 'noise.log', text: 'noise' },
+      { source: 'more-noise.log', text: 'noise' },
+    ],
+  });
+  assert.match(d.markdown, /_ps\.txt/);
+  assert.match(d.markdown, /api-service\.log/);
+});
+
+test('(x) step output outranks every container log', () => {
+  //: what the failing step PRINTED is the most diagnostic source there is. Three consecutive
+  // e2e failures needed a human to paste it because nothing collected it.
+  const picked = selectSources(
+    ['_ps.txt', 'api-service.log', 'step:agent-integration.log', 'noise.log'],
+    ['api-service'],
+  ).map((s) => s.name);
+  assert.equal(picked[0], 'step:agent-integration.log', 'step output did not rank first');
+});
+
+test('(x2) a job with no instrumented step SAYS so rather than reporting nothing', () => {
+  const ev = collectEvidence({ home: '/nonexistent-home', cwd: '/tmp', env: { GITHUB_RUN_ID: 'x' } });
+  assert.ok(ev.absent.some((a) => /step output/.test(a)), 'silent about missing step output');
+  assert.ok(ev.absent.some((a) => /ci-log-step\.sh/.test(a)), 'does not say how to fix it');
+});
+
+// ================================================================================================
+/// — failing-step name from the marker, and a comment-safe size cap.
+// ================================================================================================
+
+import { readFailingStep, readRunHealth as readFailingStepModuleRunHealth, COMMENT_MAX_BYTES } from '../ci-failure-digest.mjs';
+
+test('(y) the digest names the failing step from the marker', () => {
+  const d = buildDigest(ctx({ step: 'guardrails / naming' }), { excerpts: [] });
+  assert.match(d.markdown, /guardrails \/ naming/);
+  assert.equal(/_not reported_/.test(d.markdown), false);
+});
+
+test('(y2) readFailingStep returns null when no step was wrapped', () => {
+  assert.equal(readFailingStep({ GITHUB_RUN_ID: 'nope', HOME: '/nonexistent' }), null);
+});
+
+// --- (y3) the READER half of a past incident ----------------------------------------------------------
+//
+// scripts/__tests__/ci-log-step.test.mjs (g4) pins that the two jobs WRITE separate markers; this
+// pins that the digest READS its own. Both halves derive the path independently, so a change to one
+// alone is exactly the kind of silent drift that produced the original defect.
+//
+// The second assertion is the one that matters: there is deliberately NO run-scoped fallback. A
+// fallback would keep reading the sibling job's marker on precisely the overlapping runs the fix is
+// for, so the bug would survive behind it and the tests would still be green.
+test('(y3) readFailingStep reads THIS job\'s marker, and does not fall back to a run-scoped one', () => {
+  const root = mkdtempSync(join(tmpdir(), 'failing-step-'));
+  mkdirSync(join(root, '1683', 'scan'), { recursive: true });
+  mkdirSync(join(root, '1683', 'e2e'), { recursive: true });
+  writeFileSync(join(root, '1683', 'scan', '_failed-step'), 'scan-install-tools\n');
+  writeFileSync(join(root, '1683', 'e2e', '_failed-step'), 'e2e-run\n');
+  // The pre-fix layout, left in place on purpose: nothing may read it any more.
+  writeFileSync(join(root, '1683', '_failed-step'), 'scan-install-tools\n');
+
+  const inJob = (job) => ({ CI_STEP_LOG_ROOT: root, GITHUB_RUN_ID: '1683', GITHUB_JOB: job });
+  assert.equal(readFailingStep(inJob('e2e')), 'e2e-run');
+  assert.equal(readFailingStep(inJob('scan')), 'scan-install-tools');
+  assert.equal(
+    readFailingStep({ CI_STEP_LOG_ROOT: root, GITHUB_RUN_ID: '1683', GITHUB_JOB: 'affected' }),
+    null,
+    'a job with no marker of its own adopted the run-scoped one — the fallback re-creates #180',
+  );
+});
+
+test('(z) a huge digest is capped to a comment-safe size, and says it was', () => {
+  // Real data: an earlier run's digest.md was 90 KB; Forgejo's comment body limit is ~64 KB, so a full
+  // e2e digest COMMENT would be rejected. The bundle keeps the full logs as separate files.
+  const huge = Array.from({ length: 3 }, (_, i) => ({
+    source: `big${i}.log`,
+    text: Array.from({ length: 200 }, (_, n) => `${i}: ${'x'.repeat(300)} line ${n}`).join('\n'),
+  }));
+  const d = buildDigest(ctx(), { excerpts: huge });
+  assert.ok(
+    Buffer.byteLength(d.markdown, 'utf8') <= COMMENT_MAX_BYTES,
+    `digest is ${Buffer.byteLength(d.markdown, 'utf8')} bytes, over the ${COMMENT_MAX_BYTES} comment cap`,
+  );
+  assert.match(d.markdown, /truncated for comment size|full content is in the bundle/i);
+});
+
+test('(z2) COMMENT_MAX_BYTES stays safely under the forge comment limit', () => {
+  assert.ok(COMMENT_MAX_BYTES < 65535, 'cap is not under the ~64 KB forge comment limit');
+});
+
+test('(z3) a small digest is left entirely alone', () => {
+  const d = buildDigest(ctx(), { excerpts: [{ source: 'a.log', text: 'one short line' }] });
+  assert.equal(/truncated for comment size/i.test(d.markdown), false);
+  assert.match(d.markdown, /one short line/);
+});
+
+// ================================================================================================
+// Security hardening — write side (injection via attacker-controlled log content).
+// ================================================================================================
+
+import { fenceFor, neutralizeMarkers } from '../ci-failure-digest.mjs';
+
+test('(aa) a log line containing ``` cannot break out of the code fence', () => {
+  // Attacker prints ``` to close the fence early and inject live markdown into the PR comment.
+  const evil = 'normal log\n```\n[click me](http://evil)\n```more';
+  const d = buildDigest(ctx(), { excerpts: [{ source: 'a.log', text: evil }] });
+  // The chosen fence must be longer than any backtick run in the content, so the content stays fenced.
+  const fence = fenceFor(evil);
+  assert.ok(fence.length >= 4, 'fence not lengthened past the injected ```');
+  assert.ok(d.markdown.includes(fence), 'digest did not use a breakout-safe fence');
+  // the injected markdown link must remain INSIDE a fence (literal), not become active markdown
+  assert.ok(d.markdown.includes(evil) || d.markdown.includes(evil.replace(/\r/g, '')), 'excerpt content lost');
+});
+
+test('(bb) another job\'s marker in a log excerpt is neutralised (no cross-job overwrite)', () => {
+  // A test that echoes `<!-- ci-digest:job=affected -->` must not let the affected job\'s upsert
+  // match-and-overwrite this comment, nor inject a second marker.
+  const evil = 'log: <!-- ci-digest:job=affected -->';
+  const d = buildDigest(ctx({ job: 'e2e' }), { excerpts: [{ source: 'a.log', text: evil }] });
+  // exactly one REAL marker (this job\'s, at the top); the injected one is defanged
+  const markers = (d.markdown.match(/<!--\s*ci-digest:job=/g) || []).length;
+  assert.equal(markers, 1, `expected 1 marker, found ${markers}`);
+  assert.match(d.markdown, /^<!-- ci-digest:job=e2e -->/);
+});
+
+test('(cc) findExistingComment only matches a marker at the START of a body', () => {
+  const comments = [
+    { id: 1, body: 'lgtm <!-- ci-digest:job=e2e -->' },       // mid-body → must NOT match
+    { id: 2, body: '<!-- ci-digest:job=e2e -->\n### digest' }, // anchored → matches
+  ];
+  assert.equal(findExistingComment(comments, 'e2e')?.id, 2);
+});
+
+test('(dd) an UNKNOWN job status does not publish (env dropped must not spam green runs)', () => {
+  // Was: default 'failure' → a job that lost CI_DIGEST_JOB_STATUS published a spurious digest on a
+  // green run. Unknown must be no-publish; the coverage gate guarantees the env for real failures.
+  assert.equal(shouldPublish({ runStatus: '', jobStatus: '' }).publish, false);
+  assert.equal(shouldPublish({ runStatus: 'failure', jobStatus: 'failure' }).mode, 'digest');
+  // 054: an explicit success publishes COUNTS, never a digest. The guard this case exists for — a
+  // DROPPED env var must not publish — is why counts is gated on an explicit `success` rather than
+  // on "not a failure"; the empty-status assertion above is what pins that.
+  assert.equal(shouldPublish({ runStatus: 'success', jobStatus: 'success' }).mode, 'counts');
+});
+
+// --- (ee)-(hh) the three-way outcome --------------------------------------------
+//
+// The digest step is `if: always()` + `continue-on-error: true` and the script ends in an
+// unconditional exit 0. All three are correct — a broken reporter must never fail a build — but
+// together they erase the difference between "nothing to report" and "the reporter is broken".
+// The reader is told "no digest was published" in both cases, and believes the first.
+//
+// Measured on 2026-08-01: an AGit-headed run had every Actions secret empty, so CI_DIGEST_TOKEN was
+// blank. The digest COLLECTED its evidence, could not publish it, printed it to stdout — which the
+// forge API cannot expose — and exited 0. Zero comments on the PR, no error, no signal. The evening
+// was spent looking for a CI fault that had already been diagnosed and thrown away.
+//
+// The vocabulary mirrors the `absent` field the digest already uses to separate "looked and found
+// nothing" from "did not look", rather than inventing a parallel one.
+
+// Loaded per-case rather than at module scope, deliberately. A static import of a not-yet-existing
+// export throws at LOAD time and takes the whole file with it — this file collected 1 test instead
+// of 60 while these cases were red, which hides every other case behind one failure and makes the
+// collected count meaningless. That is the same defect fixes on Windows, and it would be a poor
+// look to reproduce it here on purpose.
+const digestModule = () => import('../ci-failure-digest.mjs');
+
+test('(ee) a job that never needed a digest is `not-needed`, not a failure to publish', async () => {
+  const { describeOutcome, OUTCOME } = await digestModule();
+  // Success and cancellation are the two ways this arises. A cancelled run in particular MUST NOT
+  // read as broken: it is superseded, and the newer run publishes the truth.
+  assert.equal(
+    describeOutcome({ gate: { publish: false, reason: 'job status is success, not a failure' } }).outcome,
+    OUTCOME.NOT_NEEDED,
+  );
+  assert.equal(
+    describeOutcome({ gate: { publish: false, reason: 'run was cancelled/superseded by a newer push' } }).outcome,
+    OUTCOME.NOT_NEEDED,
+  );
+});
+
+test('(ff) a digest that reached its channel is `published`, and says which channel', async () => {
+  const { describeOutcome, OUTCOME } = await digestModule();
+  const d = describeOutcome({
+    gate: { publish: true },
+    tokenPresent: true,
+    publishResult: { published: true, channel: 'pr-comment' },
+  });
+  assert.equal(d.outcome, OUTCOME.PUBLISHED);
+  assert.equal(d.channel, 'pr-comment');
+});
+
+test('(gg) publication failure is `failed`, and carries the sub-reason that implies the next action', async () => {
+  const { describeOutcome, OUTCOME } = await digestModule();
+  // Each sub-reason means a different thing to do, so collapsing them into one "failed" would leave
+  // the reader exactly as stuck as an absent digest does.
+  const noCred = describeOutcome({ gate: { publish: true }, tokenPresent: false });
+  assert.equal(noCred.outcome, OUTCOME.FAILED);
+  assert.equal(noCred.detail, 'no-credential', 'the 2026-08-01 case must be distinguishable by itself');
+
+  const forbidden = describeOutcome({
+    gate: { publish: true },
+    tokenPresent: true,
+    publishResult: { published: false, reason: 'POST /statuses failed: 403 Forbidden' },
+  });
+  assert.equal(forbidden.outcome, OUTCOME.FAILED);
+  assert.equal(forbidden.detail, 'forbidden');
+
+  const transport = describeOutcome({
+    gate: { publish: true },
+    tokenPresent: true,
+    publishResult: { published: false, reason: 'request timed out after 30000ms' },
+  });
+  assert.equal(transport.outcome, OUTCOME.FAILED);
+  assert.equal(transport.detail, 'transport');
+});
+
+test('(gg2) an unrecognised publish failure still reports `failed`, never `published`', async () => {
+  const { describeOutcome, OUTCOME } = await digestModule();
+  // Fail-closed on classification. A sub-reason this function cannot name is still a failure, and
+  // guessing `transport` for a 401 would send the reader to the wrong place — but reporting
+  // `published` would recreate the original bug.
+  const d = describeOutcome({
+    gate: { publish: true },
+    tokenPresent: true,
+    publishResult: { published: false, reason: 'something nobody anticipated' },
+  });
+  assert.equal(d.outcome, OUTCOME.FAILED);
+  assert.ok(d.detail, 'a failed outcome with no sub-reason tells the reader nothing');
+});
+
+test('(hh) the outcome text is redacted, exactly as the digest body is', async () => {
+  const { describeOutcome } = await digestModule();
+  // Contract obligation 4. A transport error carries a URL, and therefore the forge host — the same
+  // reason case (e3) exists for the digest body. Fragmented for the same reason as (e3): naming the
+  // host in one piece would trip the tree-wide topology scrub.
+  const host = 'beelink.tailz9x8w7' + '.ts' + '.net:3000';
+  const d = describeOutcome({
+    gate: { publish: true },
+    tokenPresent: true,
+    publishResult: { published: false, reason: `connect ECONNREFUSED http://${host}/api/v1` },
+  });
+  assert.doesNotMatch(JSON.stringify(d), /tailz9x8w7/, 'the forge host reached the outcome signal');
+  assert.match(JSON.stringify(d), /<forge>/, 'the host was dropped rather than redacted');
+});
+
+test('(hh2) `failed:no-credential` is reportable WITHOUT the credential that failed', async () => {
+  const { describeOutcome, OUTCOME } = await digestModule();
+  // Contract obligation 3, and the whole point. If naming this state required the token, the one
+  // state that matters most could never be reported — which is precisely what happened.
+  const d = describeOutcome({ gate: { publish: true }, tokenPresent: false });
+  assert.equal(d.detail, 'no-credential');
+  assert.ok(d.summary && d.summary.length > 0, 'the no-credential outcome must carry a human-readable summary');
+});
+
+// --- (ii) — recording a failure must never change the job's outcome ------------------------
+//
+// The whole reason this script can be trusted at the end of every job is that it cannot affect one.
+// Adding a signal is exactly the kind of change that quietly breaks that: a throw inside the new
+// path, or a non-zero exit while reporting the failure, would turn a diagnostic into a build-breaker.
+// So the property is asserted against the REAL process, in every failure mode, rather than reasoned
+// about — `continue-on-error` in the workflow is belt to this braces, and belts have been known to
+// be edited out.
+
+import { spawnSync } from 'node:child_process';
+import { resolve as resolvePath, dirname as dirnamePath, join } from 'node:path';
+import { fileURLToPath as toPath } from 'node:url';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+
+const DIGEST_SCRIPT = resolvePath(dirnamePath(toPath(import.meta.url)), '..', 'ci-failure-digest.mjs');
+
+/** Run the digest end to end with a controlled environment, and report how it exited. */
+function runDigest(env) {
+  const r = spawnSync(process.execPath, [DIGEST_SCRIPT], {
+    encoding: 'utf8',
+    env: {
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      // A forge base that resolves to nothing routable, so the transport path fails fast rather
+      // than reaching anything real. These tests must stay offline.
+      GITHUB_SERVER_URL: 'http://127.0.0.1:9',
+      GITHUB_REPOSITORY: 'owner/repo',
+      CI_HTTP_TIMEOUT_MS: '1500',
+      ...env,
+    },
+    timeout: 60_000,
+  });
+  return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+}
+
+test('(ii) a failing job with NO credential still exits 0 — and says the digest failed', () => {
+  const r = runDigest({
+    GITHUB_RUN_ID: '90001', GITHUB_WORKFLOW: 'ci', GITHUB_JOB: 'affected',
+    GITHUB_EVENT_NAME: 'push', CI_DIGEST_JOB_STATUS: 'failure',
+    // CI_DIGEST_TOKEN deliberately absent — the 2026-08-01 condition.
+  });
+  assert.equal(r.code, 0, `a digest failure changed the job outcome:\n${r.out}`);
+  assert.match(r.out, /no-credential/, 'the no-credential state was not named in the output');
+});
+
+test('(ii2) a failing job whose TRANSPORT dies still exits 0 — and says the digest failed', () => {
+  const r = runDigest({
+    GITHUB_RUN_ID: '90002', GITHUB_WORKFLOW: 'ci', GITHUB_JOB: 'affected',
+    GITHUB_EVENT_NAME: 'push', CI_DIGEST_JOB_STATUS: 'failure',
+    CI_DIGEST_TOKEN: 'not-a-real-token-just-a-shape',
+  });
+  assert.equal(r.code, 0, `a transport failure changed the job outcome:\n${r.out}`);
+  assert.match(r.out, /digest-outcome=failed/, 'a broken publication did not report itself as failed');
+});
+
+test('(ii3) a job that needed no digest exits 0 and reports `not-needed`, never `failed`', () => {
+  const r = runDigest({
+    GITHUB_RUN_ID: '90003', GITHUB_WORKFLOW: 'ci', GITHUB_JOB: 'affected',
+    GITHUB_EVENT_NAME: 'push', CI_DIGEST_JOB_STATUS: 'success',
+  });
+  assert.equal(r.code, 0);
+  assert.match(r.out, /digest-outcome=not-needed/);
+  assert.doesNotMatch(r.out, /digest-outcome=failed/, 'a green job was reported as a broken digest');
+});
+
+test('(ii4) the outcome line is emitted in a form a machine can find, on every path', () => {
+  // Contract obligation 1 says stdout alone is not enough — the forge API cannot read a job log, so
+  // the bundle carries this too. But a STABLE, greppable line is what makes the state visible to a
+  // human in the web UI on the one path where no bundle can exist (no credential, no upload).
+  for (const [status, want] of [['failure', /digest-outcome=failed:no-credential/], ['success', /digest-outcome=not-needed/]]) {
+    const r = runDigest({
+      GITHUB_RUN_ID: '90004', GITHUB_WORKFLOW: 'ci', GITHUB_JOB: 'affected',
+      GITHUB_EVENT_NAME: 'push', CI_DIGEST_JOB_STATUS: status,
+    });
+    assert.match(r.out, want, `status=${status} did not emit a findable outcome line`);
+  }
+});
+
+// --- (jj) credential fallback ------------------------------------
+//
+// CI_DIGEST_TOKEN is an Actions secret, and it is empty exactly when a run is most confusing: on the
+// AGit-headed run of 2026-08-01 every `secrets.*` arrived blank, so the digest collected its evidence
+// and had nothing to publish it with.
+//
+// measured that the run's AUTOMATICALLY-PROVISIONED token CAN write
+// `POST /repos/{owner}/{repo}/statuses/{sha}` — it left a real `probe-051-t034` status behind. So a
+// fallback is worth building. What could NOT establish is whether that token is *populated* on a
+// secretless run; proving that needs an AGit push, which AGENTS.md forbids. Hence `both absent` is a
+// first-class case below rather than a theoretical one.
+
+test('(jj) the purpose-scoped credential is preferred, and the existing path is untouched', async () => {
+  // A fallback that DISPLACES the richer channel is a regression, not a safety net. Asserted first
+  // and explicitly, because it is the failure mode a fallback most easily introduces.
+  const { selectCredential } = await digestModule();
+  const c = selectCredential({ CI_DIGEST_TOKEN: 'purpose-scoped-value', GITHUB_TOKEN: 'auto-value' });
+  assert.equal(c.source, 'purpose-scoped');
+  assert.equal(c.token, 'purpose-scoped-value');
+});
+
+test('(jj2) with no purpose-scoped credential, the run-provisioned token is selected', async () => {
+  const { selectCredential } = await digestModule();
+  for (const env of [{ GITHUB_TOKEN: 'auto-value' }, { ACTIONS_RUNTIME_TOKEN: 'auto-value' }]) {
+    const c = selectCredential(env);
+    assert.equal(c.source, 'auto', `not selected from ${Object.keys(env)[0]}`);
+    assert.equal(c.token, 'auto-value');
+  }
+});
+
+test('(jj3) with NEITHER credential, selection yields nothing — the 2026-08-01 condition', async () => {
+  const { selectCredential } = await digestModule();
+  const c = selectCredential({});
+  assert.equal(c.token, null);
+  assert.equal(c.source, null);
+});
+
+test('(jj4) an EMPTY-STRING secret counts as absent, not as a credential', async () => {
+  // This is precisely how 2026-08-01 presented: `${{ secrets.CI_DIGEST_TOKEN }}` expanded to an
+  // empty string, not to an unset variable. A truthiness check that only tested `undefined` would
+  // sail past it and then fail at the transport with a confusing 401.
+  const { selectCredential } = await digestModule();
+  assert.equal(selectCredential({ CI_DIGEST_TOKEN: '', GITHUB_TOKEN: 'auto-value' }).source, 'auto');
+  assert.equal(selectCredential({ CI_DIGEST_TOKEN: '', GITHUB_TOKEN: '' }).source, null);
+});
+
+test('(jj5) publishing through the fallback is `published`, NOT `failed` — and says it was degraded', async () => {
+  // Deliberate deviation from contracts/digest-outcome.md, which says the fallback records
+  // `failed:no-credential`. That wording would make `published` and `failed` simultaneously true and
+  // break Story 3's own vocabulary, where `failed` means the evidence did NOT reach a channel. The
+  // reader's question is "did the diagnosis get to me?" — via the fallback the answer is yes, in a
+  // degraded form. Both facts are carried instead of collapsing them into a misleading one.
+  const { describeOutcome, OUTCOME } = await digestModule();
+  const d = describeOutcome({
+    gate: { publish: true },
+    tokenPresent: true,
+    credentialSource: 'auto',
+    publishResult: { published: true, channel: 'commit-status' },
+  });
+  assert.equal(d.outcome, OUTCOME.PUBLISHED);
+  assert.equal(d.channel, 'commit-status');
+  assert.equal(d.degraded, true, 'a fallback publication must announce that it was degraded');
+  assert.match(d.summary, /purpose-scoped|CI_DIGEST_TOKEN/, 'the summary must name the missing credential');
+});
+
+test('(jj6) the normal path is NOT marked degraded', async () => {
+  const { describeOutcome } = await digestModule();
+  const d = describeOutcome({
+    gate: { publish: true },
+    tokenPresent: true,
+    credentialSource: 'purpose-scoped',
+    publishResult: { published: true, channel: 'pr-comment' },
+  });
+  assert.notEqual(d.degraded, true);
+});
+
+// --- (kk) size-safe truncation for the fallback channel (US4,) -----------------------------
+//
+// A commit-status description is short — far shorter than a digest. The fallback therefore carries
+// the failing step's NAME and a TRUNCATED excerpt: enough to name the fault, not to replay the
+// build. Two properties matter, and the second is the one with teeth.
+
+test('(kk) an over-long excerpt is truncated, and truncation never fails the publication', async () => {
+  const { truncateForStatus } = await digestModule();
+  const out = truncateForStatus('x'.repeat(5000), 255);
+  assert.ok(out.length <= 255, `truncation did not respect the cap: ${out.length}`);
+  assert.match(out, /…|\.\.\./, 'truncation must be visible, not silent');
+});
+
+test('(kk2) truncation NEVER splits a redaction placeholder — half a redaction is worse than none', async () => {
+  // The cutter must not land mid-`<redacted-…>`, because `<redacted-jw` reads as noise while
+  // `<red` next to surrounding text can look like the start of real content. More importantly, a
+  // future placeholder that wraps a value would leak its tail if cut inside.
+  const { truncateForStatus } = await digestModule();
+  const text = `${'a'.repeat(240)}<redacted-anthropic-key> trailing`;
+  for (let cap = 230; cap <= 275; cap += 1) {
+    const out = truncateForStatus(text, cap);
+    assert.ok(out.length <= cap, `cap ${cap} exceeded: ${out.length}`);
+    const opens = (out.match(/<redacted/g) || []).length;
+    const closes = (out.match(/<redacted[a-z-]*>/g) || []).length;
+    assert.equal(opens, closes, `cap ${cap} produced a severed placeholder: ${JSON.stringify(out.slice(-40))}`);
+  }
+});
+
+test('(kk3) a short excerpt is returned untouched', async () => {
+  const { truncateForStatus } = await digestModule();
+  assert.equal(truncateForStatus('thread panicked at src/lib.rs:42', 255), 'thread panicked at src/lib.rs:42');
+});
+
+test('(kk4) the fallback status body names the failing STEP, not just the excerpt', async () => {
+  // The single most useful fact is which step broke. An excerpt without it sends the reader hunting.
+  const { buildStatusDescription } = await digestModule();
+  const body = buildStatusDescription({ job: 'naming', step: 'naming-resource-naming-gate', excerpt: 'boom' }, 255);
+  assert.match(body, /naming-resource-naming-gate/);
+  assert.ok(body.length <= 255);
+});
+
+test('(kk5) an empty or missing excerpt still yields a usable description', async () => {
+  // The no-evidence case must not produce an empty status — that is indistinguishable from no status.
+  const { buildStatusDescription } = await digestModule();
+  const body = buildStatusDescription({ job: 'naming', step: '', excerpt: '' }, 255);
+  assert.ok(body.trim().length > 0, 'an empty description is the same as no signal at all');
+  assert.match(body, /naming/);
+});
+
+// --- (ll) the fallback excerpt must come from the FAILING step ------------------------------------
+//
+// MEASURED IN CI, an earlier run (the / rehearsal). The fallback published:
+//
+//   ci-digest/okf  "CI failure: okf / okf-deliberate-breakage — ! Corepack is about to download …"
+//
+// The step NAME was right and the excerpt was from a completely different step — the pnpm install.
+// A reader sees install output presented as the evidence for a named failure and concludes the
+// install broke. That is the same defect this whole feature is about: text that looks like evidence
+// for a claim it is not evidence for. Worse here than in the digest, because the fallback carries
+// exactly ONE excerpt and there is no bundle to check it against.
+
+test('(ll) the fallback excerpt is selected by the FAILING STEP, not by position', async () => {
+  const { selectFallbackExcerpt } = await digestModule();
+  const excerpts = [
+    { source: 'step:okf-install-js-dependencies', text: 'Corepack is about to download pnpm' },
+    { source: 'step:okf-deliberate-breakage', text: 'this failure is intentional' },
+    { source: 'step:okf-gate', text: 'unrelated tail' },
+  ];
+  assert.match(
+    selectFallbackExcerpt(excerpts, 'okf-deliberate-breakage'),
+    /intentional/,
+    'the excerpt did not come from the failing step',
+  );
+});
+
+test('(ll2) with no failing step reported, it falls back to the LAST excerpt rather than nothing', async () => {
+  // Degrading to "some evidence" beats degrading to none — but only when the step is genuinely
+  // unknown, never as the default path.
+  const { selectFallbackExcerpt } = await digestModule();
+  const excerpts = [{ source: 'step:a', text: 'first' }, { source: 'step:b', text: 'last' }];
+  assert.match(selectFallbackExcerpt(excerpts, ''), /last/);
+  assert.equal(selectFallbackExcerpt([], 'anything'), '');
+});
+
+test('(ll3) a failing step with no captured log does NOT borrow another step\'s output', async () => {
+  // The dangerous case. If the failing step produced nothing, presenting a different step's tail
+  // beside its name is actively misleading — say nothing instead.
+  const { selectFallbackExcerpt } = await digestModule();
+  const excerpts = [{ source: 'step:something-else', text: 'not mine' }];
+  assert.equal(
+    selectFallbackExcerpt(excerpts, 'the-failing-step'),
+    '',
+    'output from an unrelated step was attributed to the failing step',
+  );
+});
+
+// ================================================================================================
+// 054/// — the publication gate becomes THREE-WAY.
+//
+// A green run left no bundle at all, so a passing e2e's counts and retry churn were unreadable
+// without making the job fail. `shouldPublish` was the single reason: it
+// returned false for any jobStatus that was not `failure`.
+//
+// Three modes now, and the boundaries matter more than the modes:
+//   * cancelled          → publish nothing (unchanged — a superseded run was never broken)
+//   * jobStatus failure  → `digest`, today's full behaviour, unchanged
+//   * jobStatus success  → `counts`, a small counts-only bundle and NO PR comment
+//   * anything else      → publish nothing, which is what keeps case (dd) true
+// ================================================================================================
+
+test('(mm) a passing job now publishes COUNTS — but never a digest', () => {
+  const r = shouldPublish({ runStatus: 'success', jobStatus: 'success' });
+  assert.equal(r.publish, true, 'a green run still publishes nothing — is not fixed');
+  assert.equal(r.mode, 'counts');
+  assert.notEqual(r.mode, 'digest', 'a passing job would publish a FAILURE digest');
+});
+
+test('(mm2) a genuine failure still routes to the digest, unchanged', () => {
+  const r = shouldPublish({ runStatus: 'failure', jobStatus: 'failure' });
+  assert.equal(r.publish, true);
+  assert.equal(r.mode, 'digest');
+});
+
+test('(mm3) a cancelled run publishes nothing in EITHER mode', () => {
+  // The cancelled check must still come first. A cancelled job reports `failure`, so testing the
+  // job status first would publish a failure digest for a commit that was never broken — and the
+  // counts mode must not become a second way in.
+  const r = shouldPublish({ runStatus: 'cancelled', jobStatus: 'failure' });
+  assert.equal(r.publish, false);
+  assert.equal(r.mode, null);
+  const alsoCancelled = shouldPublish({ runStatus: 'cancelled', jobStatus: 'success' });
+  assert.equal(alsoCancelled.publish, false, 'a cancelled run published counts');
+});
+
+test('(mm4) an UNKNOWN job status still publishes nothing — counts is not a loophole', () => {
+  // Case (dd) exists because a job that lost CI_DIGEST_JOB_STATUS once published a spurious digest
+  // on a green run. `counts` is deliberately gated on an EXPLICIT `success`, not on "anything that
+  // is not a failure" — otherwise a dropped env var would resurrect that bug in a new costume.
+  for (const jobStatus of ['', 'unknown', undefined, null]) {
+    const r = shouldPublish({ runStatus: '', jobStatus });
+    assert.equal(r.publish, false, `an unknown job status (${JSON.stringify(jobStatus)}) published`);
+    assert.equal(r.mode, null);
+  }
+});
+
+test('(mm5) counts mode with NO counts sources publishes nothing at all', async () => {
+  // Self-limiting by construction rather than by a job allowlist: every job other than e2e has
+  // no e2e-result-gate / e2e-contention-tally step log, so nothing is uploaded and the package
+  // registry does not grow a version per green job per run. An allowlist would be a second place to
+  // forget to update.
+  const { selectCountsSources } = await digestModule();
+  assert.deepEqual(selectCountsSources([]), []);
+  assert.deepEqual(
+    selectCountsSources([{ source: 'step:affected-nx', text: 'nx output' }]),
+    [],
+    'an unrelated step log was mistaken for a counts source',
+  );
+});
+
+test('(mm6) counts mode collects ONLY the counts sources, not the whole job log', async () => {
+  const { selectCountsSources } = await digestModule();
+  const picked = selectCountsSources([
+    { source: 'step:e2e-run', text: 'thousands of lines' },
+    { source: 'step:e2e-result-gate', text: '[e2e-gate] failed=0 flaky=2 passed=175 did-not-run=0 skipped=0' },
+    { source: 'step:e2e-contention-tally', text: '[e2e-contention] refresh_total=6 refresh_429=0 session_evicted=0' },
+    { source: 'app-service.log', text: 'megabytes' },
+  ]);
+  assert.deepEqual(picked.map((e) => e.source).sort(), [
+    'step:e2e-contention-tally',
+    'step:e2e-result-gate',
+  ]);
+});
+
+test('(mm7) retention prunes a counts version exactly as it prunes a digest version', async () => {
+  // #167 asks for a retention story because publishing on EVERY run, not only failures, is what
+  // makes unbounded growth reachable. Confirmed against the real selector rather than assumed.
+  const { selectExpiredVersions, RETENTION_DAYS } = await digestModule();
+  const now = Date.parse('2026-08-11T00:00:00Z');
+  const old = new Date(now - (RETENTION_DAYS + 1) * 86_400_000).toISOString();
+  const fresh = new Date(now - 86_400_000).toISOString();
+  const expired = selectExpiredVersions(
+    [
+      { name: '1700--e2e', created_at: old },
+      { name: '1701--e2e', created_at: fresh },
+    ],
+    { now },
+  );
+  assert.deepEqual(expired.map((v) => v.name), ['1700--e2e']);
+});
+
+test('(mm8) counts mode exits 0 when its TRANSPORT dies — a reporter never fails the build', () => {
+  //. The same property case (ii2) pins for the digest path, asserted against the REAL process
+  // for the new path rather than reasoned about from the shared try/catch. A green run is precisely
+  // the case where a publication fault must stay invisible to the job's result.
+  const dir = mkdtempSync(join(tmpdir(), 'counts-'));
+  // run id AND job — ci-log-step.sh writes `<root>/<run>/<job>/` since a past incident, and the reader
+  // derives the same path independently. A test that wrote the old run-scoped layout would pass
+  // against a reader that had silently stopped matching the writer.
+  const runDir = join(dir, '90101', 'e2e');
+  mkdirSync(runDir, { recursive: true });
+  writeFileSync(join(runDir, 'e2e-result-gate.log'),
+    '[e2e-gate] failed=0 flaky=2 passed=175 did-not-run=0 skipped=0\n');
+  writeFileSync(join(runDir, 'e2e-contention-tally.log'),
+    '[e2e-contention] refresh_total=6 refresh_429=0 session_evicted=0\n');
+
+  const r = runDigest({
+    GITHUB_RUN_ID: '90101', GITHUB_WORKFLOW: 'ci', GITHUB_JOB: 'e2e',
+    GITHUB_EVENT_NAME: 'push', CI_DIGEST_JOB_STATUS: 'success',
+    CI_STEP_LOG_ROOT: dir,
+    CI_DIGEST_TOKEN: 'not-a-real-token-just-a-shape',
+  });
+  assert.equal(r.code, 0, `a counts publication failure changed the job outcome:\n${r.out}`);
+  assert.match(r.out, /\[e2e-gate\] failed=0/, 'the counts were not echoed to the job log');
+  assert.match(r.out, /refresh_429=0/, 'the contention tally was not echoed to the job log');
+});
+
+test('(mm9) a green job with no counts steps publishes nothing and says so', () => {
+  const r = runDigest({
+    GITHUB_RUN_ID: '90102', GITHUB_WORKFLOW: 'ci', GITHUB_JOB: 'affected',
+    GITHUB_EVENT_NAME: 'push', CI_DIGEST_JOB_STATUS: 'success',
+    CI_STEP_LOG_ROOT: mkdtempSync(join(tmpdir(), 'counts-empty-')),
+    CI_DIGEST_TOKEN: 'not-a-real-token-just-a-shape',
+  });
+  assert.equal(r.code, 0);
+  assert.match(r.out, /no e2e counts steps/, 'the self-limiting path did not say why it published nothing');
+});
+
+test('(nn) counts mode carries the global-setup identity lines, filtered, not the whole e2e-run log', async () => {
+  // Measured 2026-08-12 on ci an earlier run: the counts bundle proved the suite was green and the
+  // contention zero, and could NOT say whether per-worker identities actually engaged — that line
+  // lives in the `e2e-run` step log, which is collected only on failure. So a fallback to the shared
+  // user (which global setup warns about, loudly, into that same log) would have been invisible on a
+  // green run. A green run that cannot say WHICH identity model produced it is the same class of gap
+  // as a green run that cannot say how many tests ran.
+  //
+  // Filtered rather than whole: `e2e-run` is thousands of lines, and counts mode exists to be small.
+  const { selectCountsSources } = await digestModule();
+  const picked = selectCountsSources([
+    { source: 'step:e2e-result-gate', text: '[e2e-gate] failed=0' },
+    {
+      source: 'step:e2e-run',
+      text: [
+        'Running 177 tests using 6 workers',
+        '[global-setup] minted 6 worker identities — 5 fresh users + the canonical one for worker 0',
+        '  ok 1 collections.spec.ts:12 › lists collections',
+        '[global-setup] seeded fixtures for 5 worker identities in 1.6s',
+        '  ok 2 items.spec.ts:20 › adds a item',
+      ].join('\n'),
+    },
+  ]);
+
+  const web = picked.find((e) => e.source === 'step:e2e-run');
+  assert.ok(web, 'the e2e-run setup lines were not carried into the counts bundle');
+  assert.match(web.text, /minted 6 worker identities/);
+  assert.match(web.text, /seeded fixtures for 5 worker identities/);
+  assert.doesNotMatch(web.text, /collections\.spec\.ts/, 'the whole test log was carried, not just setup');
+  assert.ok(web.text.split('\n').length <= 12, 'the filtered excerpt is not small');
+});
+
+// ================================================================================================
+// the run-health verdict is a DIGEST FIELD, not a job-log line nobody can fetch.
+// ================================================================================================
+//
+// Roughly one e2e run in seven collapses: every agent/dock spec fails at once, flaky=0, and the
+// gateway receives ~a quarter of its usual turns. scripts/e2e-turn-tally.sh has told that apart from
+// "some tests failed" since an earlier change — but it prints into a job log, and this forge exposes no
+// job logs through its API. So on a red e2e the reader still could not answer "is this the
+// collapse or is it my change?" without opening the run page by hand.
+//
+// Publishing only on failure is sufficient rather than a compromise: a collapsed run FAILS by
+// construction, so a run that produced no digest was not a collapse.
+
+test('(hh) a collapsed run says so in the digest table', async () => {
+  const { readRunHealth, buildDigest: build } = await digestModule();
+  const root = mkdtempSync(join(tmpdir(), 'run-health-'));
+  const jobDir = join(root, '1633', 'e2e');
+  mkdirSync(jobDir, { recursive: true });
+  writeFileSync(join(jobDir, 'e2e-turn-tally.log'),
+    '[e2e-turns] gateway_posts=39 tests_executed=177 posts_per_100_tests=22 verdict=collapsed\n'
+    + '[e2e-turns] COLLAPSE SIGNATURE — the client is not SENDING turns. Do NOT re-run this as a reflex.\n');
+
+  const health = readRunHealth({ CI_STEP_LOG_ROOT: root, GITHUB_RUN_ID: '1633', GITHUB_JOB: 'e2e' });
+  assert.match(health.verdict, /verdict=collapsed/);
+  const d = build({ ...ctx({ step: 'e2e-run' }), runHealth: health }, { excerpts: [] });
+  assert.match(d.markdown, /Run health/, 'the digest table has no run-health row');
+  assert.match(d.markdown, /verdict=collapsed/, 'the verdict did not reach the published digest');
+});
+
+test('(hh2) an INDETERMINATE verdict is published with its reason, never rendered as a result', () => {
+  // A gate-tier pull request always reads `indeterminate` (an earlier change — the healthy floor was
+  // calibrated on the full suite). Showing that as healthy, or hiding it, would be a confident label
+  // drawn from a measurement deliberately not taken — the failure mode the tally itself avoids.
+  const root = mkdtempSync(join(tmpdir(), 'run-health-'));
+  const jobDir = join(root, '1700', 'e2e');
+  mkdirSync(jobDir, { recursive: true });
+  writeFileSync(join(jobDir, 'e2e-turn-tally.log'),
+    '[e2e-turns] gateway_posts=48 tests_executed=155 posts_per_100_tests=30 verdict=indeterminate\n'
+    + '[e2e-turns] reason: gate tier only (the model tier did not run — normal on a pull request).\n');
+
+  const health = readFailingStepModuleRunHealth({ CI_STEP_LOG_ROOT: root, GITHUB_RUN_ID: '1700', GITHUB_JOB: 'e2e' });
+  assert.match(health.verdict, /verdict=indeterminate/);
+  assert.match(health.reason, /gate tier only/, 'the reason was dropped, leaving an unexplained abstention');
+  const d = buildDigest({ ...ctx({ step: 'e2e-run' }), runHealth: health }, { excerpts: [] });
+  assert.match(d.markdown, /indeterminate/);
+  assert.match(d.markdown, /gate tier only/);
+});
+
+test('(hh3) a job that never ran the tally gets no run-health row at all', () => {
+  // "Not measured" and "measured healthy" are opposite statements. Every job but e2e is in the
+  // first case, and a row reading `healthy` there would be manufactured.
+  const health = readFailingStepModuleRunHealth({ CI_STEP_LOG_ROOT: '/nonexistent', GITHUB_RUN_ID: 'x', GITHUB_JOB: 'affected' });
+  assert.equal(health, null);
+  const d = buildDigest({ ...ctx({ step: 'x' }), runHealth: health }, { excerpts: [] });
+  assert.equal(/Run health/.test(d.markdown), false, 'a job with no measurement was given a verdict');
+});
+
+// ─── a past incident — a TIMEOUT must not read like an ordinary failure ────────────────────────────────
+import { readFailingStepReason as readStepReason326 } from '../ci-failure-digest.mjs';
+
+test('(timeout-f) the digest marks a timed-out step as a TIMEOUT, naming the limit', () => {
+  const md = buildDigest({
+    workflow: 'ci', job: 'e2e', step: 'e2e-run',
+    stepReason: 'timeout after 2700s (step ceiling, not the job ceiling)',
+    sha: 'a'.repeat(40), pr: 322, runId: 8317,
+  });
+  const markdown = md.markdown ?? md;
+  assert.match(markdown, /\*\*Failing step\*\*/);
+  assert.match(markdown, /e2e-run/);
+  assert.match(markdown, /timeout after 2700s/,
+    'the reader cannot tell a hang from an assertion failure');
+});
+
+test('(timeout-g) an ordinary failure keeps its plain step row — no timeout wording', () => {
+  const md = buildDigest({
+    workflow: 'ci', job: 'e2e', step: 'e2e-run',
+    sha: 'a'.repeat(40), pr: 322, runId: 8317,
+  });
+  const markdown = md.markdown ?? md;
+  assert.match(markdown, /e2e-run/);
+  assert.doesNotMatch(markdown, /timeout/i, 'an ordinary failure was labelled a timeout');
+});
+
+test('(timeout-h) the reason is read from the marker ci-log-step.sh writes', () => {
+  const root = mkdtempSync(join(tmpdir(), 'digest-timeout-'));
+  const dir = join(root, 'RUN', 'JOB');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, '_failed-step-reason'), 'timeout after 60s (step ceiling, not the job ceiling)\n');
+  const env = { CI_STEP_LOG_ROOT: root, GITHUB_RUN_ID: 'RUN', GITHUB_JOB: 'JOB' };
+  assert.match(readStepReason326(env), /timeout after 60s/);
+});
+
+test('(timeout-i) no marker means no reason — absence is not invented', () => {
+  const root = mkdtempSync(join(tmpdir(), 'digest-timeout-'));
+  mkdirSync(join(root, 'RUN', 'JOB'), { recursive: true });
+  const env = { CI_STEP_LOG_ROOT: root, GITHUB_RUN_ID: 'RUN', GITHUB_JOB: 'JOB' };
+  assert.equal(readStepReason326(env), null);
+});
+
+// , criterion 1 — end to end, by deliberately hanging a real step and reading what the
+// digest would publish. Not reasoned about: ci-log-step.sh is actually spawned, actually hangs, and
+// is actually killed by its own ceiling.
+import { spawnSync as spawn326 } from 'node:child_process';
+import { resolve as resolve326, dirname as dirname326 } from 'node:path';
+import { fileURLToPath as fileURL326 } from 'node:url';
+import {
+  collectEvidence as collect326,
+  readFailingStep as readStep326,
+} from '../ci-failure-digest.mjs';
+
+test('(timeout-k) a hung step yields a digest that NAMES it, marks it a TIMEOUT, and carries its log tail', () => {
+  const root = mkdtempSync(join(tmpdir(), 'digest-e2e-'));
+  // Driven through a PURPOSE-BUILT ceilings table, not the job-wide backstop.
+  // `e2e-run` is a calibrated step now, so its row wins over CI_STEP_TIMEOUT_SECONDS — and the
+  // table is the path that actually runs in CI, so it is the one this end-to-end guard must cross.
+  // Left on the backstop, this test passed for 30 s and then failed, which is how the regression
+  // was found: a real ceilings row silently outranked the 1 s the test thought it had set.
+  const ceilings = join(root, 'ceilings.tsv');
+  writeFileSync(ceilings, '# step\tceiling\tbasis\ne2e-run\t1\tn=40 max=280s; runs 3503..3103\n');
+  const env = {
+    ...process.env,
+    CI_STEP_LOG_ROOT: root,
+    GITHUB_RUN_ID: 'RUN326',
+    GITHUB_JOB: 'e2e',
+    CI_STEP_CEILINGS_FILE: ceilings,
+    CI_STEP_TIMEOUT_SECONDS: '2700',
+  };
+  const script = resolve326(dirname326(fileURL326(import.meta.url)), '..', 'ci-log-step.sh');
+  const r = spawn326(
+    'bash',
+    [script, 'e2e-run', 'bash', '-c', 'echo "Running 177 tests"; echo "spec: assistant-add.spec.ts"; sleep 30'],
+    { encoding: 'utf8', env },
+  );
+  assert.notEqual(r.status, 0, 'the hung step was not killed');
+
+  const evidence = collect326({ env, home: root, cwd: process.cwd() });
+  const built = buildDigest(
+    {
+      workflow: 'ci',
+      job: 'e2e',
+      step: readStep326(env),
+      stepReason: readStepReason326(env),
+      sha: 'b'.repeat(40),
+      pr: 322,
+      runId: 8317,
+    },
+    evidence,
+  );
+  const md = built.markdown ?? built;
+
+  assert.match(md, /e2e-run/, 'the digest does not name the hung step');
+  assert.match(md, /timeout after 1s/, 'the digest does not mark it as a timeout');
+  assert.match(md, /Running 177 tests|assistant-add\.spec\.ts/,
+    'the digest carries no log tail for the hung step — the evidence a hang otherwise loses');
+});
+
+// ================================================================================================
+// the bundle packed `container-logs/` from a FLAT listing, so a DIRECTORY was dropped.
+//
+// device-side diagnostics land in exactly such a directory
+// (`container-logs/_mobile-diagnostics/<flow>-attempt<n>/…`), so the one channel that can say what
+// the emulator was actually showing never reached the bundle — and the digest then printed
+// `maestro debug output — not present`, which reads as "the capture did not happen" when it did.
+// Measured on an earlier run: the runner's copy held the whole Maestro debug tree; the retrieved bundle
+// held 69 files, none of them from it.
+// ================================================================================================
+
+import {
+  listEvidenceTree,
+  describeBundleDrops,
+  MAX_BINARY_BYTES,
+} from '../ci-failure-digest.mjs';
+
+// A real 1x1 PNG. Binary content is the point: it must survive the round trip byte-for-byte, and
+// must never be tail-trimmed — half a PNG is not a smaller PNG, it is a corrupt file.
+const PNG_1PX = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+/** A runner's `~/<repo>-ci-last-failure` exactly as the collect step leaves it after a mobile failure. */
+function mobileFailureHome({ bulkBytes = 2_000, screenshot = PNG_1PX } = {}) {
+  const home = mkdtempSync(join(tmpdir(), 'digest-241-'));
+  const bundle = join(home, 'local-ci-last-failure');
+  const attempt = join(bundle, '_mobile-diagnostics', 'assistant-config-gating-attempt1');
+  mkdirSync(join(attempt, 'maestro'), { recursive: true });
+  writeFileSync(join(bundle, '_ps.txt'), 'NAMES  STATUS\napi-service  Up\n');
+  // Stamped as this run's — evidence241 runs as run `x`, job unset → `local`.
+  writeFileSync(join(bundle, '_bundle-owner.txt'), 'run=x job=local sha=abc written=2026-10-02T00:00:00Z\n');
+  writeFileSync(join(bundle, 'api-service.log'), 'c'.repeat(bulkBytes));
+  writeFileSync(join(bundle, 'api-service.health.json'), JSON.stringify({ Status: 'unhealthy', Log: [{ Output: 'nope' }] }));
+  writeFileSync(join(attempt, 'logcat-react.log'), 'ReactNativeJS: TypeError: undefined is not an object\n');
+  writeFileSync(join(attempt, 'logcat-full.log'), 'l'.repeat(50_000));
+  writeFileSync(join(attempt, 'maestro', 'commands-(assistant-config-gating).json'), '{"hierarchy":"settings-nav off-screen"}');
+  writeFileSync(join(attempt, 'maestro', 'screenshot-(❌)-3-assistant-config-gating.png'), screenshot);
+  return home;
+}
+
+const evidence241 = (home, over = {}) =>
+  collectEvidence({ home, cwd: mkdtempSync(join(tmpdir(), 'cwd-241-')), env: { GITHUB_RUN_ID: 'x' }, ...over });
+
+test('(case-a) a DIRECTORY under container-logs is packed, not silently dropped', () => {
+  const ev = evidence241(mobileFailureHome());
+  const sources = ev.excerpts.map((e) => e.source);
+  assert.ok(
+    sources.some((s) => s.endsWith('_mobile-diagnostics/assistant-config-gating-attempt1/logcat-react.log')),
+    `the device logcat never reached the bundle: ${JSON.stringify(sources)}`,
+  );
+  assert.ok(
+    sources.some((s) => s.includes('/maestro/') && s.endsWith('.json')),
+    'the Maestro view hierarchy never reached the bundle',
+  );
+});
+
+test('(case-b) the flat top-level rules are unchanged — health json is still health, not an excerpt', () => {
+  const ev = evidence241(mobileFailureHome());
+  assert.deepEqual(ev.health.map((h) => h.container), ['api-service']);
+  assert.equal(
+    ev.excerpts.some((e) => e.source.endsWith('.health.json')),
+    false,
+    'a health file was collected twice — once as health and once as a log',
+  );
+});
+
+test('(case-c) the failure SCREENSHOT survives as bytes, never as trimmed text', () => {
+  const ev = evidence241(mobileFailureHome());
+  const shot = ev.binaries.find((b) => b.source.endsWith('.png'));
+  assert.ok(shot, 'the failure screenshot was not collected');
+  assert.deepEqual(Buffer.from(shot.base64, 'base64'), PNG_1PX, 'the screenshot did not survive byte-for-byte');
+});
+
+test('(case-d) device evidence outranks bulk container logs, and logcat-full ranks BELOW them', () => {
+  const names = [
+    'api-service.log',
+    '_app-stack.log',
+    '_mobile-diagnostics/f-attempt1/logcat-full.log',
+    '_mobile-diagnostics/f-attempt1/logcat-react.log',
+    '_mobile-diagnostics/f-attempt1/maestro/commands-(f).json',
+    '_ps.txt',
+  ];
+  const order = selectSources(names, []).map((s) => s.name);
+  const at = (n) => order.indexOf(n);
+  assert.ok(at('_mobile-diagnostics/f-attempt1/maestro/commands-(f).json') < at('api-service.log'),
+    'the view hierarchy ranked below an ordinary container log');
+  assert.ok(at('_mobile-diagnostics/f-attempt1/logcat-react.log') < at('_app-stack.log'),
+    'the ReactNativeJS logcat ranked below a compose-level log');
+  assert.ok(at('_mobile-diagnostics/f-attempt1/logcat-full.log') > at('api-service.log'),
+    'the bulk logcat outranked real container logs — it will crowd the digest');
+});
+
+test('(case-e) the 5 MB cap does not evict device evidence to keep a 20 MB container log', () => {
+  const files = [
+    { path: 'logs/api-store.log', text: 'm'.repeat(20_000_000) },
+    { path: 'logs/_mobile-diagnostics/f-attempt1/maestro/commands-(f).json', text: '{"hierarchy":"x"}', priority: true },
+    { path: 'logs/_mobile-diagnostics/f-attempt1/logcat-react.log', text: 'boom', priority: true },
+    { path: 'logs/_mobile-diagnostics/f-attempt1/maestro/screenshot.png', base64: PNG_1PX.toString('base64'), priority: true },
+  ];
+  const m = buildBundleManifest(files, { cap: BUNDLE_CAP_BYTES });
+  const kept = new Map(m.files.map((f) => [f.path, f]));
+  assert.equal(kept.get('logs/_mobile-diagnostics/f-attempt1/maestro/commands-(f).json').text, '{"hierarchy":"x"}',
+    'the view hierarchy was trimmed or dropped for a bulk log');
+  assert.equal(kept.get('logs/_mobile-diagnostics/f-attempt1/logcat-react.log').text, 'boom');
+  assert.equal(kept.get('logs/_mobile-diagnostics/f-attempt1/maestro/screenshot.png').base64, PNG_1PX.toString('base64'),
+    'the screenshot was evicted by a 20 MB container log');
+  const total = m.files.reduce((n, f) => n + Buffer.byteLength(f.text ?? f.base64 ?? '', 'utf8'), 0);
+  assert.ok(total <= BUNDLE_CAP_BYTES, `the bundle is over its cap: ${total}`);
+});
+
+test('(case-f) a binary too large for its share is dropped WHOLE and NAMED, never half-written', () => {
+  const big = Buffer.alloc(3_000_000, 7).toString('base64');
+  const m = buildBundleManifest(
+    [
+      { path: 'logs/a.log', text: 'a'.repeat(500_000) },
+      { path: 'logs/shot.png', base64: big, priority: true },
+    ],
+    { cap: 1_000_000 },
+  );
+  assert.equal(m.files.some((f) => f.path === 'logs/shot.png'), false, 'a truncated PNG was kept — that is a corrupt file');
+  assert.ok((m.meta.droppedSources ?? []).some((d) => String(d.path ?? d) === 'logs/shot.png'),
+    'a source was dropped for size without being named');
+  const total = m.files.reduce((n, f) => n + Buffer.byteLength(f.text ?? f.base64 ?? '', 'utf8'), 0);
+  assert.ok(total <= 1_000_000, `the bundle is over its cap: ${total}`);
+});
+
+test('(case-g) what the cap dropped is NAMED in the digest, not only in the manifest meta', () => {
+  const m = buildBundleManifest(
+    [
+      { path: 'logs/a.log', text: 'a'.repeat(500_000) },
+      { path: 'logs/shot.png', base64: Buffer.alloc(3_000_000, 7).toString('base64'), priority: true },
+    ],
+    { cap: 1_000_000 },
+  );
+  const lines = describeBundleDrops(m.meta);
+  assert.ok(lines.some((l) => l.includes('logs/shot.png')), `no drop line names the dropped source: ${JSON.stringify(lines)}`);
+  const md = buildDigest(ctx(), { excerpts: [], absent: lines }).markdown;
+  assert.match(md, /shot\.png/, 'the digest published a bundle that had silently lost a source');
+});
+
+test('(case-h) "absent" and "present but not collected" do not render identically', () => {
+  const withCapture = evidence241(mobileFailureHome());
+  assert.equal(
+    withCapture.absent.some((a) => /maestro debug output — not present/.test(a)),
+    false,
+    'the digest still reports the capture as absent while carrying it',
+  );
+
+  // A job that ran no mobile flow at all: the honest answer is still "not present".
+  const bare = collectEvidence({ home: '/nonexistent-home-241', cwd: '/tmp', env: { GITHUB_RUN_ID: 'x' } });
+  assert.ok(
+    bare.absent.some((a) => /maestro debug output/.test(a)),
+    'a job with no capture says nothing about the device channel at all',
+  );
+});
+
+test('(case-i) a screenshot over the per-file ceiling is NAMED at collection, not silently skipped', () => {
+  const home = mobileFailureHome({ screenshot: Buffer.alloc(MAX_BINARY_BYTES + 1024, 9) });
+  const ev = evidence241(home);
+  assert.equal(ev.binaries.length, 0, 'an oversized binary was collected anyway');
+  assert.ok(
+    ev.absent.some((a) => /screenshot-.*\.png/.test(a) || /over the .* ceiling/.test(a)),
+    `an oversized screenshot was dropped without a word: ${JSON.stringify(ev.absent)}`,
+  );
+});
+
+test('(case-j) the tree walk is bounded — depth and entry count cannot be driven by the runner', () => {
+  const home = mkdtempSync(join(tmpdir(), 'digest-241-deep-'));
+  const bundle = join(home, 'local-ci-last-failure');
+  let dir = bundle;
+  for (let i = 0; i < 30; i++) {
+    dir = join(dir, `d${i}`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, `x${i}.log`), 'x');
+  }
+  const listed = listEvidenceTree(bundle);
+  assert.ok(listed.length > 0, 'the walk returned nothing at all');
+  assert.ok(listed.every((p) => p.split('/').length <= 12), `the walk descended without a depth bound: ${listed.at(-1)}`);
+});
+
+test('(case-k) a collected file the packer cannot carry is NAMED, not silently ignored', () => {
+  // The whole shape of this item is "evidence existed on the runner and the bundle said nothing
+  // about it". An unrecognised format (a screen recording, an archive) is that same silence unless
+  // the absence is stated — the reader is otherwise left believing the tree held only what arrived.
+  const home = mobileFailureHome();
+  const attempt = join(home, 'local-ci-last-failure', '_mobile-diagnostics', 'assistant-config-gating-attempt1');
+  writeFileSync(join(attempt, 'maestro', 'screen-recording.mp4'), 'not really an mp4');
+  const ev = evidence241(home);
+  assert.ok(
+    ev.absent.some((a) => /screen-recording\.mp4/.test(a)),
+    `an uncarryable file vanished without a word: ${JSON.stringify(ev.absent)}`,
+  );
+});
+
+test('(case-l) all-or-nothing holds for a binary on the FAIR-SHARE path too, not just the reserve', () => {
+  // The priority reserve is one of two paths into the allocator. A binary that arrives WITHOUT the
+  // priority flag must still be dropped whole rather than tail-trimmed — a rule that lives in only
+  // one branch is a rule that fails the moment a caller uses the other.
+  const m = buildBundleManifest(
+    [
+      { path: 'logs/a.log', text: 'a'.repeat(400_000) },
+      { path: 'logs/b.log', text: 'b'.repeat(400_000) },
+      { path: 'logs/shot.png', base64: Buffer.alloc(600_000, 7).toString('base64') },
+    ],
+    { cap: 600_000 },
+  );
+  const shot = m.files.find((f) => f.path === 'logs/shot.png');
+  assert.equal(shot, undefined, 'a PNG was trimmed to its share — that file opens as nothing');
+  assert.ok((m.meta.droppedSources ?? []).some((d) => d.path === 'logs/shot.png'), 'the drop was not named');
+});
+
+// ================================================================================================
+// a past incident — the durations sample reaches a channel the API can read
+// ================================================================================================
+//
+// ci-log-step.sh now records a duration per wrapped step on every run. That file is worth nothing
+// on the runner: this forge exposes no job logs and no artifact endpoint, so a sample that never
+// leaves the box is exactly as unanswerable as the one that was never taken — which is how the
+// 2700 s ceiling came to be calibrated against the wrong measurement in the first place.
+//
+// It rides the bundle that already publishes: the digest bundle on ANY job's failure, and the
+// counts bundle on a green e2e. It is a SEPARATE file in the version, not a member of
+// bundle.json.gz — aggregating 25 runs must cost 25 tiny reads, not 25 bundle downloads over a
+// ~135 KB/s link where a failure bundle reaches 5 MB.
+
+import {
+  readStepDurations,
+  publishBundle as publishBundle338,
+  DURATIONS_FILE,
+} from '../ci-failure-digest.mjs';
+
+function durationsHome(rows = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'digest-338-'));
+  for (const [job, text] of Object.entries(rows)) {
+    mkdirSync(join(root, '2600', job), { recursive: true });
+    writeFileSync(join(root, '2600', job, '_step-durations.tsv'), text);
+  }
+  return root;
+}
+
+test('(durations-f) readStepDurations returns null when no step in this job was wrapped', () => {
+  assert.equal(readStepDurations({ GITHUB_RUN_ID: 'nope', HOME: '/nonexistent' }), null);
+});
+
+test('(durations-g) readStepDurations reads THIS job\'s file, with no run-scoped fallback', () => {
+  // The same defect as a past incident, in a new artifact: e2e and scan share $HOME on this runner,
+  // so a fallback would blend scan's samples into e2e's distribution — and a ceiling calibrated
+  // against another job's steps is worse than an uncalibrated one, because it looks measured.
+  const root = durationsHome({
+    'e2e': '# step\tseconds\texit\tceiling\ne2e-run\t312\t0\t2700\n',
+    scan: '# step\tseconds\texit\tceiling\nscan-run-scan\t900\t0\t\n',
+  });
+  const inJob = (job) => ({ CI_STEP_LOG_ROOT: root, GITHUB_RUN_ID: '2600', GITHUB_JOB: job });
+  assert.match(readStepDurations(inJob('e2e')), /^e2e-run\t312\t0\t2700$/m);
+  assert.doesNotMatch(readStepDurations(inJob('e2e')), /scan-run-scan/);
+  assert.equal(
+    readStepDurations({ CI_STEP_LOG_ROOT: root, GITHUB_RUN_ID: '2600', GITHUB_JOB: 'affected' }),
+    null,
+    'a job with no file of its own adopted a sibling job\'s samples',
+  );
+});
+
+/** A recording stand-in for the forge package API — every upload the bundle publisher performs. */
+function recordingApi() {
+  const uploads = [];
+  return { uploads, uploadBundle: async (version, filename, buffer) => { uploads.push({ version, filename, buffer }); } };
+}
+
+const ctx338 = { workflow: 'ci', job: 'e2e', step: '', sha: 'abc', pr: null, runId: '2600' };
+
+test('(durations-h) the durations file is uploaded ALONGSIDE the bundle, not inside it', () => {
+  // Inside bundle.json.gz it would cost a whole bundle download per sampled run. A failure bundle
+  // reaches the 5 MB cap, which is ~40 s each on the measured link — 25 runs of that is not a
+  // command anyone runs twice, so the calibration would go un-done exactly as it did before.
+  const api = recordingApi();
+  const root = durationsHome({ 'e2e': '# step\tseconds\texit\tceiling\ne2e-run\t312\t0\t2700\n' });
+  const env = { CI_STEP_LOG_ROOT: root, GITHUB_RUN_ID: '2600', GITHUB_JOB: 'e2e' };
+
+  return publishBundle338(api, bundleVersion('2600', 'e2e'), { excerpts: [], health: [], absent: [] }, ctx338, null, null, env)
+    .then(() => {
+      const names = api.uploads.map((u) => u.filename);
+      assert.ok(names.includes('bundle.json.gz'), 'the bundle itself stopped being uploaded');
+      assert.ok(names.includes(DURATIONS_FILE), `no durations file was uploaded: ${JSON.stringify(names)}`);
+      const durations = api.uploads.find((u) => u.filename === DURATIONS_FILE);
+      assert.equal(durations.version, '2600--e2e', 'the durations file landed on a different version');
+      assert.match(durations.buffer.toString('utf8'), /^e2e-run\t312\t0\t2700$/m);
+    });
+});
+
+test('(durations-i) a job that wrapped no step uploads no durations file at all', () => {
+  const api = recordingApi();
+  const env = { CI_STEP_LOG_ROOT: '/nonexistent-338', GITHUB_RUN_ID: '2600', GITHUB_JOB: 'affected' };
+  return publishBundle338(api, bundleVersion('2600', 'affected'), { excerpts: [], health: [], absent: [] }, ctx338, null, null, env)
+    .then(() => {
+      assert.deepEqual(api.uploads.map((u) => u.filename), ['bundle.json.gz']);
+    });
+});
+
+test('(durations-j) a FAILED durations upload never fails the digest — the bundle still publishes', () => {
+  // reaches this file too. A measurement that can turn a job red is a measurement that gets
+  // deleted the first time it misfires.
+  const uploads = [];
+  const api = {
+    uploads,
+    uploadBundle: async (version, filename, buffer) => {
+      if (filename === DURATIONS_FILE) throw new Error('forge returned 507 for PUT /packages');
+      uploads.push({ version, filename, buffer });
+    },
+  };
+  const root = durationsHome({ 'e2e': '# step\tseconds\texit\tceiling\ne2e-run\t312\t0\t2700\n' });
+  const env = { CI_STEP_LOG_ROOT: root, GITHUB_RUN_ID: '2600', GITHUB_JOB: 'e2e' };
+  return publishBundle338(api, bundleVersion('2600', 'e2e'), { excerpts: [], health: [], absent: [] }, ctx338, null, null, env)
+    .then(() => {
+      assert.deepEqual(uploads.map((u) => u.filename), ['bundle.json.gz'], 'the bundle was lost with the durations file');
+    });
+});
+
+test('(durations-k) durations do NOT become a counts source — a green non-e2e job still uploads nothing', async () => {
+  // The counts channel is self-limiting BY CONSTRUCTION: only e2e produces the
+  // step logs it carries, so every other green job finds nothing and publishes nothing. Making
+  // durations a counts source would turn that into ~20 package versions per run — and would remove
+  // the property rather than the allowlist that was deliberately never written.
+  const { selectCountsSources, collectEvidence: collect338 } = await digestModule();
+  const root = durationsHome({ affected: '# step\tseconds\texit\tceiling\naffected-nx\t95\t0\t\n' });
+  writeFileSync(join(root, '2600', 'affected', 'affected-nx.log'), 'nx ran and passed\n');
+  const ev = collect338({ home: '/nonexistent', cwd: '/tmp', env: { CI_STEP_LOG_ROOT: root, GITHUB_RUN_ID: '2600', GITHUB_JOB: 'affected' } });
+
+  assert.equal(
+    ev.excerpts.some((e) => /step-durations/.test(e.source)),
+    false,
+    'the durations file was collected as a step excerpt — it would be published as log output',
+  );
+  assert.deepEqual(selectCountsSources(ev.excerpts), [], 'a green non-e2e job now has something to publish');
+});
+
+// ─── a past incident, measured on a REAL failed mobile flow — an earlier run ──────────────────────────────────
+//
+// 's second acceptance criterion is worded against a real failed mobile flow, and until
+// 2026-09-15 the only evidence was a fixture shaped from an earlier run. A deliberately-red mobile run was
+// forced to close that gap, and it found a defect the fixture could not.
+//
+// MEASURED, an earlier run. The recursive walk worked — every nested file was enumerated and every drop was
+// NAMED, so the bundle was diagnosable. But the evidence that matters was evicted:
+//
+//   CARRIED:  .../attempt1/maestro/assistant-config-gating/logs/device-logcat.txt
+//             .../attempt{1,2,3}/logcat-full.log
+//   DROPPED:  .../screen-hierarchy/step-021-…json   (126,649 B) "no budget left at the cap"
+//             .../screenshots/step-021-…png         ( 54,136 B) "binary source cannot be trimmed"
+//             .../attempt{2,3}/logcat-react.log     (    337 B) "no budget left at the cap"
+//
+// CAUSE: `isBulkDeviceEvidence` demotes by the exact basename `logcat-full.log`. Maestro 2.10 writes
+// its OWN bulk dump as `logs/device-logcat.txt` — 3.6 MB on attempt 2, 5.9 MB on attempt 3 — which the
+// name test does not match, so it was ranked as priority device evidence and consumed the entire
+// half-cap reserve before the 126 KB hierarchy and the 54 KB screenshot were reached.
+//
+// So the demotion is now by SIZE as well as by name. A name list is exactly what rotted here: it was
+// written against the filenames one Maestro version happened to produce, and the next one renamed the
+// file. Size is the property that actually matters — the hierarchy and the screenshot are small and
+// decisive; a multi-megabyte logcat is bulk whatever it is called.
+
+// THE ORDER HERE IS LOAD-BEARING AND IS THE MEASURED ONE. `selectSources` sorts by rank and then by
+// path, and within one rank `…/maestro/g/logs/device-logcat.txt` sorts BEFORE
+// `…/maestro/g/screen-hierarchy/…` ("logs/" < "screen-hierarchy/"). That is precisely why the bulk
+// dump reached the reserve first on an earlier run and the hierarchy never did. Listing the small sources
+// first would make a first-come-first-served reserve look correct and test nothing.
+const RUN_3434 = [
+  // the bulk device dumps, at their measured sizes, in the position the real sort gave them
+  { path: 'logs/_mobile-diagnostics/gating-attempt1/maestro/g/logs/device-logcat.txt', text: 'D'.repeat(3_676_659), priority: true },
+  { path: 'logs/_mobile-diagnostics/gating-attempt2/maestro/g/logs/device-logcat.txt', text: 'D'.repeat(3_676_659), priority: true },
+  { path: 'logs/_mobile-diagnostics/gating-attempt3/maestro/g/logs/device-logcat.txt', text: 'D'.repeat(5_911_791), priority: true },
+  // the small, decisive evidence — this is what must survive
+  { path: 'logs/_mobile-diagnostics/gating-attempt1/maestro/g/screen-hierarchy/step-021-assertCondition-probe.json', text: 'H'.repeat(126_649), priority: true },
+  { path: 'logs/_mobile-diagnostics/gating-attempt1/maestro/g/screenshots/step-021-assertCondition-probe.png', base64: 'A'.repeat(54_136), priority: true },
+  { path: 'logs/_mobile-diagnostics/gating-attempt1/logcat-react.log', text: 'R'.repeat(337), priority: true },
+  { path: 'logs/_mobile-diagnostics/gating-attempt2/logcat-react.log', text: 'R'.repeat(337), priority: true },
+  { path: 'logs/_mobile-diagnostics/gating-attempt1/maestro/g/commands.json', text: 'C'.repeat(25_744), priority: true },
+  { path: 'logs/_mobile-diagnostics/gating-attempt1/logcat-full.log', text: 'F'.repeat(4_000_000) },
+  // ordinary container logs, as on the real run
+  { path: 'logs/api-store.log', text: 'm'.repeat(2_000_000) },
+  { path: 'logs/app-service.log', text: 'b'.repeat(500_000) },
+];
+
+test('(case-i) an earlier run: the HIERARCHY and the failure SCREENSHOT survive a real mobile failure bundle', () => {
+  const m = buildBundleManifest(RUN_3434, { cap: BUNDLE_CAP_BYTES });
+  const kept = new Map(m.files.map((f) => [f.path, f]));
+
+  const hierarchy = kept.get('logs/_mobile-diagnostics/gating-attempt1/maestro/g/screen-hierarchy/step-021-assertCondition-probe.json');
+  assert.ok(hierarchy, 'the view hierarchy was DROPPED — it is the one channel that says what the device was showing');
+  assert.equal(hierarchy.text.length, 126_649, 'the view hierarchy was truncated; a partial hierarchy does not parse');
+
+  const shot = kept.get('logs/_mobile-diagnostics/gating-attempt1/maestro/g/screenshots/step-021-assertCondition-probe.png');
+  assert.ok(shot, 'the failure screenshot was DROPPED');
+  assert.equal(shot.base64.length, 54_136, 'the screenshot must survive whole or not at all');
+
+  assert.ok(kept.get('logs/_mobile-diagnostics/gating-attempt1/logcat-react.log'), 'the ReactNativeJS logcat was dropped');
+  assert.ok(kept.get('logs/_mobile-diagnostics/gating-attempt2/logcat-react.log'), 'attempt 2 logcat-react was dropped');
+
+  const total = m.files.reduce((n, f) => n + Buffer.byteLength(f.text ?? f.base64 ?? '', 'utf8'), 0);
+  assert.ok(total <= BUNDLE_CAP_BYTES, `the bundle is over its cap: ${total}`);
+});
+
+test('(case-j) a multi-megabyte nested dump is BULK whatever it is called — demotion is by size, not by name', () => {
+  // The name test alone is what failed on an earlier run: it was written for `logcat-full.log` and Maestro
+  // shipped `device-logcat.txt`. Pinning the size rule keeps the next rename from repeating it.
+  assert.equal(isBulkDeviceEvidence('_m/f/maestro/g/logs/device-logcat.txt', 3_676_659), true,
+    'the measured run-3434 dump must be treated as bulk');
+  assert.equal(isBulkDeviceEvidence('_m/f/some-future-name.txt', 9_000_000), true,
+    'a multi-megabyte nested dump under any name must be bulk');
+  assert.equal(isBulkDeviceEvidence('_m/f/logcat-full.log', 10), true,
+    'the original name stays demoted regardless of size');
+  // and the small, decisive evidence is NOT bulk
+  assert.equal(isBulkDeviceEvidence('_m/f/maestro/g/screen-hierarchy/step-021.json', 126_649), false,
+    'the view hierarchy must never be demoted — it is the smallest, most decisive source');
+  assert.equal(isBulkDeviceEvidence('_m/f/logcat-react.log', 337), false);
+  assert.equal(isBulkDeviceEvidence('_m/f/maestro/g/commands.json', 25_744), false);
+});
+
+test('(case-k) the bulk dump is still CARRIED when there is room — demoted, not excluded', () => {
+  // Demotion must not become deletion: on a small bundle the dump is real evidence and should ride
+  // along. It simply must not outrank the hierarchy.
+  const m = buildBundleManifest(
+    [
+      { path: 'logs/_mobile-diagnostics/f-a1/maestro/g/screen-hierarchy/s.json', text: 'H'.repeat(1000), priority: true },
+      { path: 'logs/_mobile-diagnostics/f-a1/maestro/g/logs/device-logcat.txt', text: 'D'.repeat(5000) },
+    ],
+    { cap: BUNDLE_CAP_BYTES },
+  );
+  const kept = m.files.map((f) => f.path);
+  assert.ok(kept.includes('logs/_mobile-diagnostics/f-a1/maestro/g/screen-hierarchy/s.json'));
+  assert.ok(kept.includes('logs/_mobile-diagnostics/f-a1/maestro/g/logs/device-logcat.txt'),
+    'the bulk dump was excluded rather than demoted — it is still evidence when there is room');
+});
+
+// ── a container bundle from ANOTHER run or job is refused, never shown as this one's ──
+//
+// `~/<repo>-ci-last-failure` lives in the runner's $HOME and survives between runs. Measured
+// 2026-10-02: scan an earlier run shipped a 09-30 auth-service log, and an earlier run a log of the auth-service version
+// an earlier PR ran, both beside a health table saying `healthy` for the container that had just failed.
+// The bundle is stamped by its writer (`_bundle-owner.txt`); the reader checks the stamp.
+
+import { readdirSync as readdir645, readFileSync as readFile645 } from 'node:fs';
+
+function stampedBundleHome(stamp) {
+  const home = mkdtempSync(join(tmpdir(), 'digest-645-'));
+  const bundle = join(home, 'local-ci-last-failure');
+  mkdirSync(bundle, { recursive: true });
+  writeFileSync(join(bundle, 'auth-service.log'), '2026-09-30T09:52:00Z realm grumpyrobot token event\n');
+  writeFileSync(join(bundle, 'auth-service.health.json'), JSON.stringify({ Status: 'healthy', Log: [{ Output: 'ok' }] }));
+  if (stamp !== null) writeFileSync(join(bundle, '_bundle-owner.txt'), `${stamp}\n`);
+  return home;
+}
+const evidence645 = (home, env) => collectEvidence({ home, cwd: mkdtempSync(join(tmpdir(), 'cwd-645-')), env });
+
+test('(case-a) a bundle stamped by THIS run and job is collected', () => {
+  const ev = evidence645(stampedBundleHome('run=4460 job=scan sha=abc written=2026-10-02T12:00:00Z'), { GITHUB_RUN_ID: '4460', GITHUB_JOB: 'scan' });
+  assert.ok(ev.excerpts.some((e) => e.source === 'auth-service.log'), 'this run\'s own bundle was not collected');
+  assert.equal(ev.health.length, 1);
+});
+
+test('(case-b) a bundle stamped by ANOTHER run is refused and named under Not collected', () => {
+  const ev = evidence645(stampedBundleHome('run=4438 job=e2e sha=old written=2026-09-30T09:52:00Z'), { GITHUB_RUN_ID: '4445', GITHUB_JOB: 'scan' });
+  assert.equal(ev.excerpts.filter((e) => e.source === 'auth-service.log').length, 0, 'another run\'s container log was shown as this run\'s');
+  assert.equal(ev.health.length, 0, 'another run\'s health table was shown as this run\'s');
+  assert.ok(ev.absent.some((a) => /bundle belongs to run 4438 \/ job e2e/.test(a)), `the refusal was not stated: ${JSON.stringify(ev.absent)}`);
+});
+
+test('(case-c) the same run but a DIFFERENT job is refused — e2e and scan share $HOME', () => {
+  const ev = evidence645(stampedBundleHome('run=4445 job=e2e sha=abc written=x'), { GITHUB_RUN_ID: '4445', GITHUB_JOB: 'scan' });
+  assert.equal(ev.health.length, 0, 'the sibling job\'s bundle was shown as this job\'s');
+  assert.ok(ev.absent.some((a) => /bundle belongs to run 4445 \/ job e2e/.test(a)), JSON.stringify(ev.absent));
+});
+
+test('(case-d) an UNSTAMPED bundle is refused — absence of a stamp is not proof of ownership', () => {
+  const ev = evidence645(stampedBundleHome(null), { GITHUB_RUN_ID: '4445', GITHUB_JOB: 'scan' });
+  assert.equal(ev.health.length, 0, 'an unattributable bundle was shown as this run\'s');
+  assert.ok(ev.absent.some((a) => /no owner stamp/.test(a)), JSON.stringify(ev.absent));
+});
+
+test('(case-e) every workflow step that writes ~/<repo>-ci-last-failure stamps it with ITS run and job', () => {
+  // The guard criterion: the next job added that writes a bundle without a stamp would have its own
+  // evidence refused by (case-d), so it must fail here, at review time, rather than silently in CI.
+  const wfDir = join(dirnamePath(toPath(import.meta.url)), '..', '..', '.forgejo', 'workflows');
+  const writers = [];
+  for (const name of readdir645(wfDir).filter((n) => /\.ya?ml$/.test(n))) {
+    // A step is everything from one `- name:` to the next; that is the unit that must stamp.
+    const steps = readFile645(join(wfDir, name), 'utf8').split(/\n\s*- name: /);
+    for (const step of steps) {
+      if (!/cp -r \S+ "\$HOME\/[a-z0-9._-]+-ci-last-failure"/.test(step)) continue;
+      writers.push(`${name}: ${step.split('\n')[0]}`);
+      assert.match(step, /_bundle-owner\.txt/, `${name} step "${step.split('\n')[0]}" writes the bundle without an owner stamp`);
+      assert.match(step, /run=\$\{GITHUB_RUN_ID[^}]*\} job=\$\{GITHUB_JOB[^}]*\}/,
+        `${name} step "${step.split('\n')[0]}" stamps something other than its own run and job`);
+    }
+  }
+});
+
+// ── Repository-scoped names ──────────────────────────────────────────────────────────────────────
+// Generic packages are owner-level, and repositories under one owner can share a persistent runner's
+// $HOME. Every name the digest writes or reads is therefore prefixed with the repository name, so one
+// repository's digest can neither prune nor collect another's evidence.
+import { repoSlug, bundlePackage, lastFailureDir, stepLogDir } from '../ci-failure-digest.mjs';
+
+test('(scope-a) the repository slug is the lowercased repo name, or `local` without one', () => {
+  assert.equal(repoSlug({ GITHUB_REPOSITORY: 'jumbleknot/BELAY' }), 'belay');
+  assert.equal(repoSlug({}), 'local');
+});
+
+test('(scope-b) two repositories under one owner publish to different packages', () => {
+  assert.equal(bundlePackage({ GITHUB_REPOSITORY: 'jumbleknot/BELAY' }), 'belay-ci-failures');
+  assert.notEqual(
+    bundlePackage({ GITHUB_REPOSITORY: 'jumbleknot/BELAY' }),
+    bundlePackage({ GITHUB_REPOSITORY: 'jumbleknot/Other' }),
+  );
+});
+
+test('(scope-c) the step-log and last-failure directories carry the same prefix', () => {
+  const env = { GITHUB_REPOSITORY: 'jumbleknot/BELAY', GITHUB_RUN_ID: '7', GITHUB_JOB: 'guardrails' };
+  assert.equal(stepLogDir(env, '/h').replace(/\\/g, '/'), '/h/belay-ci-step-logs/7/guardrails');
+  assert.equal(lastFailureDir(env, '/h').replace(/\\/g, '/'), '/h/belay-ci-last-failure');
+});

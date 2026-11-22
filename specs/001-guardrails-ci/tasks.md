@@ -143,7 +143,7 @@ description: "Task list for feature 001: guardrails CI"
 
 ### Tests for User Story 2 (REQUIRED, TDD checkpoint format) ⚠️
 
-- [ ] T012 [US2] Port `scripts/__tests__/ci-failure-digest.test.mjs` from MCM (research R8, R-strip).
+- [X] T012 [US2] Port `scripts/__tests__/ci-failure-digest.test.mjs` from MCM (research R8, R-strip).
   - **Fixture names:**
     - the registry package becomes `<repo>-ci-failures` ([data-model.md](data-model.md) → Evidence bundle.package);
     - the host directories become `$HOME/<repo>-ci-step-logs` and `$HOME/<repo>-ci-last-failure` (Evidence bundle.host directories);
@@ -156,13 +156,19 @@ description: "Task list for feature 001: guardrails CI"
 
 ### Implementation for User Story 2
 
-- [ ] T013 [US2] Port `scripts/ci-failure-digest.mjs` from MCM (research R8, R-strip).
+- [X] T013 [US2] Port `scripts/ci-failure-digest.mjs` from MCM (research R8, R-strip).
   - **Package name:** derive it from `GITHUB_REPOSITORY` as `<repo>-ci-failures`, replacing `BUNDLE_PACKAGE = 'ci-failures'`.
   - **Directories:** use the same `<repo>-` prefix for the step-log and last-failure directories, matching T006's constant.
   - **Removed:** the MCM container-name ranking entries.
   - Prerequisite: T012 verified RED.
   - **Verify GREEN:** `node --test scripts/__tests__/ci-failure-digest.test.mjs` → expected: 0 failures; then `pnpm nx run scripts:test` passes.
-- [ ] T014 [US2] Add `node scripts/ci-failure-digest.mjs --selftest` to `scripts:lint` in `scripts/project.json`.
+  - **Done 2026-11-22.** 135 of 135 digest tests pass; the full suite passes 258, with 2 skipped (POSIX-only probes).
+    - `repoSlug`, `bundlePackage` and `lastFailureDir` replace `BUNDLE_PACKAGE` and the hard-coded MCM directories.
+    - MCM job and service names in fixtures became neutral ones.
+    - Test (e2) now plants the `tmdb_key` value, because the old planted value matched only the removed MCM rule.
+    - `#645e` now checks only the bundle writers that actually exist. BELAY has none, so the MCM count assertion was dropped.
+    - **Ruling:** the digest's tool-generic evidence paths were kept, though dormant: Maestro mobile device diagnostics, Playwright counts, and run-health from a tally file. They name third-party tools, not MCM, and they activate only when a job leaves that evidence. Removing them would mean rewriting most of the 1,745-line module and its 135 tests, against the user's "reuse as much as possible". Cost if wrong: dead code paths until a BELAY job uses them.
+- [X] T014 [US2] Add `node scripts/ci-failure-digest.mjs --selftest` to `scripts:lint` in `scripts/project.json`.
   - **Done when:** `pnpm nx run scripts:lint` exits 0, and its output includes the digest selftest's pass line.
 
 **Checkpoint**: the digest is proven by its tests. The live evidence is T026.
