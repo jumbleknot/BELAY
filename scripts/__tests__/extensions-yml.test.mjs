@@ -69,6 +69,27 @@ test('rejects a hook item outside hooks', () => {
   );
 });
 
+test('wrapped long values (PyYAML continuation lines) are folded into their field', () => {
+  // yaml.dump wraps plain scalars past column 80 onto lines indented under the field.
+  const r = parseExtensionsYml(`installed:
+- git
+hooks:
+  after_converge:
+  - extension: git
+    command: speckit.git.commit
+    enabled: true
+    optional: true
+    priority: 10
+    prompt: Commit after convergence?
+    description: Auto-commit after convergence (BELAY local hook, see docs/runbooks/spec-kit.md
+      and the upgrade procedure for how to re-add it after an extension reinstall)
+    condition: null
+`);
+  assert.deepEqual(r.hooks.after_converge, [
+    { extension: 'git', command: 'speckit.git.commit', enabled: true, optional: true },
+  ]);
+});
+
 test('empty hooks', () => {
   assert.deepEqual(parseExtensionsYml('installed: []\nhooks: {}\n'), { installed: [], hooks: {} });
 });

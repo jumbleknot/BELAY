@@ -23,13 +23,17 @@ const scalar = (raw) => {
   return s;
 };
 
-const finish = (item) => ({
-  extension: String(item.extension ?? ''),
-  command: String(item.command ?? ''),
-  // Spec Kit treats a hook without `enabled` as enabled.
-  enabled: item.enabled === undefined || item.enabled === null ? true : item.enabled === true,
-  optional: item.optional === true,
-});
+// Fields are kept raw while a hook is open, so a wrapped value can be re-joined before conversion.
+const finish = (raw) => {
+  const item = Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, scalar(v)]));
+  return {
+    extension: String(item.extension ?? ''),
+    command: String(item.command ?? ''),
+    // Spec Kit treats a hook without `enabled` as enabled.
+    enabled: item.enabled === undefined || item.enabled === null ? true : item.enabled === true,
+    optional: item.optional === true,
+  };
+};
 
 /**
  * @param {string} text
@@ -41,6 +45,7 @@ export function parseExtensionsYml(text) {
   let section = null;
   let event = null;
   let item = null;
+  let lastField = null;
   const fail = (n, why) => {
     throw new Error(`extensions.yml:${n}: ${why}`);
   };
@@ -86,7 +91,8 @@ export function parseExtensionsYml(text) {
       const field = (s) => {
         const m = s.match(/^([A-Za-z_][\w-]*):\s*(.*)$/);
         if (!m) fail(n, `expected "key: value", got "${s}"`);
-        item[m[1]] = scalar(m[2]);
+        item[m[1]] = m[2];
+        lastField = m[1];
       };
       if (indent === 2 && body.startsWith('- ')) {
         if (!event) fail(n, 'hook item before any hook event');
@@ -97,6 +103,11 @@ export function parseExtensionsYml(text) {
       }
       if (indent === 4 && item) {
         field(body);
+        return;
+      }
+      // yaml.dump wraps a long plain scalar onto lines indented under its field: fold it back in.
+      if (indent > 4 && item && lastField) {
+        item[lastField] = `${item[lastField]} ${body}`;
         return;
       }
       fail(n, `unexpected line in hooks: "${body}"`);

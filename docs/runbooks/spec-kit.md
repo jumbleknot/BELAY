@@ -81,6 +81,9 @@ agent-context config (row 5b).
 - **The gate does not check `git-config.yml`.** BELAY uses the git extension's shipped config
   unchanged (`auto_commit.default: false`, sequential branch numbers). If you customise it, add it
   to `PROJECT_OWNED` and add a row to the table above in the same PR.
+- **The gate does not police hand edits to the agent-context config beyond its marker.** It checks
+  that `context_file: AGENTS.md` is present, not that `context_files` (which takes precedence) is
+  empty. Leave `context_files: []`.
 - **Extension skills are checked for presence, not content.** Spec Kit records a hash only of each
   extension's `extension.yml`, so an edit to an extension's command skill is not detected.
 
