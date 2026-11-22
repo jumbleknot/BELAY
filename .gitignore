@@ -37,7 +37,11 @@ $RECYCLE.BIN/
 *.key
 *.pfx
 *.p12
-secrets/
+# secrets/ folders are tracked, but only for placeholders, docs and templates
+**/secrets/*
+!**/secrets/.gitkeep
+!**/secrets/README.md
+!**/secrets/*.example
 .secrets/
 
 # ---------------------------------------------------------------------------

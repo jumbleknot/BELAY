@@ -6,7 +6,30 @@ Guidance for AI coding agents working in this repository.
 
 BELAY (**B**uild, **E**ngineering, **L**ifecycle & **A**utomation **Y**ard) is a polyglot monorepo. It holds common tooling that other repositories share: SDLC, PDLC, DevSecOps, and general engineering utilities. Treat everything here as a dependency of other projects. A change here can affect every repo that uses BELAY.
 
-The repo is in early setup. No language toolchains, build system or directory layout have been chosen yet. Don't assume one. If a task needs a structural decision, such as the top-level layout, a build tool or a language for a new tool, ask before introducing it.
+The repo is in early setup. No language toolchains or build system have been chosen yet. Don't assume one. If a task needs a structural decision, such as a build tool, a language for a new tool or a new top-level folder, ask before introducing it.
+
+## Layout
+
+Top-level folders (most are still empty placeholders):
+
+| Folder | Purpose |
+| --- | --- |
+| `docs/` | Documentation |
+| `openwiki/` | Wiki content |
+| `specs/` | Specifications |
+| `api-specs/` | API specifications |
+| `scripts/` | Scripts |
+| `secrets/` | Local secrets. Only `.gitkeep`, `README.md` and `*.example` files are tracked. Never commit real secrets. |
+| `agents/` | AI agents |
+| `mcp-servers/` | MCP servers |
+| `backend/` | Backend code |
+| `frontend/` | Frontend code |
+| `packages/` | Shared packages and libraries |
+| `infrastructure-as-code/` | Infrastructure as code |
+| `assets/` | Static assets |
+| `security/` | Security tooling and policy |
+| `target/` | Build output. It's ignored by Git and never committed. |
+| `tools/` | Developer tools |
 
 ## Conventions
 
