@@ -50,9 +50,9 @@ None. `backlog.mjs`'s dependencies (`forgeEndpoint`, `stripControlChars`, `redac
 
 ### Tests for User Story 1 (REQUIRED, TDD checkpoint format) ⚠️
 
-- [ ] T002 [P] [US1] Port `scripts/__tests__/fixtures/backlog/blocked-close-412.json` from MCM, dropping its `specs/049…` note.
+- [X] T002 [P] [US1] Port `scripts/__tests__/fixtures/backlog/blocked-close-412.json` from MCM, dropping its `specs/049…` note.
   - **Done when:** the file parses as JSON, and `git grep -niE 'mcm|movie|specs/049' scripts/__tests__/fixtures/backlog` finds nothing.
-- [ ] T003 [US1] Port `scripts/__tests__/backlog.test.mjs` from MCM (research R6).
+- [X] T003 [US1] Port `scripts/__tests__/backlog.test.mjs` from MCM (research R6).
   - **Removed:** `ready work excludes bot-managed items`.
   - **Changed:**
     - the taxonomy assertion: exactly the nine labels in [data-model.md](data-model.md) → Label set, with no `status/bot-managed`;
@@ -64,17 +64,22 @@ None. `backlog.mjs`'s dependencies (`forgeEndpoint`, `stripControlChars`, `redac
 
 ### Implementation for User Story 1
 
-- [ ] T004 [US1] Port `scripts/backlog.mjs` from MCM.
+- [X] T004 [US1] Port `scripts/backlog.mjs` from MCM.
   - **Credentials:** `FORGE_ISSUE_TOKEN`, then `FORGE_TOKEN`; messages point at `docs/runbooks/backlog.md`, without the dev-container, `${localEnv}` or `setx` advice (R1).
   - **Unchanged:** the origin and write-path guards, and `renderLine` (R2).
   - **Labels:** `TAXONOMY` without `status/bot-managed`, and no bot-managed filters, Renovate note or firewall text (R3).
   - **Entry point:** MCM's direct-invocation check is kept (R7).
   - Prerequisite: T003 verified RED.
   - **Verify GREEN:** `node --test scripts/__tests__/backlog.test.mjs` → expected: 0 failures; then `pnpm nx run scripts:test` passes.
-- [ ] T005 [US1] Mutation check for `(no-leak)`. Temporarily make an error path include the token, as in feature 002. Restore with a copied backup, never with a PowerShell text round-trip.
+- [X] T005 [US1] Mutation check for `(no-leak)`. Temporarily make an error path include the token, as in feature 002. Restore with a copied backup, never with a PowerShell text round-trip.
   - **Done when:** the test fails under the mutation and passes on the restored code.
-- [ ] T006 [US1] Live reads (quickstart §2): `list --state all`, `show 1` and `validate-form`.
+- [X] T006 [US1] Live reads (quickstart §2): `list --state all`, `show 1` and `validate-form`.
   - **Done when:** issue #1 is listed with a total, `show 1` prints it, and `validate-form` exits 0.
+
+  - **Done 2026-11-22:**
+    - 74 of 74 backlog tests pass. `(no-leak)` went RED under a mutation that appended the token to the 401/403 message, then GREEN.
+    - Live: `list --state all` shows #1 and #2 (2 items); `show 1` prints the item; `validate-form` reports no form in effect (the form isn't on `main` yet) and exits 0.
+    - **Finding fixed:** on Windows, `show` and `validate-form` printed the right output and then aborted with `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`, exit 127. MCM's entry point calls `process.exit()` while fetch sockets are still closing. `ci-status.mjs` already avoids this (`exitWith`). `backlog.mjs` now sets `process.exitCode`, with an unref'd fallback timer. The live failure exiting 127 was the RED; exit 0 on three runs was the GREEN. No unit test can reproduce it offline, because it needs an open fetch socket at exit.
 
 **Checkpoint**: the backlog is readable from a terminal.
 
