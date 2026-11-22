@@ -16,7 +16,7 @@ Top-level folders (most are still empty placeholders):
 | --- | --- |
 | `docs/` | Documentation |
 | `openwiki/` | Wiki content |
-| `specs/` | Specifications |
+| `specs/` | Spec Kit feature specifications (see below) |
 | `api-specs/` | API specifications |
 | `scripts/` | Scripts |
 | `secrets/` | Local secrets. Only `.gitkeep`, `README.md` and `*.example` files are tracked. Never commit real secrets. |
@@ -38,6 +38,25 @@ Top-level folders (most are still empty placeholders):
 - **Lock files:** commit lock files such as `Cargo.lock`, `package-lock.json` and `pnpm-lock.yaml`. This repo builds runnable tools, so reproducible builds matter.
 - **Secrets:** never commit secrets, `.env` files, keys or Terraform state. Use `*.example` files for templates.
 - **License:** MIT (see [LICENSE](LICENSE)). Don't add code or dependencies with licenses that are incompatible with MIT redistribution.
+
+## Spec-driven development (Spec Kit)
+
+This repo uses [GitHub Spec Kit](https://github.com/github/spec-kit) 1.4.2, set up for Claude Code with PowerShell scripts.
+
+- **Feature specs** go in `specs/<NNN>-<feature-name>/`, numbered sequentially. Each one holds `spec.md`, `plan.md`, `tasks.md` and any checklists.
+- **Project principles** are in [.specify/memory/constitution.md](.specify/memory/constitution.md). It is still the unfilled template; run `/speckit-constitution` to fill it in.
+- **Spec Kit's own files** are under `.specify/`: templates, scripts and workflow config. Don't edit them by hand except for the constitution.
+- **Skills** are in `.claude/skills/speckit-*`. The workflow runs in this order:
+  1. `/speckit-constitution`
+  2. `/speckit-specify`
+  3. `/speckit-clarify` (optional)
+  4. `/speckit-plan`
+  5. `/speckit-checklist` (optional)
+  6. `/speckit-tasks`
+  7. `/speckit-analyze` (optional)
+  8. `/speckit-implement`
+
+  `/speckit-converge` adds tasks for any work that's still missing from the codebase.
 
 ## Working practices
 
