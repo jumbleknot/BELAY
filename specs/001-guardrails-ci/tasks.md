@@ -108,7 +108,7 @@ description: "Task list for feature 001: guardrails CI"
 
 ### Tests for User Story 1 (REQUIRED, TDD checkpoint format) ⚠️
 
-- [ ] T009 [US1] Write `scripts/__tests__/guardrails-workflow.test.mjs`. It parses `.forgejo/workflows/guardrails.yml` with `yaml` and asserts the [contracts/guardrails-workflow.md](contracts/guardrails-workflow.md) contract:
+- [X] T009 [US1] Write `scripts/__tests__/guardrails-workflow.test.mjs`. It parses `.forgejo/workflows/guardrails.yml` with `yaml` and asserts the [contracts/guardrails-workflow.md](contracts/guardrails-workflow.md) contract:
   - **Triggers:** exactly `workflow_dispatch`, `push.branches == ['main']` and an unscoped `pull_request`.
   - **Concurrency:** `concurrency.group == 'guardrails-${{ github.ref }}'` and `cancel-in-progress: true`.
   - **Job:** a single job `guardrails` with `runs-on: ubuntu-latest`.
@@ -118,12 +118,12 @@ description: "Task list for feature 001: guardrails CI"
 
 ### Implementation for User Story 1
 
-- [ ] T010 [US1] Create `.forgejo/workflows/guardrails.yml` per research R3 and the contract.
+- [X] T010 [US1] Create `.forgejo/workflows/guardrails.yml` per research R3 and the contract.
   - **Comments:** MCM's triggers comment and its action-light header, both with R-strip.
   - **Digest step:** step 7 is copied verbatim from MCM's "Publish failure digest" step. Until T014 lands, it logs a missing-script error and is swallowed by `continue-on-error`.
   - Prerequisite: T009 verified RED.
   - **Verify GREEN:** `node --test scripts/__tests__/guardrails-workflow.test.mjs` → expected: 0 failures; then `pnpm nx run scripts:test` passes.
-- [ ] T011 [US1] Check failure detection by mutation, locally. This is the evidence for US1-AC2 and AC3.
+- [X] T011 [US1] Check failure detection by mutation, locally. This is the evidence for US1-AC2 and AC3.
   - Temporarily revert the registered edit in `.claude/skills/speckit-tasks/SKILL.md`. Restore it with `git checkout --`, never with a PowerShell text round-trip.
   - Temporarily break one assertion in `scripts/__tests__/ci-log-step.test.mjs`.
   - **Done when:**
