@@ -1,0 +1,2066 @@
+#!/usr/bin/env node
+// Self-serve CI status + failure diagnosis.
+//
+// The forge API exposes NO log, artifact, or per-run-jobs endpoint (measured — swagger.v1.json
+// confirms the absence is by design in this build). This script therefore reads what IS exposed:
+// run state, commit statuses, and — once the write side lands — the digest published into a PR
+// comment or commit status.
+//
+// Three measured constraints shape every request (2026-07-19, dev container → homelab forge over a
+// ~135 KB/s tailnet link). They are correctness rules, not optimizations:
+//
+//   * `?head_sha=<full-sha>` is a true server-side filter: 0.48 s / 15 KB. Unfiltered: 94 s / 12.4 MB.
+//   * `?limit=N` ALONE is silently ignored. It is honoured only alongside `page`.
+//   * `?status=`, `?event=`, `?branch=` are silently ignored — filter client-side instead.
+//
+// Auth is the dedicated READ-ONLY token in FORGE_TOKEN (read:repository + read:issue +
+// read:package), delivered via the devcontainer ${localEnv} passthrough. It is deliberately NOT the
+// credential `git credential fill` returns: that one is write-capable yet repository-scoped only
+// (403 on issues/{n}/comments, 401 reqPackageAccess on packages), so it cannot read a digest or a
+// bundle. Read from env ONLY, never argv (scripts/check-no-argv-secrets.mjs enforces that).
+//
+// Authoritative tests: scripts/__tests__/ci-status.test.mjs (CI-enforced by the guardrails/naming
+// `node --test scripts/__tests__/*.test.mjs` step, an earlier change).
+
+import { writeFileSync, mkdirSync, readFileSync, existsSync, readdirSync } from 'node:fs';
+import { join, resolve, dirname, relative, isAbsolute } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+
+import { redactForPublication } from './ci-digest-redact.mjs';
+import { bundleVersion, bundlePackageFor, bundlePackagesFor, DURATIONS_FILE } from './ci-failure-digest.mjs';
+import { gunzipSync } from 'node:zlib';
+
+/** Endpoint-family → the token scope it requires. Used to turn a bare 401/403 into a remedy. */
+const SCOPE_BY_ENDPOINT = [
+  [/\/issues\/\d+\/comments/, 'read:issue'],
+  [/\/issues\//, 'read:issue'],
+  [/\/packages\//, 'read:package'],
+  [/\/actions\/|\/commits\/|\/statuses\/|\/pulls/, 'read:repository'],
+];
+
+export class CiStatusError extends Error {}
+
+/** Hard ceiling on a decompressed bundle. The writer caps at 5 MB; a HOSTILE uploader ignores that,
+ *  so the reader must cap inflation itself or a gzip bomb OOMs the developer's machine. */
+export const MAX_INFLATED_BYTES = 64 * 1024 * 1024;
+const MAX_DOWNLOAD_BYTES = 16 * 1024 * 1024; // the gzip itself; comfortably above the 5 MB writer cap
+const MAX_BUNDLE_FILES = 500;
+
+/** Strip C0/C1 control characters (keep \n and \t) so terminal-escape sequences in attacker-
+ *  influenceable log/comment content can't rewrite the reader's screen or drive OSC clipboard/links. */
+/** fetch with a hard timeout so a half-open tailnet connection can't hang the tool indefinitely. */
+export async function fetchWithTimeout(url, opts = {}, ms = Number(process.env.CI_HTTP_TIMEOUT_MS) || 30000) {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), ms);
+  try {
+    return await fetch(url, { ...opts, signal: ac.signal });
+  } catch (err) {
+    if (err?.name === 'AbortError') throw new CiStatusError(`request to the forge timed out after ${ms}ms`);
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export function stripControlChars(s) {
+  // eslint-disable-next-line no-control-regex
+  return String(s).replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]/g, '');
+}
+
+/** Decompress a bundle gzip with a hard inflate cap, and bound the entry count. */
+export function parseBundleGz(gz) {
+  if (gz.length > MAX_DOWNLOAD_BYTES) {
+    throw new CiStatusError(`bundle download is ${gz.length} bytes, over the ${MAX_DOWNLOAD_BYTES} cap — refusing`);
+  }
+  let json;
+  try {
+    json = gunzipSync(gz, { maxOutputLength: MAX_INFLATED_BYTES }).toString('utf8');
+  } catch (err) {
+    // Node throws with a maxOutputLength message when the cap is hit — surface it as a refusal.
+    throw new CiStatusError(`bundle failed to inflate within ${MAX_INFLATED_BYTES} bytes (possible decompression bomb): ${err.message}`);
+  }
+  const manifest = JSON.parse(json);
+  if (Array.isArray(manifest.files) && manifest.files.length > MAX_BUNDLE_FILES) {
+    // SAY how many were dropped. The slice used to be silent, so an over-cap bundle read exactly
+    // like a complete one — the same class of defect as a past incident dropped directory, on the
+    // reader's side of the wire.
+    const dropped = manifest.files.length - MAX_BUNDLE_FILES;
+    manifest.files = manifest.files.slice(0, MAX_BUNDLE_FILES);
+    manifest.meta = { ...(manifest.meta ?? {}), readerDroppedEntries: dropped };
+  }
+  return manifest;
+}
+
+/** Write bundle entries, skipping any that are unsafe (traversal) OR malformed (non-string text).
+ *  A `base64` entry carries BINARY evidence — a Maestro failure screenshot — and is
+ *  decoded on the way out: written verbatim it would be a .png that opens as nothing, which a
+ *  reader cannot tell apart from evidence that was never collected.
+ *  @returns {string[]} the relative paths actually written. */
+export function safeBundleWrite(root, files) {
+  mkdirSync(root, { recursive: true });
+  const written = [];
+  for (const f of files ?? []) {
+    let dest;
+    let content;
+    try {
+      dest = safeBundleEntryPath(root, f.path);
+      if (typeof f.base64 === 'string') content = Buffer.from(f.base64, 'base64');
+      else if (typeof f.text === 'string') content = f.text;
+      else throw new CiStatusError(`entry ${JSON.stringify(f.path)} has no string content`);
+    } catch {
+      continue; // one hostile/garbled entry must not deny the rest of the evidence
+    }
+    try {
+      mkdirSync(dirname(dest), { recursive: true });
+      writeFileSync(dest, content);
+      written.push(f.path);
+    } catch {
+      // A path collision (file where a dir is needed, ENOTDIR) or FS error: skip, keep going.
+    }
+  }
+  return written;
+}
+
+/** A short sha silently matches nothing upstream, which reads as "no CI ran". Reject it loudly. */
+export function assertFullSha(sha) {
+  if (typeof sha !== 'string' || !/^[0-9a-f]{40}$/i.test(sha)) {
+    throw new CiStatusError(
+      `\`${sha}\` is not a full 40-character commit sha. The forge's head_sha filter is exact-match, ` +
+        'so an abbreviated sha returns zero runs and looks like "no CI ran". Use `git rev-parse <ref>`.',
+    );
+  }
+  return sha;
+}
+
+/**
+ * Build a runs query that the forge will actually honour.
+ * Filters the API silently ignores (status/event/branch) are accepted but deliberately NOT emitted —
+ * callers apply them client-side after the fetch.
+ */
+export function buildRunsQuery({ sha, page, limit } = {}) {
+  const q = new URLSearchParams();
+  if (sha) {
+    q.set('head_sha', assertFullSha(sha));
+    return q;
+  }
+  // `limit` without `page` is silently dropped upstream and returns the full 12.4 MB listing, so a
+  // page is always emitted alongside it.
+  q.set('page', String(page ?? 1));
+  q.set('limit', String(limit ?? 30));
+  return q;
+}
+
+/** Read the token from env. No fallback literal — an unset credential must fail, never degrade. */
+export function requireToken(env = process.env) {
+  const token = env.FORGE_TOKEN;
+  if (!token) {
+    throw new CiStatusError(
+      'FORGE_TOKEN is not set. It is the dedicated read-only forge token ' +
+        '(read:repository + read:issue + read:package). Set it in your environment; see ' +
+        'docs/runbooks/ci.md.',
+    );
+  }
+  return token;
+}
+
+/**
+ * Turn a bare 401/403 into a message naming the scope that is missing.
+ * A bare status code is indistinguishable from an expired credential and cost this design a full
+ * revision cycle to diagnose — never surface one on its own.
+ */
+export function describeAuthFailure(status, endpoint) {
+  const hit = SCOPE_BY_ENDPOINT.find(([re]) => re.test(endpoint));
+  const scope = hit ? hit[1] : 'read:repository';
+  return (
+    `Forge returned ${status} for ${endpoint} — the token is missing the \`${scope}\` scope. ` +
+    'This is granular scope, not expiry: the same token can return 200 on other endpoints in the ' +
+    'same second. Mint a token with read:repository + read:issue + read:package and set it as ' +
+    'FORGE_TOKEN.'
+  );
+}
+
+/** Write a raw payload to disk and return its path. Raw payloads must never reach stdout (). */
+export function cacheRawPayload(dir, name, text) {
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, `${name}.json`);
+  writeFileSync(path, text);
+  return path;
+}
+
+// --- Check state classification -----------------------------------------------------------------
+//
+// Two of the five states are reported WRONG by the raw API and must be derived, never read directly:
+//
+//   skipped     A path-gated job settles to `success` with description "Skipped". Counting it as
+//               pending makes a green PR look blocked forever. Fails SAFE (an unnecessary wait).
+//               The payload says a job was skipped; it never says WHY (see classifySkipCause).
+//   superseded  A cancelled run's contexts report status="failure" for a commit that was never
+//               broken — measured 13/16 on a real superseded commit. Fails LOUD (it announces a
+//               broken build that isn't), so it is the worse of the two. The tell: every job dies
+//               together on a change that could not have affected them all.
+
+// The forge phrases these as sentences, and the exact wording was MEASURED, not guessed:
+//   cancelled → "Has been cancelled"   (observed on a real superseded commit)
+//   skipped   → "Has been skipped"     (observed on a path-gated job)
+// Anchored so a genuine failure whose message merely CONTAINS "cancelled" cannot be silently
+// reclassified as superseded — that would hide a real break. The bare forms are accepted too, in
+// case the wording is shortened upstream.
+const CANCELLED_DESCRIPTION = /^(?:has been )?cancelled$/i;
+const SKIPPED_DESCRIPTION = /^(?:has been )?skipped$/i;
+
+/** Split `ci / e2e (pull_request)` into its job and event halves. */
+export function parseContext(context) {
+  const m = String(context).match(/^(.*?)\s*\((push|pull_request|workflow_dispatch|schedule)\)\s*$/);
+  return m ? { job: m[1], event: m[2] } : { job: String(context).trim(), event: null };
+}
+
+/**
+ * The JOB that owns a context's evidence bundle — which is NOT always the tail of the context.
+ *
+ * Bundles are versioned `<runId>--<jobName>`, so getting this wrong turns a 404 into the confident
+ * wrong sentence "no bundle exists … the job may have died before the digest step ran".
+ *
+ * Two shapes of context reach this repository's commits, and they nest differently:
+ *
+ *   `guardrails / naming`     a real Actions check. Forgejo renders it `<workflow> / <job>` WITH
+ *                             spaces around the slash, so the job is the tail.
+ *   `image-scan/weekly` a NARROW status a job posts about ITSELF by curl (items #418, #485).
+ *                             It carries no ` / ` **deliberately**: branch protection requires the
+ *                             glob `image-scan / image-scan*`, and a separator-less
+ *                             context cannot match it, which is the only reason these are safe to
+ *                             post. Here the tail is a LABEL (`weekly`, `expiry`) and the
+ *                             bundle-owning job is the part BEFORE the slash.
+ *
+ * Measured on the 2026-09-25 weekly sweep: `image-scan/weekly` resolved to `weekly`, so
+ * `failure --run 3946` asked for `3946--weekly` and reported the bundle absent. It exists as
+ * `3946--image-scan`.
+ */
+export function bundleJobName(context) {
+  const { job } = parseContext(context);
+  const parts = job.split(' / ');
+  // A real Actions check: `<workflow> / <job>` (two or more segments, spaces included).
+  if (parts.length > 1) return parts[parts.length - 1].trim();
+  // A narrow self-posted status: `<job>/<label>`, no spaces. The job owns the bundle, not the label.
+  const [head] = job.split('/');
+  return head.trim();
+}
+
+/**
+ * The events whose runs POST each narrow status, read from each posting step's `if:`.
+ *
+ * A narrow status carries no `(event)` suffix, so the context alone cannot say which run it came
+ * from. Without this table the match fell back to "the first run of that workflow on the sha", and
+ * that is right only by list order. Measured 2026-11-01 on 7d27f72f: the Friday cron and a push run
+ * of image-scan.yml share the sha, so the answer depended on which was listed first.
+ *
+ * Every narrow status a workflow posts must be listed here; (n4) in ci-status.test.mjs fails otherwise.
+ */
+export const NARROW_STATUS_EVENTS = {};
+
+/**
+ * The event that STARTED a run. This forge reports a schedule run as `event: push`, and only
+ * `trigger_event` says `schedule`. Matching on `event` alone handed
+ * a push check the cron's run id. `event` is the fallback for a payload without `trigger_event`.
+ */
+const runTrigger = (r) => r.trigger_event || r.event;
+
+/**
+ * Find the run that produced a context, matching on BOTH workflow file and event — the same job
+ * appears once per event and the two can disagree, so matching on workflow alone picks the wrong run.
+ *
+ * A narrow status (no suffix) matches only runs of an event that posts it (`NARROW_STATUS_EVENTS`).
+ * An unlisted one keeps the old any-event match; (n4) keeps that set empty for what workflows post.
+ */
+export function findRunForContext(context, runs = []) {
+  const { job, event } = parseContext(context);
+  const workflow = job.split('/')[0].trim();
+  const events = event !== null ? [event] : NARROW_STATUS_EVENTS[job.trim()] ?? null;
+  return (
+    runs.find(
+      (r) => r.workflow_id === `${workflow}.yml` && (events === null || events.includes(runTrigger(r))),
+    ) ?? null
+  );
+}
+
+/**
+ * Classify one commit status into a `CheckState`.
+ * @param {{status: string, description?: string}} status
+ * @param {{status?: string}|null} [run] the owning run, when available
+ * @returns {'passed'|'failed'|'skipped'|'waiting'|'superseded'}
+ */
+export function classifyCheckState(status, run = null) {
+  const description = status.description ?? '';
+
+  // Cancelled FIRST: these arrive as status="failure" and would otherwise classify as failed.
+  // Two independent signals — the description is direct but is a UI string that could be reworded;
+  // the run's own status is structural but depends on the context→run match being right. Either
+  // alone suffices, so a wording change cannot silently turn superseded back into failed.
+  if (CANCELLED_DESCRIPTION.test(description.trim()) || run?.status === 'cancelled') return 'superseded';
+
+  if (status.status === 'pending') return 'waiting';
+  if (status.status === 'success') return SKIPPED_DESCRIPTION.test(description.trim()) ? 'skipped' : 'passed';
+  return 'failed';
+}
+
+// --- Why a job was SKIPPED -----------------------------------------------------------
+//
+// `(path-gated -> satisfied)` used to be printed for every skipped context. That states a CAUSE the
+// commit-status payload does not carry, and it is only sometimes the right one: a job is skipped
+// just as readily because a job it `needs:` failed.
+//
+// Measured on an earlier PR (2026-09-08). Commit 88ee3ea7 touched `agents/**` and `mcp-servers/**`, and
+// `ci / e2e` was rendered `skipped (path-gated -> satisfied)` — i.e. "this diff does not
+// warrant E2E". Both halves were false: those globs ARE in ci's `changes` filter, and e2e
+// `needs: [affected, changes]` while `affected` had failed on one E501. Fixing the lint let e2e
+// run, and it caught a real defect (gateway -> web-api-mcp returned 421). A label that asserts the
+// wrong cause is worse than no label, because it terminates the investigation.
+//
+// The forge exposes no per-run-jobs endpoint (see the file header), so the dependency edges are read
+// from the workflow YAML in THIS CHECKOUT. That source can legitimately be unavailable — a different
+// cwd, a commit whose workflow set differs — and where it is, the label says the cause is not
+// determined rather than picking one. Nothing here changes the VERDICT: a dependency-skipped context
+// still counts as satisfied exactly as before, and the merge is blocked by the failed dependency
+// itself, which is the truthful reason.
+
+const WORKFLOWS_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', '.forgejo', 'workflows');
+
+/**
+ * Extract `job -> needs[]` from one workflow document, keyed the way a commit CONTEXT names a job
+ * (`ci / e2e`) so the result can be looked up straight from a check.
+ *
+ * A job with no `needs:` maps to `[]` — an EMPTY list, distinct from an absent key. That difference
+ * is the whole point: `[]` proves the job can only have been skipped by its own gate, while a
+ * missing key means this graph knows nothing about it.
+ *
+ * HAND-ROLLED rather than handed to the `yaml` package, and that is not a preference. This module
+ * must run where node_modules may not be installed (an operator's checkout, or a job that runs node
+ * directly). A `yaml` import here would pass every local test (it is a devDependency) and then die
+ * with ERR_MODULE_NOT_FOUND. The whole reachable import graph stays node-builtins-and-local-files
+ * only, and a test enforces it.
+ *
+ * Reading only two shapes keeps it honest: a top-level `jobs:` mapping, and each job's `needs:` at
+ * one fixed depth. Anything it cannot read contributes no edge, which downgrades a label to
+ * "undetermined" — never to a wrong cause. A test cross-checks it against the real `yaml` parser
+ * over every workflow in the repository, so "small enough to hand-roll" is measured, not asserted.
+ */
+export function parseWorkflowNeeds(yamlText, workflow) {
+  const out = new Map();
+  const lines = String(yamlText ?? '').split(/\r?\n/);
+  // A trailing comment cannot appear inside these values (identifiers and flow lists), so splitting
+  // on whitespace-then-# is sufficient here and needs no quote tracking.
+  const uncomment = (v) => v.split(/\s+#/)[0].trim();
+  const unquote = (v) => v.replace(/^['"]|['"]$/g, '').trim();
+
+  let i = lines.findIndex((l) => /^jobs:\s*(#.*)?$/.test(l));
+  if (i < 0) return out;
+
+  let job = null;
+  for (i += 1; i < lines.length; i++) {
+    const line = lines[i];
+    // Blank and column-0 comment lines are legal INSIDE the jobs block, so they must be skipped
+    // before the "back to a top-level key" test — otherwise one comment ends the scan early and
+    // every job below it silently vanishes from the graph.
+    if (!line.trim() || /^\s*#/.test(line)) continue;
+    if (/^\S/.test(line)) break; // a new top-level key: `jobs:` is over
+
+    const header = /^ {2}([A-Za-z0-9_.-]+):\s*(#.*)?$/.exec(line);
+    if (header) {
+      job = `${workflow} / ${header[1]}`;
+      out.set(job, []);
+      continue;
+    }
+    if (!job) continue;
+
+    // Exactly four spaces — a job's own key. Nothing nested deeper (a step's `if:` naming
+    // `needs.changes.outputs.app`, say) can be mistaken for the declaration.
+    const decl = /^ {4}needs:\s*(.*)$/.exec(line);
+    if (!decl) continue;
+    const rest = uncomment(decl[1]);
+
+    if (rest.startsWith('[')) {
+      const inner = rest.slice(1, rest.lastIndexOf(']') === -1 ? undefined : rest.lastIndexOf(']'));
+      const deps = inner.split(',').map((d) => unquote(uncomment(d))).filter(Boolean);
+      out.set(job, deps.map((d) => `${workflow} / ${d}`));
+    } else if (rest) {
+      out.set(job, [`${workflow} / ${unquote(rest)}`]);
+    } else {
+      // Block sequence on the following lines.
+      const deps = [];
+      while (i + 1 < lines.length) {
+        const item = /^ {6}-\s*(.+?)\s*$/.exec(lines[i + 1]);
+        if (!item) break;
+        deps.push(`${workflow} / ${unquote(uncomment(item[1]))}`);
+        i += 1;
+      }
+      out.set(job, deps);
+    }
+  }
+  return out;
+}
+
+/**
+ * Read every workflow in `dir` into one graph.
+ *
+ * `workflows` names the files that actually PARSED. A workflow absent from that set contributes no
+ * edges and its jobs are reported as undetermined — never as path-gated. Unreadable and malformed
+ * are both non-fatal: this is a labelling aid, and it must not take the whole tool down.
+ */
+export function loadNeedsGraph(dir = WORKFLOWS_DIR) {
+  const needs = new Map();
+  const workflows = new Set();
+  let files;
+  try {
+    files = readdirSync(dir).filter((f) => /\.ya?ml$/.test(f));
+  } catch {
+    return { needs, workflows };
+  }
+  for (const file of files) {
+    const workflow = file.replace(/\.ya?ml$/, '');
+    try {
+      for (const [job, deps] of parseWorkflowNeeds(readFileSync(join(dir, file), 'utf8'), workflow)) {
+        needs.set(job, deps);
+      }
+      workflows.add(workflow);
+    } catch {
+      // A workflow this build cannot parse yields no edges — undetermined, which is honest.
+    }
+  }
+  return { needs, workflows };
+}
+
+/** Parsed once per process: the same nine files answer every check on every commit. */
+let cachedNeedsGraph = null;
+export function defaultNeedsGraph() {
+  cachedNeedsGraph ??= loadNeedsGraph();
+  return cachedNeedsGraph;
+}
+
+/**
+ * Decide WHY a skipped check was skipped.
+ *
+ * @returns {{cause: 'gate'|'dependency'|'undetermined', failed: string[]}}
+ *
+ * `dependency` is claimed only on two pieces of evidence together: the workflow declares the edge,
+ * AND the dependency's own status in THIS commit says it did not pass. Anything less is
+ * `undetermined`. A dependency that was itself skipped is not a separate cause — Actions propagates
+ * a skip down the graph, so the root cause is still a gate.
+ */
+export function classifySkipCause(check, checks, graph) {
+  const undetermined = { cause: 'undetermined', failed: [] };
+  const workflow = String(check.job).split('/')[0].trim();
+  if (!graph?.workflows?.has(workflow)) return undetermined;
+  const deps = graph.needs.get(check.job);
+  if (!deps) return undetermined; // the workflow parsed, but this job is not in it (renamed, or older)
+  if (!deps.length) return { cause: 'gate', failed: [] };
+
+  const { event } = parseContext(check.context);
+  const sameEvent = new Map(
+    checks.filter((c) => parseContext(c.context).event === event).map((c) => [c.job, c]),
+  );
+  const failed = [];
+  let unknown = false;
+  for (const dep of deps) {
+    const reported = sameEvent.get(dep);
+    if (!reported || reported.state === 'waiting') unknown = true;
+    else if (reported.state === 'failed' || reported.state === 'superseded') failed.push(dep);
+  }
+  if (failed.length) return { cause: 'dependency', failed };
+  return unknown ? undetermined : { cause: 'gate', failed: [] };
+}
+
+// --- Merge verdict ------------------------------------------------------------------------------
+
+/**
+ * FALLBACK required contexts, used only when branch protection cannot be read. The live set is
+ * fetched from the forge (see resolveRequiredGlobs) because THIS LIST DRIFTED and produced a wrong
+ * verdict: on 2026-07-26 it held five globs while `main` required six — an earlier change had added
+ * `image-scan / image-scan*` and nobody mirrored it here. ci-status printed
+ * `VERDICT mergeable` + exit 0 while the merge API answered 405. Over-reporting mergeable is the
+ * dangerous direction, so the hand-maintained list is now the backup, not the source of truth.
+ *
+ * an advisory context and `scan` remain deliberately absent — branch protection does not require them, so
+ * their failures are advisory (/b).
+ */
+export const REQUIRED_CONTEXT_GLOBS = ['guardrails*'];
+
+/**
+ * Extract the required-status-check globs a branch-protection payload applies to `branch`.
+ *
+ * @returns {string[]|null} the globs, or null when no rule with status checks covers the branch.
+ *   null means "unknown — fall back", NEVER []: an empty list would mark every context optional and
+ *   render everything mergeable, which is the same over-reporting bug wearing a different hat.
+ */
+export function parseRequiredGlobs(protections, branch) {
+  if (!Array.isArray(protections)) return null;
+  const rule = protections.find((p) => {
+    if (!p || p.enable_status_check !== true) return false;
+    if (!Array.isArray(p.status_check_contexts) || p.status_check_contexts.length === 0) return false;
+    // Forgejo carries both: `branch_name` (legacy, literal) and `rule_name` (may be a glob such as
+    // `release/*`). Match either, so a glob rule is not silently missed.
+    if (p.branch_name && p.branch_name === branch) return true;
+    return typeof p.rule_name === 'string' && p.rule_name.length > 0 && globToRegExp(p.rule_name).test(branch);
+  });
+  if (!rule) return null;
+  const globs = rule.status_check_contexts.filter((c) => typeof c === 'string' && c.length > 0);
+  return globs.length ? globs : null;
+}
+
+/**
+ * Resolve the required globs, preferring the forge's live branch protection.
+ *
+ * Degrades rather than aborts: a token without the scope, or an unreachable forge, must still yield
+ * a verdict. But the fallback is REPORTED, because a silent fallback recreates the hand-maintained
+ * list this whole change exists to retire.
+ *
+ * @param {() => Promise<any>} fetchProtections
+ * @returns {Promise<{globs: string[], source: 'branch-protection'|'fallback', note: string}>}
+ */
+export async function resolveRequiredGlobs(fetchProtections, branch) {
+  try {
+    const globs = parseRequiredGlobs(await fetchProtections(), branch);
+    if (globs) {
+      return { globs, source: 'branch-protection', note: `branch protection for \`${branch}\`` };
+    }
+    return {
+      globs: REQUIRED_CONTEXT_GLOBS,
+      source: 'fallback',
+      note: `no status-check rule in branch protection for \`${branch}\` — using the built-in list, which may be stale`,
+    };
+  } catch (err) {
+    return {
+      globs: REQUIRED_CONTEXT_GLOBS,
+      source: 'fallback',
+      note: `could not read branch protection (${err.message}) — using the built-in list, which may be stale`,
+    };
+  }
+}
+
+/** Contexts published by this feature's own write side — not CI results, so never a verdict input. */
+const SELF_PUBLISHED_CONTEXT = /^ci-digest\b/;
+
+const globToRegExp = (glob) =>
+  new RegExp('^' + glob.split('*').map((s) => s.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
+
+/**
+ * Keep only the contexts belonging to one event.
+ *
+ * THE EVENT-SUFFIX RULE (measured 2026-07-19): a job produces one context PER EVENT, and the two
+ * can disagree — on a real superseded commit `guardrails / secret-scan` was push=success but
+ * pull_request=failure. A glob like `guardrails*` matches both, so a verdict that does not select
+ * an event reports failure for a commit whose push run was entirely green.
+ */
+export function selectEventContexts(statuses, event) {
+  // One pass, so an unsuffixed context is never counted twice — a duplicated REQUIRED context would
+  // double-count in blocking/waiting. (Reachable when `event` is itself null.)
+  return statuses.filter((s) => {
+    const ctxEvent = parseContext(s.context).event;
+    // A context with no event suffix belongs to whichever event is being resolved.
+    return ctxEvent === null || ctxEvent === event;
+  });
+}
+
+/**
+ * Reduce a context's status history to its CURRENT status.
+ *
+ * A context accumulates one status per state transition, so a job that failed and was then re-run
+ * successfully on the same event leaves both a `failure` and a `success` behind. Without this the
+ * verdict classified every entry, so the stale `failure` still landed in `blocking` and one context
+ * could be reported twice — as `passed` AND `failed`.
+ *
+ * Keyed on the FULL context string rather than on `parseContext(...).job`. Two reasons, and both
+ * produce a wrong verdict rather than an obvious break:
+ *   * `foo (push)` and `foo (pull_request)` are different checks that legitimately disagree — the
+ *     event-suffix rule `selectEventContexts` exists to enforce. Keying on the job would merge them.
+ *   * an unsuffixed `foo` is admitted alongside a suffixed one by that same function, and the two
+ *     are not interchangeable.
+ *
+ * Newest wins in BOTH directions. "Any success passes" would be the easy shortcut and is the
+ * dangerous one: it absorbs a newer genuine failure into an older success.
+ *
+ * Equal `created_at` is reachable (the forge stamps to the second), so the original array index is
+ * the tiebreak. Without it the verdict would depend on sort stability — a coin-flip verdict, which
+ * is harder to notice and harder to reproduce than a consistently wrong one.
+ */
+export function collapseToNewestPerContext(statuses) {
+  const newest = new Map();
+  statuses.forEach((s, index) => {
+    const previous = newest.get(s.context);
+    if (!previous) {
+      newest.set(s.context, { status: s, index });
+      return;
+    }
+    const at = Date.parse(s.created_at ?? '');
+    const previousAt = Date.parse(previous.status.created_at ?? '');
+    const bothUnparseable = Number.isNaN(at) && Number.isNaN(previousAt);
+    const isNewer = bothUnparseable || Number.isNaN(previousAt)
+      ? index > previous.index
+      : Number.isNaN(at)
+        ? false
+        : at > previousAt || (at === previousAt && index > previous.index);
+    if (isNewer) newest.set(s.context, { status: s, index });
+  });
+  return [...newest.values()].map((entry) => entry.status);
+}
+
+/** Infer which event to resolve when the caller did not say: a PR's own contexts win if present. */
+function inferEvent(statuses) {
+  return statuses.some((s) => parseContext(s.context).event === 'pull_request') ? 'pull_request' : 'push';
+}
+
+/**
+ * Roll up commit statuses into the signal that actually gates merging.
+ * Computed over REQUIRED contexts only — "no job failed" is a different, weaker question.
+ *
+ * @returns {{mergeable: boolean, blocking: object[], waiting: object[], advisory: object[],
+ *            advisoryWaiting: object[], superseded: object[], required: object[], all: object[]}}
+ */
+export function computeMergeVerdict(
+  statuses,
+  { requiredGlobs = REQUIRED_CONTEXT_GLOBS, event, runs = [], needsGraph = defaultNeedsGraph() } = {},
+) {
+  const chosenEvent = event ?? inferEvent(statuses);
+  const patterns = requiredGlobs.map(globToRegExp);
+
+  const toChecks = (list) =>
+    collapseToNewestPerContext(list)
+      .filter((s) => !SELF_PUBLISHED_CONTEXT.test(parseContext(s.context).job))
+      .map((s) => {
+        const { job } = parseContext(s.context);
+        const run = findRunForContext(s.context, runs);
+        return {
+          context: s.context,
+          job,
+          description: s.description ?? '',
+          state: classifyCheckState(s, run),
+          // Carried so `failure --full` can derive the bundle version without the operator passing
+          // --run by hand. Matched via the context's OWN event, since the same job appears once per
+          // event and the two can be different runs.
+          runId: run?.id ?? null,
+          required: patterns.some((re) => re.test(job)),
+        };
+      });
+
+  // The VIEW: one event, as the operator asked for it (or as inferEvent chose).
+  const checks = toChecks(selectEventContexts(statuses, chosenEvent));
+
+  // THE GATE: every event, because that is what branch protection evaluates.
+  //
+  // Required contexts are matched by GLOB and every glob ends in `*`, so
+  // `image-scan / image-scan*` matches the push-suffixed context as well as the
+  // pull_request one. Deciding `mergeable` from the event-filtered view therefore reported a green
+  // that the merge API refused with 405 — measured on an earlier PR (2026-08-29) and again on an earlier PR
+  // (2026-09-01), both times with the same tell: a PR-event job path-gated to a 2s skip beside a
+  // push-event job that ran the real work and failed.
+  //
+  // This does NOT undo the event-suffix rule that `selectEventContexts` exists for. That rule
+  // protects against a SUPERSEDED commit reading as failed, and superseding is handled a layer
+  // earlier: `classifyCheckState` maps a cancelled context to `superseded`, never `failed`, so a
+  // cancelled context cannot enter `gate.blocking`. Verified on the status-cancelled fixture, which
+  // has 13 superseded contexts and zero failures under a whole-commit evaluation.
+  const gateChecks = toChecks(statuses);
+
+  // Why each skip happened. Answered against the GATE, so a dependency reported only on
+  // the other event is still seen; `classifySkipCause` re-narrows to the check's own event itself.
+  for (const c of [...checks, ...gateChecks]) {
+    if (c.state === 'skipped') c.skip = classifySkipCause(c, gateChecks, needsGraph);
+  }
+
+  const required = checks.filter((c) => c.required);
+  const blocking = required.filter((c) => c.state === 'failed');
+  const waiting = required.filter((c) => c.state === 'waiting');
+  const superseded = checks.filter((c) => c.state === 'superseded');
+  const advisory = checks.filter((c) => !c.required && c.state === 'failed');
+
+  // An advisory context that has not reported yet. It gates nothing — that is what
+  // `advisory` means — but the commit is not SETTLED while it is running, and `watch` used to
+  // answer the narrower question as though it were the wider one: an earlier PR merged 11/11 green,
+  // an advisory context then failed in 3s on ERR_MODULE_NOT_FOUND, the CD dispatch never
+  // happened, and nothing said so. an advisory context is the ONLY place a declined or failed deploy
+  // becomes visible, so dropping its row is dropping the deploy outcome.
+  const advisoryWaiting = checks.filter((c) => !c.required && c.state === 'waiting');
+
+  const gateRequired = gateChecks.filter((c) => c.required);
+  const gateAdvisoryChecks = gateChecks.filter((c) => !c.required);
+  const gate = {
+    all: gateChecks,
+    required: gateRequired,
+    blocking: gateRequired.filter((c) => c.state === 'failed'),
+    waiting: gateRequired.filter((c) => c.state === 'waiting'),
+    // Whole-commit, for the same reason the required set is: an advisory context runs on the
+    // PUSH event only, so watching a pull_request view would never see it at all — which is
+    // precisely the context this item exists to stop losing.
+    advisory: gateAdvisoryChecks.filter((c) => c.state === 'failed'),
+    advisoryWaiting: gateAdvisoryChecks.filter((c) => c.state === 'waiting'),
+  };
+
+  // A required context that produced no status at all does not hold the verdict hostage — a
+  // zero-match glob is treated as satisfied, mirroring branch protection. But that reasoning is
+  // PER GLOB. If NOTHING has reported yet, `[].every()` is vacuously true and an unreported commit
+  // renders as green — which also made `watch` return immediately instead of waiting. Absent
+  // results are "not yet known", never "satisfied".
+  // Both derived from the GATE, not the view — the question "may I merge" is not event-scoped.
+  const noResults = gateChecks.length === 0;
+  const mergeable = !noResults && gateRequired.every((c) => c.state === 'passed' || c.state === 'skipped');
+
+  return {
+    mergeable,
+    noResults,
+    blocking,
+    waiting,
+    advisory,
+    advisoryWaiting,
+    superseded,
+    required,
+    all: checks,
+    gate,
+    event: chosenEvent,
+  };
+}
+
+/**
+ * Map a verdict to a process exit code.
+ *
+ * Exported so the invariant "exit 0 ⟺ mergeable" is testable — the two disagreed before, which is
+ * the dangerous direction: a `ci-status status && merge` wrapper would merge a commit whose CI was
+ * cancelled and never actually passed.
+ */
+export function exitCodeForVerdict(verdict) {
+  // Read the GATE, not the view. A required context can fail on an event the current
+  // view filters out, and the merge API refuses on it — so deciding from `verdict.blocking` alone
+  // returned 3 ("still waiting") or even 0 for a commit that had genuinely failed.
+  const blocking = verdict.gate?.blocking ?? verdict.blocking;
+  const waiting = verdict.gate?.waiting ?? verdict.waiting;
+  if (blocking.length) return 1;
+  // Superseded and not-yet-reported are both "no verdict yet" — the same answer as waiting.
+  if (waiting.length || verdict.noResults || !verdict.mergeable) return 3;
+  return 0;
+}
+
+/**
+ * What is still outstanding on this commit — split into the two questions `watch` has to keep apart
+ *.
+ *
+ * `required` is "may I merge". `advisory` is "has this commit finished happening". They are NOT the
+ * same question and the difference is not academic: on 2026-09-09, an earlier PR merged with 11/11
+ * required contexts green, and the push run's an advisory context then failed in 3 seconds with
+ * `ERR_MODULE_NOT_FOUND: Cannot find package 'yaml'`. Nothing blocked, `main` stayed green, and the
+ * CD dispatch simply did not happen. A human found it by opening the run and reading the advisory
+ * row. Verifying the fix, `watch` again returned green while an advisory context was still `pending`, and
+ * confirming it took a hand-rolled polling loop over that one context.
+ *
+ * So `watch` waits for both by default. The exit CODE is still decided by `required` alone —
+ * `exit 0 ⟺ mergeable` is load-bearing for a `ci-status && merge` wrapper — which is why this
+ * returns the two lists rather than one boolean: the caller decides what to WAIT for and what to
+ * RETURN separately.
+ *
+ * Gate, not view, on both counts. an advisory context reports on the push event only.
+ */
+export function outstandingContexts(verdict, { includeAdvisory = true } = {}) {
+  const required = verdict.gate?.waiting ?? verdict.waiting;
+  // "Nothing has reported yet" has an empty `waiting` and is not a verdict — it is the absence of
+  // one. It belongs on the required side because it blocks the merge question too.
+  const requiredOutstanding = required.length > 0 || verdict.noResults;
+  const advisory = includeAdvisory
+    ? (verdict.gate?.advisoryWaiting ?? verdict.advisoryWaiting ?? [])
+    : [];
+  return { required, requiredOutstanding, advisory, settled: !requiredOutstanding && advisory.length === 0 };
+}
+
+/**
+ * Parse the target/polling arguments, rejecting a flag whose value is missing or malformed.
+ * `--pr $PR` with an unset PR used to fall through to the local HEAD and confidently report on a
+ * completely different commit.
+ */
+export function parseTargetArgs(argv) {
+  const target = {};
+  let timeoutSeconds = 45 * 60;
+  let requiredOnly = false;
+  const valueOf = (flag, i) => {
+    const v = argv[i + 1];
+    if (v === undefined || v.startsWith('--')) throw new CiStatusError(`${flag} requires a value`);
+    return v;
+  };
+  for (let i = 1; i < argv.length; i++) {
+    const flag = argv[i];
+    if (flag === '--sha') target.sha = valueOf(flag, i++);
+    else if (flag === '--pr') target.pr = valueOf(flag, i++);
+    else if (flag === '--branch') target.branch = valueOf(flag, i++);
+    else if (flag === '--job') target.job = valueOf(flag, i++);
+    else if (flag === '--run') target.run = valueOf(flag, i++);
+    else if (flag === '--full') target.full = true;
+    // `durations --propose` emits the ceilings table instead of the human-readable distribution
+    //. Writing it is deliberately the caller's job: a command that rewrote a committed
+    // file as a side effect of a READ would be the surprising half of this tool.
+    else if (flag === '--propose') target.propose = true;
+    // `watch` waits for advisory contexts by DEFAULT, because "has this commit settled"
+    // is the question it is asked. This narrows it back to the merge question alone.
+    else if (flag === '--required-only') requiredOnly = true;
+    else if (flag === '--runs') {
+      // How many runs `durations` samples. Distinct from `--run`, which selects ONE run's commit.
+      const raw = valueOf(flag, i++);
+      target.runs = Number(raw);
+      if (!Number.isInteger(target.runs) || target.runs <= 0) {
+        throw new CiStatusError(`--runs must be a positive whole number of runs, got ${JSON.stringify(raw)}`);
+      }
+    }
+    else if (flag === '--event') {
+      target.event = valueOf(flag, i++);
+      if (!['push', 'pull_request'].includes(target.event)) {
+        throw new CiStatusError(`--event must be push or pull_request, got ${JSON.stringify(target.event)}`);
+      }
+    }
+    else if (flag === '--timeout') {
+      const raw = valueOf(flag, i++);
+      timeoutSeconds = Number(raw);
+      if (!Number.isFinite(timeoutSeconds) || timeoutSeconds <= 0) {
+        throw new CiStatusError(`--timeout must be a positive number of seconds, got ${JSON.stringify(raw)}`);
+      }
+    } else throw new CiStatusError(`Unknown argument: ${flag}`);
+  }
+  return { target, timeoutSeconds, requiredOnly };
+}
+
+// --- Rendering the three-way digest outcome ----------------------------
+
+/** What to DO about each failure sub-reason. The sub-reason is only useful if it implies an action. */
+const FAILED_NEXT_ACTION = {
+  'no-credential': 'check whether this run had Actions secrets at all — an AGit-headed run has NONE, ' +
+    'and every ${{ secrets.* }} is empty on it. That is the 2026-08-01 case.',
+  forbidden: 'the token was present but lacked the scope this endpoint needs — grant the scope the ' +
+    'digest\'s own error message names.',
+  transport: 'the forge was unreachable or returned an unexpected status — retry, or check the forge.',
+  unknown: 'the failure did not match a known class — read the summary above and the job log.',
+};
+
+/**
+ * Render the "there is no digest here" case, distinguishing a BROKEN digest from an ABSENT one.
+ *
+ * These two used to render identically, as "no digest was published for them". The reader believes
+ * the absent reading, because it is the ordinary one — and on 2026-08-01 that is exactly what
+ * happened: the digest had collected the evidence and thrown it away for want of a credential, and
+ * the report said nothing had been published, which was true and useless.
+ *
+ * The "no digest was published" wording is RESERVED for a genuine absence (). It is kept, not
+ * retired — it is still the right answer when the job died before the digest step ran, and removing
+ * it everywhere would trade one wrong answer for another.
+ *
+ * Pure: takes the failures and whatever outcomes were recovered, returns lines. Exported so the
+ * distinction can be asserted without a forge.
+ */
+export function renderDigestAbsence(failed, outcomes = []) {
+  const broken = outcomes.filter((o) => o.outcome === 'failed');
+  const lines = [];
+
+  if (broken.length) {
+    lines.push(`${broken.length} job(s) have a digest that RAN and FAILED to publish — the evidence was collected, not lost:`);
+    for (const o of broken) {
+      lines.push(`  ⚠️ ${o.job} — digest ran and FAILED (${o.detail ?? 'unknown'})`);
+      if (o.summary) lines.push(`      ${o.summary}`);
+      lines.push(`      next: ${FAILED_NEXT_ACTION[o.detail] ?? FAILED_NEXT_ACTION.unknown}`);
+    }
+    lines.push('');
+    // Do NOT quote the reserved absent-case wording here, however tempting the contrast is: nothing
+    // downstream — a grep, a reader skimming, or the test that asserts this — can tell a quotation
+    // from a claim, and the whole point of reserving the phrase is that its presence means one thing.
+    lines.push('A broken digest is not a missing one. The diagnosis exists; only its delivery failed,');
+    lines.push('so fixing the cause above recovers it without re-running the job.');
+    lines.push('');
+  }
+
+  const brokenJobs = new Set(broken.map((o) => o.job));
+  // bundleJobName, not the context's tail: `outcomes` are keyed by it, and for a narrow status
+  // (`image-scan/weekly`) the tail is a label, not the job.
+  const stillAbsent = failed.filter((c) => !brokenJobs.has(bundleJobName(c.job)));
+  if (stillAbsent.length) {
+    lines.push(`${stillAbsent.length} job(s) failed, but no digest was published for them:`);
+    for (const c of stillAbsent) lines.push(`  ✗ ${c.job} — ${c.description}`);
+    lines.push('');
+    lines.push('A missing digest usually means the job died BEFORE the digest step ran — a runner crash,');
+    lines.push('malformed workflow YAML, or a fault in the digest step itself. That class is a known,');
+    lines.push('documented gap (spec § Out of Scope); fall back to the out-of-band failure bundle.');
+  }
+  return lines;
+}
+
+// --- Reading published digests --------------------------------------------------------------------
+
+/**
+ * The upsert marker written by scripts/ci-failure-digest.mjs. The two formats live in different
+ * files and nothing but the round-trip assertion in the test suite couples them — keep them in step.
+ */
+export const DIGEST_MARKER_RE = /<!--\s*ci-digest:job=([^\s>]+)\s*-->/;
+
+/** Pull the failure digests out of a PR's comments, optionally narrowing to one job. */
+export function extractDigests(comments, job = null) {
+  return comments
+    .map((c) => {
+      // Anchor the marker at the START of the body: a real digest always leads with its marker, so
+      // an attacker who echoes a marker string mid-comment (or in a log excerpt) can't be mistaken
+      // for an authentic digest. `c.author` is surfaced so a reader can see WHO posted it — the
+      // marker's presence alone is not proof of authenticity (any PR commenter can type it).
+      const first = typeof c.body === 'string' ? c.body.trimStart() : '';
+      const m = first.match(DIGEST_MARKER_RE);
+      return m && first.startsWith(m[0]) ? { id: c.id, job: m[1], body: c.body, author: c.user?.login ?? c.author ?? null } : null;
+    })
+    .filter((d) => d && (job === null || d.job === normalizeJobFilter(job)));
+}
+
+/**
+ * Accept EITHER the bare job name a digest marker carries (`image-scan`) or the
+ * `workflow / job` CONTEXT form this tool prints in its own status table
+ * (`image-scan / image-scan`).
+ *
+ * MEASURED 2026-08-30, an earlier PR. `failure --pr 289 --job "image-scan / image-scan"` —
+ * the value copied straight out of this tool's own output — matched nothing, and an unmatched
+ * filter renders as "no digest was published for them". The digest was on the PR the whole time,
+ * naming all five blocking findings; the mismatch cost a session an hour of local Trivy
+ * reproduction to re-derive them. Every other consumer here already normalises with
+ * `c.job.split('/').pop().trim()`; this path did not.
+ *
+ * The trailing segment is taken only when it is NON-EMPTY, so `"ci / "` cannot degrade into a
+ * match-everything filter — a fail-OPEN filter is the defect being fixed, not a style to copy.
+ */
+/**
+ * Explain a `--job` selection that filtered EVERY digest out, when digests do exist.
+ *
+ * The (x2b) defect was not really the name mismatch — it was that the mismatch was INDISTINGUISHABLE
+ * from absence. `renderDigestAbsence` legitimately owns "nothing was published"; this owns "something
+ * was published and your filter excluded it", which is a different fact and a different fix. Returns
+ * `[]` for both non-cases (no filter, or genuinely nothing published) so the caller can fall through
+ * to the real absence path without a false positive.
+ *
+ * @returns {string[]} lines to emit, or [] when nothing was filtered out
+ */
+export function describeFilteredOutDigests(allDigests, job) {
+  if (job === null || job === undefined) return [];
+  if (!allDigests.length) return [];
+  const available = [...new Set(allDigests.map((d) => d.job))].sort();
+  return [
+    `No digest matches --job "${job}", but ${allDigests.length} digest(s) ARE published on this PR.`,
+    `Available: ${available.join(', ')}`,
+    'Re-run without --job, or pass one of the names above. A filter that matches nothing is NOT',
+    'evidence that a digest is missing — that mismatch once cost an hour of local reproduction.',
+  ];
+}
+
+export function normalizeJobFilter(job) {
+  const tail = String(job).split('/').pop().trim();
+  return tail === '' ? String(job).trim() : tail;
+}
+
+// --- Transport ------------------------------------------------------------------------------------
+
+/**
+ * Repo slug + API base, derived from the origin remote. The host is NEVER printed ().
+ *
+ * Exported for an earlier change (specs/049-forgejo-issue-tracking,): the backlog tool needs the same
+ * derivation, and one copy means one place to fix the trap that the remote — not FORGE_REGISTRY_HOST —
+ * is the only value carrying the API PORT. `origin` is injectable so the parse is unit-testable.
+ */
+export function forgeEndpoint({ origin: injected } = {}) {
+  const origin =
+    injected ?? execFileSync('git', ['remote', 'get-url', 'origin'], { encoding: 'utf8' }).trim();
+  const m = origin.replace(/\.git$/, '').match(/^(https?:\/\/[^/]+)\/([^/]+)\/([^/]+)$/);
+  if (!m) throw new CiStatusError(`could not parse the origin remote into a forge API base`);
+  return { base: `${m[1]}/api/v1`, owner: m[2], repo: m[3] };
+}
+
+async function forgeGet(pathAndQuery, { token, base }) {
+  const res = await fetchWithTimeout(`${base}${pathAndQuery}`, { headers: { Authorization: `token ${token}` } });
+  if (res.status === 401 || res.status === 403) throw new CiStatusError(describeAuthFailure(res.status, pathAndQuery));
+  if (!res.ok) throw new CiStatusError(`Forge returned ${res.status} for ${pathAndQuery}`);
+  return { text: await res.text() };
+}
+
+const CACHE_DIR = process.env.CI_STATUS_CACHE_DIR ?? join(tmpdir(), 'belay-ci-status');
+
+/** Fetch, cache the raw payload to disk, return the parsed object. Raw text never reaches stdout. */
+async function fetchCached(pathAndQuery, conn, cacheName) {
+  const { text } = await forgeGet(pathAndQuery, conn);
+  const path = cacheRawPayload(CACHE_DIR, cacheName, text);
+  return { data: JSON.parse(text), path };
+}
+
+// --- Ref resolution -------------------------------------------------------------------------------
+
+/** The branch whose protection gates this target. A PR is gated by its BASE, not its head. */
+const DEFAULT_PROTECTED_BRANCH = 'main';
+
+export async function resolveSha({ sha, pr, run, branch }, conn) {
+  if (sha) return { sha: assertFullSha(sha), pr: null, base: DEFAULT_PROTECTED_BRANCH, headRef: null, prState: null };
+  if (pr) {
+    const { data } = await fetchCached(`/repos/${conn.owner}/${conn.repo}/pulls/${pr}`, conn, `pull-${pr}`);
+    return {
+      sha: assertFullSha(data.head?.sha),
+      pr: Number(pr),
+      base: data.base?.ref ?? DEFAULT_PROTECTED_BRANCH,
+      // Carried so the verdict can warn about a detached head — see detachedHeadWarning().
+      headRef: data.head?.ref ?? null,
+      // ...and the state, because `head.ref` reverts to refs/pull/N/head once the branch is DELETED.
+      // Without this the warning fires on every merged PR whose branch was tidied up.
+      prState: data.state ?? null,
+    };
+  }
+  // A run id identifies a commit; resolving it is the difference between reporting on that run and
+  // reporting on whatever the working copy happens to be checked out at. `--run` was
+  // parsed and then read by NOTHING — the usage line advertises it and two error messages tell you
+  // to pass it, while `failure --run 2477` silently answered about local HEAD.
+  if (run) {
+    const { data } = await fetchCached(
+      `/repos/${conn.owner}/${conn.repo}/actions/runs/${run}`, conn, `run-${run}`,
+    );
+    return {
+      sha: assertFullSha(data.commit_sha),
+      pr: null,
+      base: DEFAULT_PROTECTED_BRANCH,
+      headRef: null,
+      prState: null,
+      // This payload was fetched for its commit_sha alone and the run's OWN verdict was
+      // thrown away — which is how `failure --run 3521` came to answer "No failed jobs" about a run
+      // whose API status is `failure`. A scheduled workflow can fail while posting NO commit status
+      // at all (image-scan's weekly sweep did, three times), so "no failed contexts" and "no
+      // failure" are different facts. Carried through so cmdFailure can tell them apart.
+      run: { id: Number(run), status: data.status ?? null, conclusion: data.conclusion ?? null },
+    };
+  }
+
+  const ref = branch ?? 'HEAD';
+  return {
+    sha: execFileSync('git', ['rev-parse', ref], { encoding: 'utf8' }).trim(),
+    pr: null,
+    base: DEFAULT_PROTECTED_BRANCH,
+    headRef: null,
+    prState: null,
+  };
+}
+
+/**
+ * A PR whose head is `refs/pull/N/head` has NO backing branch. Forgejo treats such a head as
+ * untrusted and runs it **without Actions secrets** — every `${{ secrets.* }}` arrives EMPTY.
+ *
+ * This is not hypothetical and it is not rare: an AGit push (`git push origin HEAD:refs/for/main`)
+ * produces exactly this shape by construction. On 2026-08-01 it cost two sessions most of a day.
+ * The empty `NX_SELF_HOSTED_REMOTE_CACHE_ACCESS_TOKEN` made nx report
+ * `Misconfigured remote cache endpoint`, which reads as a cache or credential fault — so the hunt
+ * went to the cache server, the token, the bucket and the nx wrapper, none of which were broken.
+ * The tell was measuring the secret's LENGTH inside the job: 0, sha256 `e3b0c44298fc` (the empty
+ * string). The same commits on a branch-backed PR passed first try.
+ *
+ * The condition is invisible in the web UI, which shows a normal-looking PR. Hence this warning.
+ *
+ * @param {string|null} headRef `head.ref` from the pulls API.
+ * @returns {string|null} A multi-line warning, or null when the head is a real branch.
+ */
+export function detachedHeadWarning(headRef, { prState } = {}) {
+  if (typeof headRef !== 'string' || !/^refs\/pull\/\d+\/head$/.test(headRef)) return null;
+  // A CLOSED/merged PR reports refs/pull/N/head once its branch is deleted — routine tidy-up, not a
+  // detached PR. Warning there would call a green, correctly-run PR untrustworthy. Measured on #125:
+  // opened from a real branch, passed every check, flagged only after the branch was removed.
+  if (prState && prState !== 'open') return null;
+  return (
+    `⚠ DETACHED HEAD — this PR's head is \`${headRef}\`, not a branch.\n` +
+    `  Runs from a non-branch head get NO Actions secrets: every \${{ secrets.* }} is EMPTY.\n` +
+    `  A job that needs a secret fails in a way that looks unrelated to the code. A red run here\n` +
+    `  may say nothing about the code. Re-open the PR from a real branch:\n` +
+    `      git push origin HEAD:<branch> && <open the PR against that branch>\n` +
+    `  Cause: an AGit push (HEAD:refs/for/main) never creates a backing branch.`
+  );
+}
+
+// --- Rendering ------------------------------------------------------------------------------------
+
+const SYMBOL = { passed: '✓', failed: '✗', skipped: '○', waiting: '⏳', superseded: '➖' };
+const ANNOTATION = {
+  waiting: '(queued or running)',
+  superseded: '(newer push — not a failure)',
+};
+
+/**
+ * The trailing note on a check's row.
+ *
+ * A skip is the only state whose annotation is DERIVED rather than fixed, because the payload does
+ * not say why it happened. The three outcomes are deliberately different sentences: one
+ * closes the question, one redirects it at the dependency, and one admits it is open.
+ */
+export function annotateCheck(check) {
+  if (check?.state !== 'skipped') return ANNOTATION[check?.state] ?? '';
+  const skip = check.skip ?? { cause: 'undetermined', failed: [] };
+  if (skip.cause === 'gate') return '(path-gated → satisfied)';
+  if (skip.cause === 'dependency') {
+    const names = skip.failed.map((job) => job.split('/').pop().trim()).join(', ');
+    return `(NOT run — needs: ${names}, which did not pass)`;
+  }
+  return '(skipped — cause not determined: no needs: graph for this workflow)';
+}
+
+/** Every emitted line goes through redaction, so the forge host is `<forge>` by construction. */
+const emit = (line) => console.log(stripControlChars(redactForPublication(line)));
+
+/**
+ * Name the required contexts that gate the merge but are NOT in the current view.
+ *
+ * The view is one event; branch protection evaluates the whole commit. When those disagree the tool
+ * used to print a clean green table above a verdict the forge would refuse, with nothing on screen
+ * connecting the two — so the reader looked for the fault in the change. Three occurrences, and the
+ * only documented remedy lived in a comment at the bottom of an unrelated YAML file.
+ *
+ * Pure, so the wording is testable without capturing stdout.
+ */
+/**
+ * Label the still-waiting checks for the progress line.
+ *
+ * Since the gate spans events, the SAME job can be waiting twice — once per event — and
+ * printing `c.job` rendered it as a duplicated name with nothing to tell the two apart. The event
+ * suffix is added only where it disambiguates, so the ordinary single-event case stays terse.
+ */
+export function describePending(waiting) {
+  const seen = new Map();
+  for (const c of waiting) seen.set(c.job, (seen.get(c.job) ?? 0) + 1);
+  return waiting.map((c) =>
+    seen.get(c.job) > 1 ? `${c.job} (${parseContext(c.context).event})` : c.job,
+  );
+}
+
+export function describeOffViewGating(verdict) {
+  const inView = new Set((verdict.all ?? []).map((c) => c.context));
+  const offView = (verdict.gate?.all ?? []).filter(
+    (c) => c.required && !inView.has(c.context) && (c.state === 'failed' || c.state === 'waiting'),
+  );
+  if (!offView.length) return [];
+  return [
+    '',
+    'ALSO GATING (other events — every branch-protection glob ends in `*`, so it matches these too)',
+    ...offView.map(
+      (c) => `  ${SYMBOL[c.state]} ${c.job} (${parseContext(c.context).event})  ${c.state}`,
+    ),
+    '  ↳ absent from the table above because the view is scoped to one event, while branch',
+    '    protection evaluates the whole commit. THIS is what makes a merge 405 on a green PR.',
+  ];
+}
+
+/**
+ * Say an advisory FAILURE out loud.
+ *
+ * The row was never missing — it sits in the ADVISORY table above, with a `✗`. What is missing is
+ * any reason to read it: the VERDICT line two lines further down says `mergeable`, and `mergeable`
+ * is what gets read. That is how an advisory context failed on an earlier PR's merge commit, took the
+ * CD dispatch with it, and was noticed by nobody until a human opened the run by hand.
+ *
+ * an advisory context earns the emphasis specifically: the runbook calls it "the *only* place a declined
+ * deploy is visible". An advisory failure that blocks nothing and announces nothing is found only
+ * by someone who already thought to look.
+ *
+ * Rendered from the GATE, so a push-event advisory failure is named even while the view is scoped
+ * to `pull_request` — otherwise this reports nothing in exactly the case it was written for.
+ */
+export function describeAdvisoryFailures(verdict) {
+  const failed = (verdict.gate?.advisory ?? verdict.advisory ?? []);
+  if (!failed.length) return [];
+  return [
+    '',
+    `⚠️  ADVISORY FAILURE — ${failed.length} non-required context(s) FAILED. Nothing blocked, and`,
+    '    nothing else will report this:',
+    ...failed.map((c) => `      ✗ ${c.job} (${parseContext(c.context).event})  ${c.description}`.trimEnd()),
+    '    ↳ the VERDICT below answers "may I merge", and it is not affected by these. It is also not',
+    '      the same question as "did this commit do what it was supposed to".',
+  ];
+}
+
+function renderVerdict(verdict, { sha, pr, cachePaths, requiredGlobs, headRef, prState }) {
+  const width = Math.max(...verdict.all.map((c) => c.job.length), 20);
+  emit('');
+  emit(`commit ${sha.slice(0, 8)}${pr ? `  (PR #${pr})` : ''}   [${verdict.event} contexts]`);
+  emit('');
+
+  // Surfaced BEFORE the check table: with no secrets, the failures below are an artefact of the
+  // ref, not a judgement on the code. Reading them the other way is what burned a full day.
+  const detached = detachedHeadWarning(headRef, { prState });
+  if (detached) {
+    emit(detached);
+    emit('');
+  }
+
+  const required = verdict.all.filter((c) => c.required);
+  if (required.length) {
+    // Name the SOURCE of the required set. A fallback verdict can disagree with the forge (that is
+    // exactly how the 405 happened), so the operator must never have to guess which one they got.
+    emit(
+      requiredGlobs?.source === 'fallback'
+        ? `REQUIRED  ⚠ ${requiredGlobs.note}`
+        : `REQUIRED  (from ${requiredGlobs?.note ?? 'branch protection'})`,
+    );
+    for (const c of required) {
+      emit(`  ${SYMBOL[c.state]} ${c.job.padEnd(width)}  ${c.state.padEnd(10)} ${annotateCheck(c)}`.trimEnd());
+    }
+  }
+
+  const nonRequired = verdict.all.filter((c) => !c.required);
+  if (nonRequired.length) {
+    emit('');
+    emit('ADVISORY (non-blocking)');
+    for (const c of nonRequired) {
+      emit(`  ${SYMBOL[c.state]} ${c.job.padEnd(width)}  ${c.state.padEnd(10)} ${annotateCheck(c)}`.trimEnd());
+    }
+  }
+
+  for (const line of describeOffViewGating(verdict)) emit(line);
+  for (const line of describeAdvisoryFailures(verdict)) emit(line);
+
+  emit('');
+  emit(`VERDICT  ${verdictLine(verdict)}`);
+  emit(`         raw payload cached: ${cachePaths.join(', ')}`);
+  emit('');
+}
+
+/** Exported so the VERDICT line can be asserted to be UNCHANGED by advisory state. */
+export function verdictLine(v) {
+  // Gate, not view — otherwise the summary line contradicts the exit code.
+  const blocking = v.gate?.blocking ?? v.blocking;
+  const waiting = v.gate?.waiting ?? v.waiting;
+  if (v.noResults) return 'no checks have reported for this commit yet — not "green", just not known yet.';
+  if (v.superseded.length && !blocking.length && !waiting.length) {
+    return `superseded — this run was cancelled by a newer push (${v.superseded.length} context(s)). Not a failure — but not a pass either; the newer run decides.`;
+  }
+  if (blocking.length) return `NOT mergeable — ${blocking.length} required context(s) failed`;
+  if (waiting.length) return `not yet mergeable — ${waiting.length} required context(s) still waiting`;
+  // Counted without the deploy, so the line reads exactly as it did before it existed ();
+  // a failed deploy has its own line above.
+  const advisoryCount = v.advisory.length;
+  const advisory = advisoryCount ? `; ${advisoryCount} advisory failure(s) — not blocking` : '';
+  return `mergeable — all required contexts satisfied${advisory}`;
+}
+
+// --- Per-step durations ---------------------------------------------------------------
+//
+// `e2e`'s 2700 s per-step ceiling was calibrated against an e2e JOB duration (~29 min) that
+// was misread as a `e2e-run` STEP duration (~5.2 min), leaving it roughly 5x looser than any
+// evidence supported. It could not be corrected, because nothing recorded how long a step takes:
+// the digest publishes only on failure and this forge exposes no job logs, so the question was
+// unanswerable from the API and the original figure was chosen by eye.
+//
+// `ci-log-step.sh` now writes a row per wrapped step on every run and the digest publishes the file
+// beside each bundle. This reads them back as a distribution.
+
+/** How many runs a `durations` call samples unless told otherwise. */
+export const DEFAULT_DURATION_RUNS = 25;
+
+/** Exit codes `timeout` reports when it kills a step: 124 on TERM, 128+9 after `--kill-after`. */
+const CENSORING_EXITS = new Set([124, 137]);
+
+/**
+ * Parse the published TSV into rows, dropping anything unreadable.
+ *
+ * Lenient on purpose. These files are written by whatever version of the writer was on the runner
+ * days ago, and one malformed row must cost that row rather than the sample. Nothing may parse to
+ * NaN: NaN sorts unpredictably and would corrupt every figure derived from it without ever
+ * announcing itself.
+ */
+export function parseDurationRows(tsv) {
+  const rows = [];
+  for (const line of String(tsv ?? '').split('\n')) {
+    if (!line.trim() || line.startsWith('#')) continue;
+    const [step, seconds, exit, ceiling] = line.split('\t');
+    if (!step) continue;
+    const s = Number(seconds);
+    const e = Number(exit);
+    if (!Number.isFinite(s) || !Number.isFinite(e)) continue;
+    const c = ceiling === undefined || ceiling.trim() === '' ? null : Number(ceiling);
+    rows.push({ step, seconds: s, exit: e, ceiling: Number.isFinite(c) ? c : null });
+  }
+  return rows;
+}
+
+/** Nearest-rank percentile over an ASCENDING array. */
+function percentile(sorted, p) {
+  if (!sorted.length) return null;
+  return sorted[Math.min(sorted.length - 1, Math.max(0, Math.ceil(p * sorted.length) - 1))];
+}
+
+/**
+ * Collapse rows into one summary per step, ordered by p95 descending.
+ *
+ * CENSORED SAMPLES ARE EXCLUDED FROM EVERY FIGURE, and counted separately.
+ *
+ * A step killed at its ceiling lasted exactly the ceiling. That is an observation of the ceiling,
+ * not of the step, and folding it in makes each ceiling a function of the previous one — a ratchet
+ * that tightens on every kill until the ceiling starts failing runs that would have passed. Item
+ * #338 states the direction plainly: trading a slow true failure for a fast false one is the worse
+ * one. This is the arithmetic that would do it quietly.
+ *
+ * An ordinary FAILURE is not censored. A step that failed an assertion at 300 s really did take
+ * 300 s, and discarding every non-zero exit would throw away most of the sample on exactly the job
+ * that fails most often — which is the job being measured.
+ */
+export function summarizeDurations(rows) {
+  const byStep = new Map();
+  for (const r of rows) {
+    if (!byStep.has(r.step)) byStep.set(r.step, { step: r.step, observed: [], censored: 0, ceiling: null });
+    const g = byStep.get(r.step);
+    if (r.ceiling !== null) g.ceiling = r.ceiling;
+    if (CENSORING_EXITS.has(r.exit)) g.censored += 1;
+    else g.observed.push(r.seconds);
+  }
+  return [...byStep.values()]
+    .map((g) => {
+      const sorted = [...g.observed].sort((a, b) => a - b);
+      return {
+        step: g.step,
+        n: sorted.length,
+        censored: g.censored,
+        ceiling: g.ceiling,
+        min: sorted.length ? sorted[0] : null,
+        p50: percentile(sorted, 0.5),
+        p95: percentile(sorted, 0.95),
+        max: sorted.length ? sorted[sorted.length - 1] : null,
+      };
+    })
+    .sort((a, b) => (b.p95 ?? -1) - (a.p95 ?? -1) || a.step.localeCompare(b.step));
+}
+
+/**
+ * The bundle versions to sample: this JOB's, newest run first, capped.
+ *
+ * Versions are `<numeric run id>--<job slug>` and every job publishes into ONE package, so matching
+ * on the run id alone would blend `e2e` and `scan` into a single distribution — the same
+ * cross-job mixing a past incident fixed on the writer side.
+ */
+export function selectDurationVersions(versions, { job, runs = DEFAULT_DURATION_RUNS } = {}) {
+  return versions
+    .map((v) => ({ v, m: /^(\d+)--(.+)$/.exec(String(v.version ?? '')) }))
+    .filter(({ m }) => m && m[2] === job)
+    .sort((a, b) => Number(b.m[1]) - Number(a.m[1]))
+    .slice(0, Math.max(1, runs))
+    .map(({ v }) => v);
+}
+
+const asMinutes = (sec) => (sec === null ? '—' : `${String(sec).padStart(5)}s (${(sec / 60).toFixed(1)}m)`);
+
+/**
+ * Render the distribution, NAMING the runs it was drawn from.
+ *
+ * Criterion 3 of a past incident — "no figure appears without saying what it measured" — enforced where
+ * the figures are produced rather than in a comment beside them. The defect being corrected was a
+ * number whose stated basis was wrong, and a basis recorded only in prose is one that drifts.
+ */
+export function renderDurations(summary, { job, runIds = [] } = {}) {
+  const lines = [
+    `Per-step durations — job \`${job}\`, ${runIds.length} run(s) sampled.`,
+    `Runs: ${runIds.length ? runIds.join(', ') : '(none — no published sample carries durations yet)'}`,
+    '',
+  ];
+  if (!summary.length) {
+    lines.push('No duration rows were found. Bundles published before step durations were recorded carry none, so a');
+    lines.push('sample only accumulates from the first run that recorded them.');
+    return lines.join('\n');
+  }
+  const width = Math.max(...summary.map((s) => s.step.length), 4);
+  lines.push(`${'step'.padEnd(width)}    n  cens          min          p50          p95          max  ceiling`);
+  for (const s of summary) {
+    lines.push(
+      `${s.step.padEnd(width)} ${String(s.n).padStart(4)} ${String(s.censored).padStart(5)}  ` +
+      `${asMinutes(s.min).padStart(11)}  ${asMinutes(s.p50).padStart(11)}  ` +
+      `${asMinutes(s.p95).padStart(11)}  ${asMinutes(s.max).padStart(11)}  ` +
+      `${s.ceiling === null ? '—' : `${s.ceiling}s`}`,
+    );
+  }
+  lines.push('');
+  lines.push('`cens` counts samples where the step was KILLED at its ceiling. Those lasted exactly the');
+  lines.push('ceiling, so they are excluded from every figure above — folding them in would calibrate');
+  lines.push('the next ceiling against the last one and ratchet it downward on every kill.');
+  return lines.join('\n');
+}
+
+// --- Deriving per-step ceilings from that distribution -------------------------
+//
+// Phase 1 made "how long does this step take" answerable. This turns the answer into the bound.
+//
+// The single job-wide `CI_STEP_TIMEOUT_SECONDS` had to be loose enough for the slowest wrapped step,
+// so every other step was bounded at 9x-337x its observed maximum — effectively unbounded. Measured
+// cost on 2026-09-02: a hung step burned the full 45 min remaining on a capacity-1 runner.
+//
+// The rule is arithmetic, and lives in code rather than in a spreadsheet or a head, because the
+// defect this item exists to correct was a figure chosen by eye whose stated basis described a
+// DIFFERENT measurement. A derivation a test can re-run cannot drift from what it claims.
+
+/**
+ * The retry multiplier the ceiling must absorb.
+ *
+ * 3 is not a taste call: it is the largest retry bound any wrapped step has. ci-mobile-agent-flows.sh
+ * runs each flow under `attempt=1; max=3`, and Playwright is `retries: 1` (2 attempts). A sample's
+ * maximum already contains whatever retries happened to fire in it; multiplying by the bound covers
+ * the run where they all do. For a step with no retry structure it is simply a 3x margin over the
+ * worst duration seen — which is the right direction, because a past incident states the asymmetry
+ * plainly: a fast FALSE red costs a ~35-40 min re-run on a capacity-1 runner, while a slow TRUE
+ * failure costs only the difference between this ceiling and the job's.
+ */
+export const CEILING_RETRY_FACTOR = 3;
+
+/**
+ * The smallest ceiling any step may be given.
+ *
+ * Twenty of e2e's wrapped steps run in under a second. `0 x 3 = 0`, and `timeout 0` means NO
+ * LIMIT — the guard would be silently removed by its own arithmetic. Even a 2s step would get 6s and
+ * red on ordinary contention. 300s is still 9x tighter than the value it replaces.
+ */
+export const CEILING_FLOOR_SECONDS = 300;
+
+/** Fewest OBSERVED samples a step needs before a bound is derived rather than left to the backstop. */
+export const CEILING_MIN_SAMPLES = 10;
+
+/** Ceilings are whole minutes: the job ceiling is, and a bound to the second implies absent precision. */
+export const CEILING_QUANTUM_SECONDS = 60;
+
+/**
+ * The rule itself, as ONE function — `max(observed)` in, ceiling out.
+ *
+ * Extracted so the guard that re-checks the committed table (case-a) can CALL it rather than restate
+ * it. A guard holding its own copy of the arithmetic is a guard that keeps asserting the old rule
+ * after the rule changes, and silently passes a table generated under the new one — the same class
+ * of drift a past incident exists to correct, one level up.
+ */
+export function ceilingForMax(max) {
+  const rounded = Math.ceil((max * CEILING_RETRY_FACTOR) / CEILING_QUANTUM_SECONDS) * CEILING_QUANTUM_SECONDS;
+  return Math.max(CEILING_FLOOR_SECONDS, rounded);
+}
+
+const describeRuns = (runIds) =>
+  runIds.length <= 1 ? `run ${runIds[0] ?? '?'}` : `runs ${runIds[0]}..${runIds[runIds.length - 1]}`;
+
+/**
+ * Derive one ceiling per adequately-sampled step, each carrying the sample it rests on.
+ *
+ * Reads `max`, never `p95`: p95 of 40 runs discards the two slowest observations, and those are
+ * exactly the runs a ceiling must not fail. `summarizeDurations` has already excluded kills from
+ * `max` and from `n`, so a step observed mostly through kills falls under CEILING_MIN_SAMPLES and
+ * gets no ceiling — which closes the ratchet at this end too, not just in the percentiles.
+ */
+export function proposeCeilings(summary, { runIds = [] } = {}) {
+  const ids = runIds.map(String);
+  return summary
+    .filter((s) => s.n >= CEILING_MIN_SAMPLES && Number.isFinite(s.max))
+    .map((s) => {
+      const scaled = s.max * CEILING_RETRY_FACTOR;
+      const rounded = Math.ceil(scaled / CEILING_QUANTUM_SECONDS) * CEILING_QUANTUM_SECONDS;
+      const ceiling = ceilingForMax(s.max);
+      const how = ceiling === rounded
+        ? `x${CEILING_RETRY_FACTOR}=${scaled}s -> ${ceiling}s`
+        : `x${CEILING_RETRY_FACTOR}=${scaled}s -> floor ${ceiling}s`;
+      return { step: s.step, ceiling, basis: `n=${s.n} max=${s.max}s ${how}; ${describeRuns(ids)}` };
+    })
+    .sort((a, b) => b.ceiling - a.ceiling || a.step.localeCompare(b.step));
+}
+
+/**
+ * Render the committed table `ci-log-step.sh` reads.
+ *
+ * Under-sampled steps are emitted as COMMENTED rows rather than omitted. A step that is simply
+ * absent is one nobody decided about; a commented row says "seen, not calibrated, on the backstop"
+ * and lets a guard tell the two apart.
+ */
+export function renderCeilingsTable(rows, { summary = [], runIds = [], job = 'guardrails' } = {}) {
+  const ids = runIds.map(String);
+  const out = [
+    '# Per-step CI ceilings — GENERATED. Do not hand-edit; regenerate:',
+    '#',
+    `#     node scripts/ci-status.mjs durations --job ${job} --runs ${Math.max(ids.length, 1)} --propose`,
+    '#',
+    '# ci-log-step.sh bounds a wrapped step at its row here, falling back to the job-wide',
+    '# CI_STEP_TIMEOUT_SECONDS backstop when the step has no row. Each ceiling is',
+    `# max(observed) x ${CEILING_RETRY_FACTOR}, rounded up to a minute, floored at ${CEILING_FLOOR_SECONDS}s,`,
+    `# and derived only from a step with at least ${CEILING_MIN_SAMPLES} observed (non-killed) samples.`,
+    '#',
+    `# Sample: ${ids.length} published ${job} run(s), ${describeRuns(ids)}.`,
+    '#',
+    '# step\tceiling\tbasis',
+  ];
+  for (const r of rows) out.push(`${r.step}\t${r.ceiling}\t${r.basis}`);
+
+  const calibrated = new Set(rows.map((r) => r.step));
+  const skipped = summary.filter((s) => !calibrated.has(s.step));
+  if (skipped.length) {
+    out.push('#');
+    out.push('# ON THE BACKSTOP — seen in the sample, but too few observations to calibrate from:');
+    for (const s of skipped) {
+      out.push(`# ${s.step}\t-\tn=${s.n} < ${CEILING_MIN_SAMPLES} observed samples (${s.censored} killed)`);
+    }
+  }
+  return `${out.join('\n')}\n`;
+}
+
+// --- Subcommands ----------------------------------------------------------------------------------
+
+/** Exit codes: 0 mergeable · 1 required failure · 2 bad args/auth · 3 still waiting at timeout. */
+const EXIT = { OK: 0, FAILED: 1, USAGE: 2, WAITING: 3 };
+
+async function loadVerdict(target, conn) {
+  const { sha, pr, base, headRef, prState, run } = await resolveSha(target, conn);
+  const statuses = await fetchCached(
+    `/repos/${conn.owner}/${conn.repo}/commits/${sha}/status`, conn, `status-${sha.slice(0, 8)}`,
+  );
+  // head_sha is a true server-side filter — 0.48 s / 15 KB vs 94 s / 12.4 MB unfiltered.
+  const runs = await fetchCached(
+    `/repos/${conn.owner}/${conn.repo}/actions/runs?${buildRunsQuery({ sha })}`, conn, `runs-${sha.slice(0, 8)}`,
+  );
+  // The required set is whatever branch protection SAYS it is — reading it is the whole point, since
+  // the hand-maintained mirror drifted and over-reported mergeable (see REQUIRED_CONTEXT_GLOBS).
+  // The endpoint is repository-scoped, so the same read token that fetches statuses can read it.
+  const requiredGlobs = await resolveRequiredGlobs(
+    async () =>
+      (await fetchCached(`/repos/${conn.owner}/${conn.repo}/branch_protections`, conn, `protections-${base.replace(/[^\w.-]/g, '_')}`)).data,
+    base,
+  );
+  const workflowRuns = runs.data.workflow_runs ?? [];
+  const verdict = computeMergeVerdict(statuses.data.statuses ?? [], {
+    // A commit can carry BOTH push and pull_request contexts, from separate runs whose outcomes
+    // differ. --pr implies the PR view (that is what branch protection gates on); --event overrides.
+    event: target.event ?? (target.pr ? 'pull_request' : undefined),
+    runs: workflowRuns,
+    requiredGlobs: requiredGlobs.globs,
+  });
+  return { verdict, sha, pr, headRef, prState, run, requiredGlobs, cachePaths: [statuses.path, runs.path] };
+}
+
+export async function cmdStatus(target, conn) {
+  const { verdict, sha, pr, cachePaths, requiredGlobs, headRef, prState } = await loadVerdict(target, conn);
+  renderVerdict(verdict, { sha, pr, cachePaths, requiredGlobs, headRef, prState });
+  return exitCodeForVerdict(verdict);
+}
+
+/**
+ * Every check worth explaining, across EVERY event (items #281/#226).
+ *
+ * Derived from the gate rather than the view for the same reason the verdict is: `inferEvent`
+ * prefers `pull_request`, so `failure --run <id>` on a push-event failure resolved the right
+ * commit and then reported "No failed jobs on this commit" — the command that exists to explain a
+ * failure, declining to see it. Non-required failures are included too: they are advisory for
+ * MERGING, but they are still the thing the operator asked about.
+ */
+export function failuresToExplain(verdict) {
+  const pool = verdict.gate?.all ?? verdict.all ?? [];
+  return pool.filter((c) => c.state === 'failed');
+}
+
+/**
+ * A run that FAILED while posting no commit status at all.
+ *
+ * `failuresToExplain` reads CONTEXTS. A `schedule`-triggered workflow posts none — measured on
+ * image-scan's weekly sweep, three times:
+ *
+ *   run 1948  2026-08-21  7a9ff92c  → no infra contexts on that sha
+ *   run 2132  2026-08-28  b3c77867  → no infra contexts on that sha
+ *   run 3521  2026-09-18  3cbe637e  → only image-scan/expiry, posted by the job itself
+ *
+ * So `failure --run 3521` found nothing to explain and said "No failed jobs on 3cbe637e — checked
+ * every event's contexts." Not wrong about what it read, and the OPPOSITE of the truth: that run's
+ * own API status is `failure`, and `main` was failing its weekly CVE gate. "Checked every event's
+ * contexts" reads as thoroughness, which is what made it a false negative rather than a shrug.
+ *
+ * The run id was in hand the whole time. This turns the absence of contexts into the finding it
+ * actually is, rather than reporting it as health.
+ *
+ * Both fields are consulted: this Forgejo reports the terminal verdict in `status` (that is what
+ * was measured on the three runs above), while `conclusion` is the GitHub-shaped field and may be
+ * empty here. Either one reading `failure` is a failure.
+ *
+ * @param {{id:number,status:string|null,conclusion:string|null}|null|undefined} run
+ * @returns {string|null} The line to print instead of "no failed jobs", or null when silence is right.
+ */
+export function describeContextlessRunFailure(run) {
+  if (!run) return null;
+  const terminal = [run.status, run.conclusion].filter((v) => typeof v === 'string').map((v) => v.toLowerCase());
+  if (!terminal.includes('failure')) return null;
+  const fields = `status=${run.status ?? '<unset>'} conclusion=${run.conclusion ?? '<unset>'}`;
+  return (
+    `⚠ Run ${run.id} is FAILED (${fields}) but posted NO commit status — so there is no context to explain.\n` +
+    `  This is not health. A scheduled workflow posts no required context, so its red is invisible\n` +
+    `  on the commit; read the run in the forge UI, or its evidence bundle.`
+  );
+}
+
+export async function cmdFailure(target, conn) {
+  const { verdict, sha, pr, run } = await loadVerdict(target, conn);
+  const failed = failuresToExplain(verdict);
+
+  if (!failed.length) {
+    // Name the commit. "No failed jobs on this commit" is indistinguishable from "you asked about
+    // the wrong commit", which is exactly how a past incident stayed invisible: `--run` silently
+    // resolved local HEAD and the reassuring message was about the working copy.
+    const where = `${sha.slice(0, 8)}${pr ? ` (PR #${pr})` : ''}`;
+    // BEFORE the reassuring messages below. A run that is itself `failure` must never
+    // be reported as "nothing failed", and it must not be swallowed by the superseded branch
+    // either: superseded is about CONTEXTS being cancelled, and a contextless run has none.
+    const contextless = describeContextlessRunFailure(run);
+    if (contextless) {
+      emit(contextless);
+      return EXIT.FAILED;
+    }
+    if (verdict.superseded.length) {
+      emit(`No failure to explain on ${where} — this run was cancelled by a newer push (superseded, not broken).`);
+      return EXIT.OK;
+    }
+    emit(`No failed jobs on ${where} — checked every event's contexts.`);
+    return EXIT.OK;
+  }
+
+  if (!pr) {
+    // No commit status exists to find ( — the endpoint needs write:repository, 403 measured).
+    // The digest lives in the bundle, and the pointer the status used to carry is DERIVED here from
+    // the runId already on every check.
+    emit(`${failed.length} failed job(s) on a non-PR commit — reading each digest from its bundle:`);
+    for (const c of failed) {
+      const jobName = bundleJobName(c.job);
+      // `--run` is the documented escape hatch when the context could not be matched to a run; it
+      // is now actually consulted here rather than merely suggested.
+      const runId = c.runId ?? target.run ?? null;
+      if (!runId) {
+        emit(`  ✗ ${c.job} — ${c.description} (no run id; pass --run <id> to fetch its bundle)`);
+        continue;
+      }
+      const bundle = await fetchBundle(conn, runId, jobName);
+      if (!bundle) {
+        emit(`  ✗ ${c.job} — ${c.description} (no bundle; the job may have died before the digest step ran)`);
+        continue;
+      }
+      const digestPath = join(bundle.dir, 'digest.md');
+      if (existsSync(digestPath)) emit(readFileSync(digestPath, 'utf8'));
+      else emit(`  ✗ ${c.job} — bundle ${bundle.version} carries no digest.md`);
+      emit(`   📦 extracted to: ${bundle.dir}`);
+    }
+    return EXIT.FAILED;
+  }
+
+  const { data: comments } = await fetchCached(
+    `/repos/${conn.owner}/${conn.repo}/issues/${pr}/comments`, conn, `comments-${pr}`,
+  );
+  const digests = extractDigests(comments, target.job ?? null);
+
+  if (!digests.length) {
+    // Fail CLOSED on a filter that excluded everything: saying "no digest was published" when one is
+    // sitting on the PR is the exact failure this path is being fixed for.
+    const filteredOut = describeFilteredOutDigests(extractDigests(comments, null), target.job ?? null);
+    if (filteredOut.length) {
+      for (const line of filteredOut) emit(line);
+      return EXIT.FAILED;
+    }
+    // Before concluding "absent", ask each failing job's bundle whether its digest RAN and failed.
+    // A bundle fetch that itself fails must not turn a diagnostic into an error, so it degrades to
+    // the absent case — which is what this code did unconditionally before.
+    const outcomes = [];
+    for (const c of failed) {
+      const jobName = bundleJobName(c.job);
+      if (!c.runId) continue;
+      try {
+        const bundle = await fetchBundle(conn, c.runId, jobName);
+        const o = bundle?.meta?.digestOutcome;
+        if (o?.outcome) outcomes.push({ job: jobName, ...o });
+      } catch {
+        // Deliberately swallowed: see above.
+      }
+    }
+    for (const line of renderDigestAbsence(failed, outcomes)) emit(line);
+    return EXIT.FAILED;
+  }
+
+  for (const d of digests) {
+    if (d.author) emit(`_(digest comment posted by ${d.author} — verify authenticity if unexpected)_`);
+    emit(d.body);
+  }
+
+  if (target.full) {
+    for (const d of digests) {
+      // Resolve the run per DIGEST: two failing jobs can belong to different runs, so a single
+      // shared run id would fetch the wrong bundle for one of them.
+      const owning = verdict.all.find((c) => c.job.endsWith(`/ ${d.job}`) || c.job === d.job);
+      const runId = target.run ?? owning?.runId;
+      if (!runId) {
+        emit(`   ⚠️ could not determine the run for job "${d.job}" — pass --run <id> to fetch its bundle.`);
+        continue;
+      }
+      const bundle = await fetchBundle(conn, runId, d.job);
+      if (!bundle) continue;
+      // The PATH, not the contents — a 5 MB bundle must never be poured into the conversation.
+      emit(`📦 ${bundle.version} extracted to: ${bundle.dir}`);
+      if (bundle.meta.truncated) {
+        emit(`   ⚠️ truncated at the ${bundle.meta.cap} byte cap: ${(bundle.meta.truncatedSources ?? []).join(', ')}`);
+      }
+      emitBundleDrops(bundle.meta);
+      if ((bundle.meta.absent ?? []).length) emit(`   not collected: ${bundle.meta.absent.join('; ')}`);
+    }
+  }
+  return EXIT.FAILED;
+}
+
+/**
+ * Resolve one bundle entry inside the bundle root, or throw.
+ *
+ * A bundle manifest is ATTACKER-CONTROLLED input for anyone holding `write:package` on the forge
+ * (a compromised CI token, or another package namespace). Extracting it with a bare join() is
+ * zip-slip: it turns that into arbitrary file write on a developer's machine the moment they run
+ * `failure --full`, which is a CI-token → workstation escalation.
+ *
+ * Character sanitising CANNOT be the control here — `.`, `/` and `-` are all legitimate in a path,
+ * so a filter that allows them leaves `../../x` completely intact. Containment is checked instead,
+ * and `..` segments are rejected before resolution so a symlink pre-planted in the cache directory
+ * cannot be used to slip past the check.
+ */
+export function safeBundleEntryPath(root, entryPath) {
+  const raw = String(entryPath ?? '');
+  // Trim BEFORE sanitising: sanitising first turns whitespace into underscores, so a blank entry
+  // would survive as a junk filename instead of being rejected as the malformed input it is.
+  const cleaned = raw.trim().replace(/[^A-Za-z0-9._/-]/g, '_');
+  if (!cleaned || cleaned === '.' || cleaned === './') {
+    throw new CiStatusError(`invalid bundle entry path: ${JSON.stringify(raw)}`);
+  }
+  if (cleaned.startsWith('/')) {
+    throw new CiStatusError(`refusing absolute bundle entry path: ${JSON.stringify(raw)}`);
+  }
+  const segments = cleaned.split('/').filter((s) => s !== '' && s !== '.');
+  if (!segments.length || segments.some((s) => s === '..')) {
+    throw new CiStatusError(`refusing bundle entry path with traversal: ${JSON.stringify(raw)}`);
+  }
+
+  const base = resolve(root);
+  const dest = resolve(base, segments.join('/'));
+  const rel = relative(base, dest);
+  if (!rel || rel.startsWith('..') || isAbsolute(rel)) {
+    throw new CiStatusError(`refusing bundle entry outside the cache directory: ${JSON.stringify(raw)}`);
+  }
+  return dest;
+}
+
+/**
+ * Retrieve the full evidence bundle to disk and print its PATH, never its contents ().
+ * At the measured ~135 KB/s the 5 MB cap is ~40 s, so progress is reported rather than appearing hung.
+ */
+export async function fetchBundle(conn, runId, job, { quietWhenAbsent = false } = {}) {
+  const version = bundleVersion(runId, job);
+  if (!quietWhenAbsent) emit(`fetching bundle ${version} (up to 5 MB over a ~135 KB/s link — allow ~40 s)…`);
+  // Repo-scoped package first, then the legacy shared one: a run from before the
+  // cutover lives only in the legacy package, for up to RETENTION_DAYS after it. "Absent" means
+  // absent from BOTH — a single 404 on the new name would hide every pre-cutover bundle.
+  let res = null;
+  let url = '';
+  for (const pkg of bundlePackagesFor(conn.repo)) {
+    url = `${conn.base.replace(/\/api\/v1$/, '/api/packages')}/${conn.owner}/generic/${pkg}/${version}/bundle.json.gz`;
+    res = await fetchWithTimeout(url, { headers: { Authorization: `token ${conn.token}` } });
+    if (res.status !== 404) break;
+  }
+  if (res.status === 404) {
+    if (!quietWhenAbsent) emit(`no bundle exists for ${version} — the job may have died before the digest step ran.`);
+    return null;
+  }
+  if (res.status === 401 || res.status === 403) throw new CiStatusError(describeAuthFailure(res.status, url));
+  if (!res.ok) throw new CiStatusError(`Forge returned ${res.status} fetching bundle ${version}`);
+
+  const manifest = parseBundleGz(Buffer.from(await res.arrayBuffer()));
+  const root = resolve(CACHE_DIR, version);
+  const total = (manifest.files ?? []).length;
+  const written = safeBundleWrite(root, manifest.files);
+  const skipped = total - written.length;
+  if (skipped > 0) emit(`   ⚠️ ${skipped} bundle entr${skipped === 1 ? 'y' : 'ies'} skipped (unsafe path or malformed).`);
+  // Written under a reserved name so a manifest entry literally called `meta.json` cannot be
+  // clobbered by it (and vice versa) — that would be silent evidence loss.
+  writeFileSync(resolve(root, '_bundle-meta.json'), JSON.stringify(manifest.meta ?? {}, null, 2));
+  return { version, dir: root, meta: manifest.meta ?? {} };
+}
+
+/**
+ * List every version of the bundle package.
+ *
+ * PAGINATED, for the same measured reason the writer's copy is: Forgejo defaults to page 1 at 30
+ * items and orders packages by NAME, not age. An unpaginated call therefore stops seeing versions
+ * once more than 30 exist — and would quietly sample whichever 30 sorted first, which for
+ * `<run id>--<job>` versions is neither the newest nor a random selection.
+ */
+async function listBundleVersions(conn) {
+  const listings = [];
+  for (const name of bundlePackagesFor(conn.repo)) {
+    const items = [];
+    for (let page = 1; page <= 100; page++) {
+      const url = `${conn.base}/packages/${conn.owner}?type=generic&q=${name}&page=${page}&limit=50`;
+      const res = await fetchWithTimeout(url, { headers: { Authorization: `token ${conn.token}` } });
+      if (res.status === 404) break;
+      if (res.status === 401 || res.status === 403) throw new CiStatusError(describeAuthFailure(res.status, url));
+      if (!res.ok) throw new CiStatusError(`Forge returned ${res.status} listing ${name} versions`);
+      const batch = await res.json();
+      if (!Array.isArray(batch) || batch.length === 0) break;
+      items.push(...batch);
+      if (batch.length < 50) break;
+    }
+    listings.push({ name, items });
+  }
+  return mergeBundleListings(listings);
+}
+
+/**
+ * Merge per-package listings into one list of versions, each tagged with the package it lives in
+ *. Order follows `listings` — repo-scoped first — so a version present under both names
+ * is kept once, from the repo-scoped package.
+ *
+ * EXACT-name filtering happens here, not at the query: the forge's `q=` is a SUBSTRING search, so a
+ * listing of `ci-failures` also carries `belay-ci-failures` and every other repository's
+ * `<repo>-ci-failures`. Without it, `durations` would sample another repository's runs.
+ *
+ * @param {{name:string, items:{name?:string, version?:string}[]}[]} listings
+ */
+export function mergeBundleListings(listings) {
+  const seen = new Set();
+  const out = [];
+  for (const { name, items } of listings) {
+    for (const item of items ?? []) {
+      if (item?.name !== name || seen.has(item.version)) continue;
+      seen.add(item.version);
+      out.push({ ...item, name });
+    }
+  }
+  return out;
+}
+
+/**
+ * Report the per-step duration distribution for a job.
+ *
+ * Each version's durations file is a few hundred bytes, so sampling 25 runs costs a few KB — the
+ * reason the writer publishes it BESIDE the bundle rather than inside it. Fetching 25 bundles to
+ * read 25 tiny tables would cost ~15 minutes on the measured link, and a calibration that expensive
+ * is one that does not happen.
+ *
+ * A version with no durations file is skipped without comment: every bundle published before this
+ * existed is one, and they are the majority until the sample fills.
+ */
+export async function cmdDurations(target, conn) {
+  const job = target.job ?? 'guardrails';
+  const runs = target.runs ?? DEFAULT_DURATION_RUNS;
+  const packagesRoot = conn.base.replace(/\/api\/v1$/, '/api/packages');
+
+  const selected = selectDurationVersions(await listBundleVersions(conn), { job, runs });
+  if (!selected.length) {
+    emit(`No \`${bundlePackagesFor(conn.repo).join('` or `')}\` versions exist for job \`${job}\`.`);
+    emit('Nothing has been published for it inside the 30-day bundle retention window.');
+    return EXIT.OK;
+  }
+  // The progress line goes to STDERR under --propose so `… --propose > scripts/ci-step-ceilings.tsv`
+  // writes the table and nothing else. On stdout it would become the file's first line, and a
+  // ceilings file whose first row is a progress message is one ci-log-step.sh reads as a step name.
+  const note = `sampling ${selected.length} run(s) of \`${job}\` — ${DURATIONS_FILE} is a few hundred bytes each…`;
+  if (target.propose) console.error(note); else emit(note);
+
+  const rows = [];
+  const runIds = [];
+  for (const v of selected) {
+    // From the package THIS version lives in — a pre-cutover run is in the legacy one.
+    const url = `${packagesRoot}/${conn.owner}/generic/${v.name ?? bundlePackageFor(conn.repo)}/${v.version}/${DURATIONS_FILE}`;
+    const res = await fetchWithTimeout(url, { headers: { Authorization: `token ${conn.token}` } });
+    if (res.status === 404) continue; // published before a past incident, or the step wrote nothing
+    if (res.status === 401 || res.status === 403) throw new CiStatusError(describeAuthFailure(res.status, url));
+    if (!res.ok) throw new CiStatusError(`Forge returned ${res.status} fetching ${v.version}/${DURATIONS_FILE}`);
+    const parsed = parseDurationRows(await res.text());
+    if (!parsed.length) continue;
+    rows.push(...parsed);
+    runIds.push(String(v.version).split('--')[0]);
+  }
+
+  const summary = summarizeDurations(rows);
+  if (!target.propose) emit('');
+  if (target.propose) {
+    // Straight to stdout, unadorned, so `… --propose > scripts/ci-step-ceilings.tsv` is the whole
+    // regeneration step.
+    emit(renderCeilingsTable(proposeCeilings(summary, { runIds }), { summary, runIds, job }).trimEnd());
+    return EXIT.OK;
+  }
+  emit(renderDurations(summary, { job, runIds }));
+  return EXIT.OK;
+}
+
+/** Name what the bundle does NOT contain: sources the writer's cap dropped whole, and entries this
+ *  reader refused. Both are absences a reader would otherwise read as "the capture never ran". */
+function emitBundleDrops(meta = {}) {
+  for (const d of meta.droppedSources ?? []) {
+    const bytes = Number(d?.bytes);
+    emit(`   ⚠️ dropped at the writer's cap: ${d?.path ?? d}${Number.isFinite(bytes) ? ` (${bytes} bytes)` : ''}${d?.reason ? ` — ${d.reason}` : ''}`);
+  }
+  if (meta.readerDroppedEntries) {
+    emit(`   ⚠️ ${meta.readerDroppedEntries} bundle entr${meta.readerDroppedEntries === 1 ? 'y was' : 'ies were'} past this reader's ${MAX_BUNDLE_FILES}-entry ceiling and were not extracted.`);
+  }
+}
+
+export async function cmdWatch(target, conn, { timeoutSeconds, intervalSeconds, requiredOnly = false }) {
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  for (;;) {
+    const { verdict, sha, pr, cachePaths, requiredGlobs, headRef, prState } = await loadVerdict(target, conn);
+    // "Nothing has reported yet" is NOT a verdict, and it also has an empty `waiting` — so the old
+    // condition was satisfied on the first iteration and `watch` returned in ~2s with exit 3, the
+    // same code it returns after a genuine 90-minute starvation. `computeMergeVerdict`
+    // already carried `noResults` for exactly this reason and `exitCodeForVerdict` already treated
+    // the two alike; the loop was the one place that did not.
+    //
+    // Gate, not view, for the same reason as everywhere else: a required context still
+    // pending on another event means the merge is not yet decidable.
+    //
+    // ADVISORY contexts are waited for too, by default — `watch` is asked "has this
+    // commit settled", and a running an advisory context means it has not. `--required-only` restores the
+    // narrower behaviour for a caller that genuinely only wants the merge question.
+    const outstanding = outstandingContexts(verdict, { includeAdvisory: !requiredOnly });
+    if (outstanding.settled) {
+      renderVerdict(verdict, { sha, pr, cachePaths, requiredGlobs, headRef, prState });
+      return exitCodeForVerdict(verdict);
+    }
+    if (Date.now() >= deadline) {
+      renderVerdict(verdict, { sha, pr, cachePaths, requiredGlobs, headRef, prState });
+      if (!outstanding.requiredOutstanding) {
+        // The required set SETTLED and only an advisory context is still running. Returning
+        // EXIT.WAITING here would break `exit 0 ⟺ mergeable` — the invariant a `ci-status && merge`
+        // wrapper is built on — for a context that gates nothing. So the verdict's own exit code
+        // stands, and the unfinished advisory row is named instead of being dropped.
+        const names = describePending(outstanding.advisory);
+        emit(
+          `advisory context(s) still running after ${timeoutSeconds}s: ${names.join(', ')}. ` +
+            'The required set settled, so the verdict above stands and the exit code is unchanged — ' +
+            'but these have not reported, and an advisory failure is announced nowhere else. ' +
+            're-run `ci-status status` on this commit once they finish.',
+        );
+        return exitCodeForVerdict(verdict);
+      }
+      // Exit 3, NOT 1. Under a saturated capacity-1 runner, pending is starvation — a poller that
+      // fails on it reports a queue as a broken build.
+      emit(`still waiting after ${timeoutSeconds}s — runner starvation, not failure (exit ${EXIT.WAITING}).`);
+      return EXIT.WAITING;
+    }
+    // Advisory rows are named in the progress line too, and marked as such: without the label a
+    // reader watching an advisory context alone cannot tell whether the merge is blocked or merely
+    // unfinished, and those call for different actions.
+    const pending = [
+      ...describePending(outstanding.required),
+      ...describePending(outstanding.advisory).map((p) => `${p} [advisory]`),
+    ];
+    emit(
+      pending.length
+        ? `waiting on ${pending.join(', ')} — re-checking in ${intervalSeconds}s`
+        : `no checks have reported yet — re-checking in ${intervalSeconds}s`,
+    );
+    await new Promise((r) => setTimeout(r, intervalSeconds * 1000));
+  }
+}
+
+/** Thin smoke check. The authoritative suite is scripts/__tests__/ci-status.test.mjs. */
+function selftest() {
+  const failures = [];
+  const cancelled = { status: 'failure', description: 'Has been cancelled', context: 'guardrails / guardrails (pull_request)' };
+  if (classifyCheckState(cancelled) !== 'superseded') failures.push('cancelled context not classified as superseded');
+  if (classifyCheckState({ status: 'success', description: 'Skipped' }) !== 'skipped') failures.push('skip not satisfied');
+  // Fragmented so no contiguous `.ts.net` literal sits in this file — check-topology-scrub holds
+  // no literal to compare against, so it cannot tell an invented host from a real one and
+  // flags any it sees. Do not collapse into one string.
+  const probeHost = 'http://box.tailz9x8w7' + '.ts' + '.net:3000/x';
+  if (!redactForPublication(probeHost).includes('<forge>')) failures.push('host not redacted');
+  try { assertFullSha('c2c3c29'); failures.push('an abbreviated sha was accepted'); } catch { /* expected */ }
+
+  // four measured occurrences: a
+  // required context failing on an event the VIEW filters out must still block the verdict, because
+  // branch protection's globs match it. Over-reporting mergeable is the dangerous direction — a
+  // `ci-status && merge` wrapper acts on it — so it belongs in the selftest, not only in the suite.
+  const offView = [
+    { context: 'guardrails / naming (pull_request)', status: 'success', description: 'Successful in 1s', created_at: '2026-09-01T00:00:01Z' },
+    { context: 'guardrails / naming (push)', status: 'failure', description: 'Failing after 1m', created_at: '2026-09-01T00:00:02Z' },
+  ];
+  const offViewVerdict = computeMergeVerdict(offView, { requiredGlobs: ['guardrails*'], event: 'pull_request' });
+  if (offViewVerdict.mergeable) failures.push('a failing push-event context did not block the verdict');
+  if (exitCodeForVerdict(offViewVerdict) !== 1) failures.push('exit code ignored the off-view failure');
+  if (!describeOffViewGating(offViewVerdict).join('\n').includes('(push)')) {
+    failures.push('the off-view blocker was not named in the report');
+  }
+
+  if (failures.length) {
+    console.error('✗ [ci-status --selftest] FAILED:\n  - ' + failures.join('\n  - '));
+    process.exit(1);
+  }
+  console.log('✓ [ci-status --selftest] traps classified, host redacted, short sha rejected, off-view gating caught.');
+}
+
+const USAGE = `Usage:
+  node scripts/ci-status.mjs status [--sha <full-sha> | --pr <n> | --branch <name> | --run <id>] [--event push|pull_request]
+  node scripts/ci-status.mjs watch  [--sha … | --pr … | --branch … | --run <id>] [--timeout <seconds>] [--required-only]
+  node scripts/ci-status.mjs failure [--sha … | --pr … | --branch … | --run <id>] [--job <name>] [--full]
+  node scripts/ci-status.mjs durations [--job <name>] [--runs <n>] [--propose]
+  node scripts/ci-status.mjs --selftest
+
+--run <id> selects the commit that run was for. --event narrows the VIEW only: the verdict always
+evaluates every event, because branch protection does (its globs end in \`*\`).
+
+\`watch\` waits for ADVISORY contexts as well as required ones, so a non-required failure is reported
+before it returns. --required-only narrows the wait to the merge question. Neither changes the exit
+code: that is decided by the required set alone, always.
+
+Reads use FORGE_TOKEN (read-only). See docs/runbooks/ci.md.
+
+Exit: 0 mergeable · 1 required context failed · 2 bad args/auth · 3 still waiting (NOT a failure)`;
+
+async function main(argv) {
+  if (argv.includes('--selftest')) return selftest();
+  const command = argv[0];
+  if (!command || command.startsWith('-')) { console.error(USAGE); return EXIT.USAGE; }
+
+  let target, timeoutSeconds, requiredOnly;
+  try {
+    ({ target, timeoutSeconds, requiredOnly } = parseTargetArgs(argv));
+  } catch (err) {
+    console.error(`✗ ${err.message}\n\n${USAGE}`);
+    return EXIT.USAGE;
+  }
+  const intervalSeconds = Math.max(1, Number(process.env.CI_STATUS_POLL_SECONDS ?? 30) || 30);
+
+  const conn = { ...forgeEndpoint(), token: requireToken() };
+  if (command === 'status') return cmdStatus(target, conn);
+  if (command === 'watch') return cmdWatch(target, conn, { timeoutSeconds, intervalSeconds, requiredOnly });
+  if (command === 'failure') return cmdFailure(target, conn);
+  // Per-step wall-clock durations across recent runs. Defaults to e2e — the job
+  // whose per-step ceiling this exists to calibrate — over the last 25 published runs.
+  if (command === 'durations') return cmdDurations(target, conn);
+  console.error(`Unknown command: ${command}\n\n${USAGE}`);
+  return EXIT.USAGE;
+}
+
+/** Resolve once stdout has drained, so nothing is truncated by the exit that follows. Bounded: a
+ *  `drain` that never arrives (closed pipe) must not hang the tool instead of exiting. */
+function flushStdout() {
+  return new Promise((resolve) => {
+    if (process.stdout.writableLength === 0) return resolve();
+    process.stdout.once('drain', resolve);
+    setTimeout(resolve, 500).unref();
+  });
+}
+
+/**
+ * Terminate with `code` WITHOUT calling process.exit() on the happy path.
+ *
+ * Measured on the Windows host (2026-07-26, unchanged by #105): the process died with
+ * **-1073740791 (0xC0000409, STATUS_STACK_BUFFER_OVERRUN — Windows' __fastfail abort)** where the
+ * contract says 3. The rendered output was correct every time; only the exit path died. That matters
+ * beyond cosmetics because AGENTS.md instructs agents to BRANCH on this exit code, and an abort code
+ * is neither 0 nor 3 — it reads as a crashed tool, and `exit 3` (runner starvation, not failure) is
+ * precisely the signal that must survive.
+ *
+ * `process.exit()` is the hazard: it tears the process down immediately, while stdout may still be
+ * flushing and while undici keep-alive sockets from the forge fetches are still open — teardown in
+ * that state is what aborts. So: flush, set `process.exitCode`, and let the loop drain on its own.
+ * The force-exit timer is `unref`'d, which is the load-bearing detail — an unref'd timer cannot hold
+ * the loop open, so it only ever FIRES when something else already is (a socket that refuses to
+ * close). Natural drain keeps the contracted code; a stuck handle still gets it, just 2 s later.
+ */
+async function exitWith(code) {
+  process.exitCode = code;
+  await flushStdout();
+  setTimeout(() => process.exit(code), 2000).unref();
+}
+
+const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
+if (invokedPath === fileURLToPath(import.meta.url)) {
+  main(process.argv.slice(2))
+    .then((code) => exitWith(code ?? 0))
+    .catch((err) => {
+      // Redact before printing: an error message can carry a URL, and therefore the forge host.
+      console.error(`✗ ${redactForPublication(err instanceof CiStatusError ? err.message : String(err?.stack ?? err))}`);
+      return exitWith(EXIT.USAGE);
+    });
+}

@@ -71,9 +71,9 @@ description: "Task list for feature 002: PR and CI-status tooling"
 
 ### Tests for User Story 1 (REQUIRED, TDD checkpoint format) ⚠️
 
-- [ ] T004 [P] [US1] Port `scripts/__tests__/fixtures/ci/*.json` (10 files) from MCM, with neutral names. Don't port `fixtures/ci-status/*.json`; those are deploy fixtures (research table).
+- [X] T004 [P] [US1] Port `scripts/__tests__/fixtures/ci/*.json` (10 files) from MCM, with neutral names. Don't port `fixtures/ci-status/*.json`; those are deploy fixtures (research table).
   - **Done when:** the 10 files exist, and `git grep -niE 'mcm|movie|mc-service|app-ci|app-e2e|dast' scripts/__tests__/fixtures` finds nothing.
-- [ ] T005 [US1] Port `scripts/__tests__/ci-status.test.mjs` from MCM (research R6).
+- [X] T005 [US1] Port `scripts/__tests__/ci-status.test.mjs` from MCM (research R6).
   - **Removed:** the deploy tests (MCM L1947–2185 and `(#403e)`), the `publish-sweep-verdict` import and the tests that use it, and `(n4)`.
   - **Rewritten:** `(#396e)` (`guardrails`), the needs-parser test (at least 1 workflow), the `(dep-free)` walk (re-rooted at `ci-status.mjs`), the fallback-list tests `(w)`, `(oo)`, `(oo2)`, `(nn)` and `(tt)` (one glob, `guardrails / guardrails*`), the token tests `(e)`, `(f)` and `(uu2)` plus `runScript` (`FORGE_TOKEN`), and `(106-1..3)` (`belay-ci-failures` only, never the legacy name, never another repository's).
   - **Added:** `(no-leak)`. With `FORGE_TOKEN` set to a planted value and the forge stubbed to return 401, 403 and success, the output of `status`, `watch` and `failure` never contains the planted value (SC-004).
@@ -82,7 +82,7 @@ description: "Task list for feature 002: PR and CI-status tooling"
 
 ### Implementation for User Story 1
 
-- [ ] T006 [US1] Port `scripts/ci-status.mjs` from MCM.
+- [X] T006 [US1] Port `scripts/ci-status.mjs` from MCM.
   - **Deploy pipeline removed** (research R2): the exports, branches and filters listed there. `watchExitCode` becomes `exitCodeForVerdict`, and the deploy selftest check and exit code 4 go.
   - **Fallback:** `REQUIRED_CONTEXT_GLOBS = ['guardrails / guardrails*']`, and `NARROW_STATUS_EVENTS = {}` (R3).
   - **Credentials and cache:** `FORGE_TOKEN` and its message; `CI_STATUS_CACHE_DIR` defaults to `<tmpdir>/<repo>-ci-status` (R4).
@@ -91,6 +91,11 @@ description: "Task list for feature 002: PR and CI-status tooling"
   - **Lint:** add `node scripts/ci-status.mjs --selftest` to `scripts:lint` in `scripts/project.json` (R7).
   - Prerequisite: T005 verified RED.
   - **Verify GREEN:** `node --test scripts/__tests__/ci-status.test.mjs` → expected: 0 failures; then `pnpm nx run scripts:lint` and `pnpm nx run scripts:test` pass.
+  - **Done 2026-11-22.** 154 of 154 `ci-status` tests pass; the full suite passes 450, with 2 skipped (POSIX-only).
+    - **Ruling:** the built-in fallback is `['guardrails*']`, MCM's own first glob, not `guardrails / guardrails*`. It matches BELAY's context the same way, and keeps MCM's fallback-subset tests meaningful.
+    - **Ruling:** the fixtures were recorded against MCM's seven-context required set and its `e2e → affected, changes` job graph. They stay as test data: the tests inject `FIXTURE_GLOBS` and a fixture workflow, `fixtures/ci/workflows/ci.yml`, through a `withFixtureDefaults` wrapper. BELAY's real fallback and real workflow are asserted separately (`(w)`, `(case-e)`).
+    - **Removed as MCM-only:** `(n3)` (narrow statuses), `(oo2)` (an MCM fallback incident), the legacy-package fallback in `(106-2/3)` (rewritten: BELAY reads only `belay-ci-failures`), and the deploy-cost assertion in the advisory test.
+    - **Ruling:** the added `(no-leak)` test passed on first run, because the behaviour is ported. A mutation that printed the token did **not** fail it: `cmdStatus` wasn't imported, and the resulting TypeError was swallowed. The import was fixed, and a TypeError now fails the test. The mutation then went RED, and the restored code is GREEN.
 - [ ] T007 [US1] Live check: quickstart §1. Run `node scripts/ci-status.mjs status --sha "$(git rev-parse origin/main)"`.
   - **Done when:**
     - it exits 0 and lists `guardrails / guardrails (push)` as successful;
