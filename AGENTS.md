@@ -17,8 +17,8 @@ Top-level folders (most are still empty placeholders):
 | `docs/` | Documentation |
 | `openwiki/` | Wiki content |
 | `specs/` | Spec Kit feature specifications (see below) |
+| `scripts/` | Repo scripts, including the Spec Kit override gate (`check-speckit-overrides.mjs`) and its tests in `scripts/__tests__/` |
 | `api-specs/` | API specifications |
-| `scripts/` | Scripts |
 | `secrets/` | Local secrets. Only `.gitkeep`, `README.md` and `*.example` files are tracked. Never commit real secrets. |
 | `agents/` | AI agents |
 | `mcp-servers/` | MCP servers |
@@ -44,8 +44,10 @@ Top-level folders (most are still empty placeholders):
 This repo uses [GitHub Spec Kit](https://github.com/github/spec-kit) 1.4.2, set up for Claude Code with PowerShell scripts.
 
 - **Feature specs** go in `specs/<NNN>-<feature-name>/`, numbered sequentially. Each one holds `spec.md`, `plan.md`, `tasks.md` and any checklists.
-- **Project principles** are in [.specify/memory/constitution.md](.specify/memory/constitution.md). It is still the unfilled template; run `/speckit-constitution` to fill it in.
-- **Spec Kit's own files** are under `.specify/`: templates, scripts and workflow config. Don't edit them by hand except for the constitution.
+- **Project principles** are in [.specify/memory/constitution.md](.specify/memory/constitution.md). Every `/speckit-*` command reads it.
+- **Customisations:** `/speckit-tasks` builds from the project override [.specify/templates/overrides/tasks-template.md](.specify/templates/overrides/tasks-template.md). The override requires a doc-impact sweep, test tasks in the Verify RED / Verify GREEN format of [docs/templates/feature-test-tasks-template.md](docs/templates/feature-test-tasks-template.md), and a close-out re-search. Two Spec Kit skills carry registered local edits. [docs/runbooks/spec-kit.md](docs/runbooks/spec-kit.md) lists every customisation and the upgrade procedure.
+- **Spec Kit owns** every file listed in `.specify/integrations/*.manifest.json`, and `specify integration upgrade --force` overwrites them. Never edit a core template; use an override. Register any edit to a Spec Kit-owned file in `scripts/check-speckit-overrides.mjs` and the runbook in the same change.
+- **Run the gate** before committing changes under `.specify/` or `.claude/skills/speckit-*`: `node scripts/check-speckit-overrides.mjs`. When it fails because you changed something it protects, fix the cause. Never delete or weaken the gate.
 - **Skills** are in `.claude/skills/speckit-*`. The workflow runs in this order:
   1. `/speckit-constitution`
   2. `/speckit-specify`
