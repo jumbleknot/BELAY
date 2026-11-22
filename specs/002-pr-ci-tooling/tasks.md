@@ -96,13 +96,19 @@ description: "Task list for feature 002: PR and CI-status tooling"
     - **Ruling:** the fixtures were recorded against MCM's seven-context required set and its `e2e → affected, changes` job graph. They stay as test data: the tests inject `FIXTURE_GLOBS` and a fixture workflow, `fixtures/ci/workflows/ci.yml`, through a `withFixtureDefaults` wrapper. BELAY's real fallback and real workflow are asserted separately (`(w)`, `(case-e)`).
     - **Removed as MCM-only:** `(n3)` (narrow statuses), `(oo2)` (an MCM fallback incident), the legacy-package fallback in `(106-2/3)` (rewritten: BELAY reads only `belay-ci-failures`), and the deploy-cost assertion in the advisory test.
     - **Ruling:** the added `(no-leak)` test passed on first run, because the behaviour is ported. A mutation that printed the token did **not** fail it: `cmdStatus` wasn't imported, and the resulting TypeError was swallowed. The import was fixed, and a TypeError now fails the test. The mutation then went RED, and the restored code is GREEN.
-- [ ] T007 [US1] Live check: quickstart §1. Run `node scripts/ci-status.mjs status --sha "$(git rev-parse origin/main)"`.
+- [X] T007 [US1] Live check: quickstart §1. Run `node scripts/ci-status.mjs status --sha "$(git rev-parse origin/main)"`.
   - **Done when:**
     - it exits 0 and lists `guardrails / guardrails (push)` as successful;
     - `--pr 3` reports the merged PR's head as mergeable;
     - an unset `FORGE_TOKEN` exits 2 and names the variable.
 
     If it exits 2 with a missing scope, record the scope and ask the user to regenerate `FORGE_TOKEN` (research R4).
+
+  - **Done 2026-11-22.**
+    - `status --sha <origin/main>` exits 0, listing `guardrails / guardrails (push)` as passed; it shows as advisory because protection requires the `pull_request` context.
+    - `status --pr 3` exits 0: mergeable, with the required context satisfied.
+    - With `FORGE_TOKEN` unset, it exits 2 and names the variable.
+    - `FORGE_TOKEN`'s scopes are sufficient for status, PRs and branch protection.
 
 **Checkpoint**: the merge verdict works against the real forge.
 
