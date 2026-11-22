@@ -172,14 +172,14 @@ None. `backlog.mjs`'s dependencies (`forgeEndpoint`, `stripControlChars`, `redac
 
 ## Phase 8: User Story 6 - The rules for using the backlog (Priority: P3)
 
-- [ ] T014 [P] [US6] Port `.claude/skills/forgejo-issues/SKILL.md` from MCM (research R8).
+- [x] T014 [P] [US6] Port `.claude/skills/forgejo-issues/SKILL.md` from MCM (research R8).
   - **BELAY's version:** the BELAY backlog, `FORGE_ISSUE_TOKEN`, no dev-container requirement, no bot-managed or Renovate passages, generic item examples, and the forge measurement kept as a forge property.
   - **Done when:** the filing, closing, labelling, lifecycle and no-bulk rules are present with BELAY's nine labels, and `git grep -niE 'mcm|movie|bot-managed|renovate|dev container' .claude/skills/forgejo-issues` finds nothing.
-- [ ] T015 [P] [US6] Port `docs/runbooks/backlog.md` from MCM (research R8).
+- [x] T015 [P] [US6] Port `docs/runbooks/backlog.md` from MCM (research R8).
   - **Dropped:** the backup section, the dev-container and `setx` advice, and the bot-managed and Renovate rows.
   - **Changed:** the Nx paragraph now points at `pnpm nx run scripts:test`.
   - **Done when:** every command in [contracts/backlog-cli.md](contracts/backlog-cli.md) appears with its exit codes and credential, and the same MCM-term grep is clean.
-- [ ] T016 [P] [US6] Port `.forgejo/issue_template/backlog-item.yaml` from MCM, with BELAY placeholders (research R5).
+- [x] T016 [P] [US6] Port `.forgejo/issue_template/backlog-item.yaml` from MCM, with BELAY placeholders (research R5).
   - **Done when:**
     - it parses as YAML (`node -e "require('yaml').parse(...)"`);
     - it has no MCM terms;
