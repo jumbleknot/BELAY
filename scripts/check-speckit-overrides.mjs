@@ -21,6 +21,11 @@
 //     `--force` upgrade overwrites every managed file without warning;
 //   - a PROJECT_OWNED file (one Spec Kit used to manage) is missing, lost its marker, or is
 //     managed by a manifest again;
+//   - an installed Spec Kit extension (EXTENSIONS below) is missing, disabled, edited or at another
+//     version, lacks one of its command skills, or an unregistered extension is installed;
+//   - a hook in .specify/extensions.yml (EXTENSION_HOOKS below) is lost, disabled or has its
+//     `optional` flag flipped, or an unregistered hook appears — `specify extension add --force`
+//     rewrites extensions.yml and drops the hooks this repository added by hand;
 //   - the inventory runbook (docs/runbooks/spec-kit.md) no longer names every customisation guarded
 //     here, so the one list of what this repository changed in Spec Kit cannot fall behind.
 //
@@ -40,6 +45,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dieOnArgvError, partitionArgs, wantsHelp } from './lib/argv-contract.mjs';
 import { isMain } from './lib/is-main.mjs';
+import { parseExtensionsYml } from './lib/extensions-yml.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -82,6 +88,28 @@ export const LOCAL_EDITS = [
  * entry here when the gate reports registry-stale).
  */
 export const PROJECT_OWNED = [];
+
+export const EXTENSIONS_YML = '.specify/extensions.yml';
+export const EXTENSIONS_REGISTRY = '.specify/extensions/.registry';
+
+/**
+ * Spec Kit extensions this repository installs (`specify extension add <id>`). `version` is the one
+ * `.specify/extensions/.registry` records; `commands` are the commands it registers, each of which
+ * installs a skill at skillFileFor(command). Update in the same PR as an extension upgrade.
+ */
+export const EXTENSIONS = [];
+
+/**
+ * Every hook .specify/extensions.yml must carry, matched on event + extension + command.
+ * `local: true` marks a hook this repository added by hand: the installer does not write it, so a
+ * reinstall drops it and the gate reports hook-lost until it is re-added.
+ */
+export const EXTENSION_HOOKS = [];
+
+/** `speckit.git.feature` → `.claude/skills/speckit-git-feature/SKILL.md`. */
+export const skillFileFor = (command) => `.claude/skills/${command.replace(/\./g, '-')}/SKILL.md`;
+
+const extensionManifestFor = (id) => `.specify/extensions/${id}/extension.yml`;
 
 // How far back to look for the fork base. Spec Kit upgrades are rare; the core template has few
 // revisions in a repository's history.
@@ -191,10 +219,137 @@ function projectOwnedFailures(root, projectOwned) {
   return failures;
 }
 
+/**
+ * A clean installed tree for the given registries, in the layout `specify extension add` writes:
+ * extensions.yml, .registry (with real manifest hashes), each extension.yml and each command skill.
+ * Used by --selftest and the tests. A hook may carry `enabled: false` to write a disabled entry.
+ * @returns {Record<string, string>}
+ */
+export function extensionFixtureFiles({ extensions, hooks }) {
+  if (!extensions.length && !hooks.length) return {};
+  const files = {};
+  const registry = { schema_version: '1.0', extensions: {} };
+  for (const { id, version, commands } of extensions) {
+    const manifest = `schema_version: "1.0"\nextension:\n  id: ${id}\n  version: "${version}"\n`;
+    files[extensionManifestFor(id)] = manifest;
+    registry.extensions[id] = {
+      version,
+      source: 'local',
+      manifest_hash: `sha256:${sha256(manifest)}`,
+      enabled: true,
+      priority: 10,
+      registered_commands: { claude: [...commands] },
+      registered_skills: [],
+    };
+    for (const command of commands) files[skillFileFor(command)] = `# ${command}\n`;
+  }
+  files[EXTENSIONS_REGISTRY] = `${JSON.stringify(registry, null, 2)}\n`;
+  const yml = ['installed:', ...extensions.map((e) => `- ${e.id}`), 'settings:', '  auto_execute_hooks: true', 'hooks:'];
+  for (const event of [...new Set(hooks.map((h) => h.event))]) {
+    yml.push(`  ${event}:`);
+    for (const h of hooks.filter((x) => x.event === event)) {
+      yml.push(`  - extension: ${h.extension}`, `    command: ${h.command}`, `    enabled: ${h.enabled !== false}`, `    optional: ${h.optional}`, '    priority: 10', '    condition: null');
+    }
+  }
+  files[EXTENSIONS_YML] = `${yml.join('\n')}\n`;
+  return files;
+}
+
+const hookKey = (h) => `${h.event} ${h.extension} ${h.command}`;
+
+/** The registry of installed extensions, or null when it is missing or not valid JSON. */
+function readInstalled(bytes) {
+  if (bytes === null) return null;
+  try {
+    return JSON.parse(bytes.toString('utf8')).extensions ?? {};
+  } catch {
+    return null;
+  }
+}
+
+/** Installed extensions and extensions.yml hooks match the registries. */
+function extensionFailures(root, extensions, hooks) {
+  if (!extensions.length && !hooks.length) return [];
+  const read = (rel) => (existsSync(join(root, rel)) ? readFileSync(join(root, rel)) : null);
+  const failures = [];
+  const fail = (code, message) => failures.push({ code, message });
+  const REINSTALL = `reinstall with \`specify extension add <id> --force\`, re-apply the hand-added hooks listed in ${INVENTORY}, then re-run this gate`;
+
+  const registryBytes = read(EXTENSIONS_REGISTRY);
+  const installed = readInstalled(registryBytes);
+  if (installed === null) {
+    fail('extension-lost', `${EXTENSIONS_REGISTRY} is ${registryBytes === null ? 'missing' : 'not valid JSON'} — Spec Kit has no record of the installed extensions; ${REINSTALL}`);
+  } else {
+    for (const { id, version, commands } of extensions) {
+      const entry = installed[id];
+      const manifest = read(extensionManifestFor(id));
+      const problems = [];
+      if (!entry) problems.push(`${EXTENSIONS_REGISTRY} does not list it`);
+      else if (entry.enabled === false) problems.push(`it is disabled in ${EXTENSIONS_REGISTRY}`);
+      if (manifest === null) problems.push(`${extensionManifestFor(id)} is missing`);
+      const skills = commands.map(skillFileFor).filter((f) => read(f) === null);
+      if (skills.length) problems.push(`its command skill(s) ${skills.join(', ')} are missing`);
+      if (problems.length) {
+        fail('extension-lost', `extension ${id}: ${problems.join('; ')} — ${REINSTALL}`);
+        continue;
+      }
+      const changed = [];
+      if (entry.version !== version) changed.push(`${EXTENSIONS_REGISTRY} records version ${entry.version}, EXTENSIONS expects ${version}`);
+      if (String(entry.manifest_hash ?? '').replace(/^sha256:/, '') !== sha256(manifest)) {
+        changed.push(`${extensionManifestFor(id)} no longer matches the manifest_hash recorded at install`);
+      }
+      if (changed.length) {
+        fail('extension-changed', `extension ${id}: ${changed.join('; ')} — after an upgrade, update EXTENSIONS and EXTENSION_HOOKS (scripts/check-speckit-overrides.mjs) and ${INVENTORY}; otherwise restore the vendor file`);
+      }
+    }
+    const known = new Set(extensions.map((e) => e.id));
+    for (const id of Object.keys(installed).filter((x) => !known.has(x))) {
+      fail('extension-unregistered', `extension ${id} is installed (${EXTENSIONS_REGISTRY}) but not registered in EXTENSIONS — register it and its hooks in scripts/check-speckit-overrides.mjs and ${INVENTORY}, or \`specify extension remove ${id}\``);
+    }
+  }
+
+  const ymlBytes = read(EXTENSIONS_YML);
+  let actual = null;
+  let why = 'is missing';
+  if (ymlBytes !== null) {
+    try {
+      actual = Object.entries(parseExtensionsYml(ymlBytes.toString('utf8')).hooks).flatMap(([event, list]) => list.map((h) => ({ event, ...h })));
+    } catch (err) {
+      why = `cannot be read (${err.message})`;
+    }
+  }
+  if (actual === null) {
+    fail('extension-lost', `${EXTENSIONS_YML} ${why} — no extension hooks will run; ${REINSTALL}`);
+    return failures;
+  }
+  const byKey = new Map(actual.map((h) => [hookKey(h), h]));
+  for (const want of hooks) {
+    const got = byKey.get(hookKey(want));
+    let problem = null;
+    if (!got) problem = 'is missing';
+    else if (!got.enabled) problem = 'is disabled';
+    else if (got.optional !== want.optional) problem = `has optional: ${got.optional}, expected ${want.optional}`;
+    if (problem) {
+      fail('hook-lost', `${EXTENSIONS_YML} hook ${want.event} → ${want.extension} ${want.command} ${problem}${want.local ? ' (a hand-added hook: an extension reinstall drops it)' : ''} — re-add it as listed in ${INVENTORY}`);
+    }
+  }
+  const expected = new Set(hooks.map(hookKey));
+  for (const h of actual.filter((x) => !expected.has(hookKey(x)))) {
+    fail('hook-unregistered', `${EXTENSIONS_YML} hook ${h.event} → ${h.extension} ${h.command} is not registered in EXTENSION_HOOKS — register it in scripts/check-speckit-overrides.mjs and ${INVENTORY}, or remove it`);
+  }
+  return failures;
+}
+
 /** The inventory runbook must name every customisation this gate guards. */
-function inventoryFailure(root, localEdits, projectOwned) {
+function inventoryFailure(root, localEdits, projectOwned, extensionHooks = []) {
   const path = join(root, INVENTORY);
-  const required = [OVERRIDE_TEMPLATE, TDD_TEMPLATE, ...localEdits.map((e) => e.file), ...projectOwned.map((e) => e.file)];
+  const required = [
+    OVERRIDE_TEMPLATE,
+    TDD_TEMPLATE,
+    ...localEdits.map((e) => e.file),
+    ...projectOwned.map((e) => e.file),
+    ...(extensionHooks.length ? [EXTENSIONS_YML] : []),
+  ];
   const text = existsSync(path) ? readFileSync(path, 'utf8') : null;
   const missing = text === null ? required : required.filter((f) => !text.includes(f));
   if (!missing.length) return null;
@@ -270,7 +425,13 @@ function diffSinceForkBase(root, forkHash) {
 }
 
 /** @returns {{ok: boolean, failures: Array<{code: string, message: string}>}} */
-export function checkSpeckitOverrides({ root = REPO_ROOT, localEdits = LOCAL_EDITS, projectOwned = PROJECT_OWNED } = {}) {
+export function checkSpeckitOverrides({
+  root = REPO_ROOT,
+  localEdits = LOCAL_EDITS,
+  projectOwned = PROJECT_OWNED,
+  extensions = EXTENSIONS,
+  extensionHooks = EXTENSION_HOOKS,
+} = {}) {
   const read = (rel, enc = 'utf8') => (existsSync(join(root, rel)) ? readFileSync(join(root, rel), enc) : null);
   const failures = [];
   const fail = (code, message) => failures.push({ code, message });
@@ -307,7 +468,8 @@ export function checkSpeckitOverrides({ root = REPO_ROOT, localEdits = LOCAL_EDI
   }
   failures.push(...localEditFailures(root, localEdits));
   failures.push(...projectOwnedFailures(root, projectOwned));
-  const inventory = inventoryFailure(root, localEdits, projectOwned);
+  failures.push(...extensionFailures(root, extensions, extensionHooks));
+  const inventory = inventoryFailure(root, localEdits, projectOwned, extensionHooks);
   if (inventory) failures.push(inventory);
   return { ok: failures.length === 0, failures };
 }
@@ -345,7 +507,7 @@ function scan(root) {
   const r = checkSpeckitOverrides({ root });
   if (r.ok) {
     const fork = parseForkPoint(readFileSync(join(root, OVERRIDE_TEMPLATE), 'utf8').split('\n')[0]);
-    console.log(`✓ speckit-overrides gate passed (override present with sweep task and TDD checkpoint sample, core template matches fork point ${fork.sha256.slice(0, 12)}, override-first resolution intact, ${LOCAL_EDITS.length} registered local edit(s) in place and no unregistered ones, ${PROJECT_OWNED.length} project-owned file(s) present and unmanaged, inventory ${INVENTORY} complete)`);
+    console.log(`✓ speckit-overrides gate passed (override present with sweep task and TDD checkpoint sample, core template matches fork point ${fork.sha256.slice(0, 12)}, override-first resolution intact, ${LOCAL_EDITS.length} registered local edit(s) in place and no unregistered ones, ${PROJECT_OWNED.length} project-owned file(s) present and unmanaged, ${EXTENSIONS.length} extension(s) and ${EXTENSION_HOOKS.length} hook(s) registered and intact, inventory ${INVENTORY} complete)`);
     return 0;
   }
   for (const f of r.failures) console.error(`[speckit-overrides] ✗ ${f.code}: ${f.message}`);
@@ -359,19 +521,35 @@ const SELFTEST_OWNED = PROJECT_OWNED.length
   ? PROJECT_OWNED
   : [{ file: '.claude/skills/selftest-project-skill/SKILL.md', marker: 'selftest-project-marker', why: 'selftest fixture' }];
 
+// Likewise one extension and one hook, so every extension and hook code is proven even while the
+// real registries are empty.
+const SELFTEST_EXTENSIONS = EXTENSIONS.length ? EXTENSIONS : [{ id: 'selftest-ext', version: '1.0.0', commands: ['speckit.selftest-ext.run'] }];
+const SELFTEST_HOOKS = EXTENSION_HOOKS.length
+  ? EXTENSION_HOOKS
+  : [{ event: 'before_specify', extension: 'selftest-ext', command: 'speckit.selftest-ext.run', optional: false }];
+
 function selftest() {
   const coreBody = '# Tasks\n\n- [ ] T001 Setup\n';
   const tddPair = `- [ ] T003 [US1] Test (${TDD_TEMPLATE})\n  - **Verify RED**: x\n- [ ] T004 [US1] Implement\n  - **Verify GREEN**: x\n`;
   const overrideBody = `${coreBody}- [ ] T002 ${SWEEP_MARKER} — search the docs\n${tddPair}`;
   const [edit] = LOCAL_EDITS;
   const [owned] = SELFTEST_OWNED;
+  const [ext] = SELFTEST_EXTENSIONS;
+  const [hook] = SELFTEST_HOOKS;
+  const ymlWith = (hooks) => extensionFixtureFiles({ extensions: SELFTEST_EXTENSIONS, hooks })[EXTENSIONS_YML];
+  const registryWith = (edit) => {
+    const reg = JSON.parse(extensionFixtureFiles({ extensions: SELFTEST_EXTENSIONS, hooks: SELFTEST_HOOKS })[EXTENSIONS_REGISTRY]);
+    edit(reg.extensions);
+    return JSON.stringify(reg);
+  };
   const upstream = '# upstream skill\n';
   const managed = (files) => JSON.stringify({ integration: 'claude', files });
   const registered = Object.fromEntries(LOCAL_EDITS.map((e) => [e.file, sha256(upstream)]));
   const clean = {
     [CORE_TEMPLATE]: coreBody,
     [OVERRIDE_TEMPLATE]: `${forkPointLine(sha256(coreBody), '1.4.2')}\n${overrideBody}`,
-    [INVENTORY]: [OVERRIDE_TEMPLATE, TDD_TEMPLATE, ...LOCAL_EDITS.map((e) => e.file), ...SELFTEST_OWNED.map((e) => e.file)].join('\n'),
+    [INVENTORY]: [OVERRIDE_TEMPLATE, TDD_TEMPLATE, EXTENSIONS_YML, ...LOCAL_EDITS.map((e) => e.file), ...SELFTEST_OWNED.map((e) => e.file)].join('\n'),
+    ...extensionFixtureFiles({ extensions: SELFTEST_EXTENSIONS, hooks: SELFTEST_HOOKS }),
     [`${INTEGRATIONS_DIR}/claude.manifest.json`]: managed(registered),
     ...Object.fromEntries(LOCAL_EDITS.map((e) => [e.file, `# local skill\n${e.marker}\n`])),
     ...Object.fromEntries(SELFTEST_OWNED.map((e) => [e.file, `# project skill\n${e.marker}\n`])),
@@ -398,6 +576,11 @@ function selftest() {
     ['core-changed', { [CORE_TEMPLATE]: `${coreBody}- [ ] T009 upstream\n` }, ['core-changed']],
     ['setup bypasses Resolve-Template', { [SETUP_TASKS_PS1]: "$t = '.specify/templates/tasks-template.md'\n" }, ['resolution-broken']],
     ['presets before overrides/', { [COMMON_PS1]: 'function Resolve-Template {\n  $p = ".specify/presets"\n  $o = "overrides/x.md"\n}\nfunction Resolve-TemplateContent {\n  $o = "overrides/x.md"\n}\n' }, ['resolution-broken']],
+    ['hook-lost', { [EXTENSIONS_YML]: ymlWith(SELFTEST_HOOKS.filter((h) => h !== hook)) }, ['hook-lost']],
+    ['hook-unregistered', { [EXTENSIONS_YML]: ymlWith([...SELFTEST_HOOKS, { event: 'after_selftest', extension: ext.id, command: ext.commands[0], optional: true }]) }, ['hook-unregistered']],
+    ['extension-lost', { [skillFileFor(ext.commands[0])]: null }, ['extension-lost']],
+    ['extension-unregistered', { [EXTENSIONS_REGISTRY]: registryWith((e) => { e['selftest-extra'] = { ...e[ext.id] }; }) }, ['extension-unregistered']],
+    ['extension-changed', { [extensionManifestFor(ext.id)]: 'edited: true\n' }, ['extension-changed']],
     ['setup bypasses Resolve-TemplateContent', { [SETUP_TASKS_PS1]: "$t = Resolve-Template -TemplateName 'tasks-template' -RepoRoot $r\n" }, ['resolution-broken']],
   ];
   let broken = 0;
@@ -409,7 +592,7 @@ function selftest() {
         mkdirSync(dirname(join(root, rel)), { recursive: true });
         writeFileSync(join(root, rel), body);
       }
-      const got = checkSpeckitOverrides({ root, projectOwned: SELFTEST_OWNED }).failures.map((f) => f.code).sort();
+      const got = checkSpeckitOverrides({ root, projectOwned: SELFTEST_OWNED, extensions: SELFTEST_EXTENSIONS, extensionHooks: SELFTEST_HOOKS }).failures.map((f) => f.code).sort();
       if (JSON.stringify(got) !== JSON.stringify(want)) {
         broken++;
         console.error(`✗ selftest "${name}": expected [${want}], got [${got}]`);
@@ -419,7 +602,7 @@ function selftest() {
     }
   }
   if (broken) return 1;
-  console.log('✓ speckit-overrides gate --selftest passed (clean tree passes; override-missing, header-invalid, sweep-missing, tdd-format-missing, core-changed, every resolution-broken shape, local-edit-reverted, unregistered-edit, registry-stale, project-file-lost, project-file-managed and inventory-stale are each detected)');
+  console.log('✓ speckit-overrides gate --selftest passed (clean tree passes; override-missing, header-invalid, sweep-missing, tdd-format-missing, core-changed, every resolution-broken shape, local-edit-reverted, unregistered-edit, registry-stale, project-file-lost, project-file-managed, hook-lost, hook-unregistered, extension-lost, extension-unregistered, extension-changed and inventory-stale are each detected)');
   return 0;
 }
 

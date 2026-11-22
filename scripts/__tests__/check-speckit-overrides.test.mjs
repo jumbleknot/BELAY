@@ -10,9 +10,15 @@ import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
+  EXTENSIONS,
+  EXTENSIONS_REGISTRY,
+  EXTENSIONS_YML,
+  EXTENSION_HOOKS,
   LOCAL_EDITS,
   PROJECT_OWNED,
   checkSpeckitOverrides,
+  extensionFixtureFiles,
+  skillFileFor,
   main,
   parseForkPoint,
   recordForkPoint,
@@ -46,6 +52,7 @@ const inventoryFor = (files) => `# Spec Kit\n\n${files.map((f) => `- \`${f}\``).
 const INVENTORY_OK = inventoryFor([
   '.specify/templates/overrides/tasks-template.md',
   TDD_TEMPLATE,
+  EXTENSIONS_YML,
   ...new Set([SKILL, ...LOCAL_EDITS.map((e) => e.file), ...PROJECT_OWNED.map((e) => e.file)]),
 ]);
 // The shape Spec Kit 0.16.x ships: an input-validation `return $null` BEFORE the override check
@@ -87,6 +94,8 @@ function fixture({
   manifest = null, // { [path]: hash } — written as a Spec Kit integration manifest when given
   files = {}, // extra files, e.g. the skill a manifest lists
   git = false,
+  extensions = EXTENSIONS, // extension registry whose clean installed tree is written by default
+  hooks = EXTENSION_HOOKS,
 } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'speckit-overrides-'));
   const put = (rel, body) => {
@@ -104,6 +113,8 @@ function fixture({
   for (const { file, marker } of PROJECT_OWNED) put(file, `# project skill
 ${marker}
 `);
+  // The extension tree is present and intact by default, as in the real tree.
+  for (const [rel, body] of Object.entries(extensionFixtureFiles({ extensions, hooks }))) put(rel, body);
   if (manifest) put(MANIFEST, JSON.stringify({ integration: 'claude', version: '0.16.5', files: manifest }));
   // `null` removes a file, including a default project-owned one.
   for (const [rel, body] of Object.entries(files)) body === null ? rmSync(join(root, rel), { force: true }) : put(rel, body);
@@ -436,4 +447,93 @@ test('CLI: --selftest passes', () => {
 
 test('CLI: --record and --selftest together exit 2', () => {
   assert.equal(quiet(() => main(['--record', '--selftest'], { root: fixture() })).rc, 2);
+});
+
+// ── Spec Kit extensions: hooks, installed extensions and their skills ─────────────────────────────
+const TEST_EXT = [
+  { id: 'ext-a', version: '1.0.0', commands: ['speckit.ext-a.run', 'speckit.ext-a.go'] },
+  { id: 'ext-b', version: '2.0.0', commands: ['speckit.ext-b.update'] },
+];
+const TEST_HOOKS = [
+  { event: 'before_specify', extension: 'ext-a', command: 'speckit.ext-a.run', optional: false },
+  { event: 'after_plan', extension: 'ext-b', command: 'speckit.ext-b.update', optional: true, local: true },
+];
+const extCheck = (opts = {}) =>
+  checkSpeckitOverrides({ root: fixture({ extensions: TEST_EXT, hooks: TEST_HOOKS, ...opts }), extensions: TEST_EXT, extensionHooks: TEST_HOOKS });
+const registryWith = (edit) => {
+  const reg = JSON.parse(extensionFixtureFiles({ extensions: TEST_EXT, hooks: TEST_HOOKS })[EXTENSIONS_REGISTRY]);
+  edit(reg.extensions);
+  return JSON.stringify(reg, null, 2);
+};
+
+test('skillFileFor maps dots to dashes', () => {
+  assert.equal(skillFileFor('speckit.git.feature'), '.claude/skills/speckit-git-feature/SKILL.md');
+});
+
+test('clean extension tree passes', () => {
+  assert.deepEqual(codes(extCheck()), []);
+});
+
+test('hook check ignores ordering', () => {
+  const yml = extensionFixtureFiles({ extensions: [...TEST_EXT].reverse(), hooks: [...TEST_HOOKS].reverse() })[EXTENSIONS_YML];
+  assert.deepEqual(codes(extCheck({ files: { [EXTENSIONS_YML]: yml } })), []);
+});
+
+test('hook removed → hook-lost', () => {
+  const yml = extensionFixtureFiles({ extensions: TEST_EXT, hooks: TEST_HOOKS.slice(1) })[EXTENSIONS_YML];
+  assert.deepEqual(codes(extCheck({ files: { [EXTENSIONS_YML]: yml } })), ['hook-lost']);
+});
+
+test('hook disabled → hook-lost', () => {
+  const yml = extensionFixtureFiles({ extensions: TEST_EXT, hooks: [{ ...TEST_HOOKS[0], enabled: false }, TEST_HOOKS[1]] })[EXTENSIONS_YML];
+  assert.deepEqual(codes(extCheck({ files: { [EXTENSIONS_YML]: yml } })), ['hook-lost']);
+});
+
+test('hook optional flipped → hook-lost', () => {
+  const yml = extensionFixtureFiles({ extensions: TEST_EXT, hooks: [{ ...TEST_HOOKS[0], optional: true }, TEST_HOOKS[1]] })[EXTENSIONS_YML];
+  assert.deepEqual(codes(extCheck({ files: { [EXTENSIONS_YML]: yml } })), ['hook-lost']);
+});
+
+test('extra hook → hook-unregistered', () => {
+  const extra = { event: 'after_tasks', extension: 'ext-a', command: 'speckit.ext-a.go', optional: true };
+  const yml = extensionFixtureFiles({ extensions: TEST_EXT, hooks: [...TEST_HOOKS, extra] })[EXTENSIONS_YML];
+  assert.deepEqual(codes(extCheck({ files: { [EXTENSIONS_YML]: yml } })), ['hook-unregistered']);
+});
+
+test('.registry missing ext-b → extension-lost', () => {
+  assert.deepEqual(codes(extCheck({ files: { [EXTENSIONS_REGISTRY]: registryWith((e) => delete e['ext-b']) } })), ['extension-lost']);
+});
+
+test('unreadable .registry reports extension-lost', () => {
+  const r = extCheck({ files: { [EXTENSIONS_REGISTRY]: '{not json' } });
+  assert.deepEqual(codes(r), ['extension-lost']);
+  assert.match(r.failures[0].message, /\.registry/);
+});
+
+test('command skill missing → extension-lost', () => {
+  assert.deepEqual(codes(extCheck({ files: { [skillFileFor('speckit.ext-a.go')]: null } })), ['extension-lost']);
+});
+
+test('extra installed id → extension-unregistered', () => {
+  const reg = registryWith((e) => { e['ext-c'] = { ...e['ext-a'], version: '0.1.0' }; });
+  assert.deepEqual(codes(extCheck({ files: { [EXTENSIONS_REGISTRY]: reg } })), ['extension-unregistered']);
+});
+
+test('extension.yml edited → extension-changed', () => {
+  assert.deepEqual(codes(extCheck({ files: { '.specify/extensions/ext-a/extension.yml': 'edited: true\n' } })), ['extension-changed']);
+});
+
+test('version bumped in .registry → extension-changed', () => {
+  const reg = registryWith((e) => { e['ext-a'].version = '9.9.9'; });
+  assert.deepEqual(codes(extCheck({ files: { [EXTENSIONS_REGISTRY]: reg } })), ['extension-changed']);
+});
+
+test('inventory lacks extensions.yml → inventory-stale', () => {
+  const inventory = inventoryFor([OVERRIDE, TDD_TEMPLATE, ...new Set([SKILL, ...LOCAL_EDITS.map((e) => e.file), ...PROJECT_OWNED.map((e) => e.file)])]);
+  assert.deepEqual(codes(extCheck({ inventory })), ['inventory-stale']);
+});
+
+test('empty registries skip extension checks', () => {
+  const root = fixture({ extensions: [], hooks: [] });
+  assert.deepEqual(codes(checkSpeckitOverrides({ root, extensions: [], extensionHooks: [] })), []);
 });
