@@ -1,0 +1,26 @@
+{
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "name": "scripts",
+  "projectType": "library",
+  "sourceRoot": "scripts",
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "parallel": false,
+        "commands": [
+          "node scripts/check-speckit-overrides.mjs --selftest",
+          "node scripts/check-speckit-overrides.mjs"
+        ]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "command": "node --test \"scripts/__tests__/*.test.mjs\""
+      }
+    }
+  }
+}

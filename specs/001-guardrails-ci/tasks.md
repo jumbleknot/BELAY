@@ -29,7 +29,7 @@ description: "Task list for feature 001: guardrails CI"
 
 **Purpose**: turn BELAY into a pnpm + Nx workspace (research R1, R2), and find every doc this feature makes stale.
 
-- [ ] T001 Create the workspace root files.
+- [X] T001 Create the workspace root files.
   - **Files:** `package.json`, `pnpm-workspace.yaml`, `nx.json`, `.gitignore` (append `.nx/` and `.pnpm-store/`). Run `pnpm install` to create `pnpm-lock.yaml`.
   - **Field values:** [data-model.md](data-model.md) → Workspace (`package.json`, `pnpm-workspace.yaml`, `nx.json` rows). `nx` is exact and `yaml` uses `^`, per constitution v1.0.1 "Dependency Security".
   - **Supply-chain notes:** port MCM's `pnpm-workspace.yaml` header comments explaining why `allowBuilds` exists, why overrides belong in this file, and why there's no `minimumReleaseAge`. Leave out MCM's package entries and incident history.
@@ -38,7 +38,7 @@ description: "Task list for feature 001: guardrails CI"
     - `pnpm install --frozen-lockfile` exits 0 with no `ERR_PNPM_IGNORED_BUILDS`;
     - `git status --short` shows no `node_modules/` or `.nx/`;
     - `pnpm nx --version` prints 24.0.6.
-- [ ] T002 Create the Nx project `scripts` in `scripts/project.json`.
+- [X] T002 Create the Nx project `scripts` in `scripts/project.json`.
   - **Targets:** `nx:run-commands` with `cwd` at the repository root and `parallel: false`. For now:
     - `lint` holds only the two `check-speckit-overrides.mjs` commands;
     - `test` holds `node --test "scripts/__tests__/*.test.mjs"`.
@@ -47,7 +47,8 @@ description: "Task list for feature 001: guardrails CI"
   - **Done when:**
     - `pnpm nx run scripts:lint` and `pnpm nx run scripts:test` both exit 0, and `scripts:test` runs all 66 existing tests;
     - the warm wall time of each target is recorded here. If either is more than about 10 s over the direct `node` command, stop and raise MCM's measured Nx-graph cost (research R2) before continuing.
-- [ ] T003 **Doc-impact sweep** (REQUIRED in every tasks.md; constitution "Documentation").
+  - **Measured 2026-11-22** (warm, `--skip-nx-cache`, Windows): `scripts:lint` 1.34 s against 0.42 s direct; `scripts:test` 2.20 s against 1.31 s direct (66 tests). Nx adds about 1 s, well under the threshold, so no MCM-style exception is needed.
+- [X] T003 **Doc-impact sweep** (REQUIRED in every tasks.md; constitution "Documentation").
   - **Command:** for each term, `git grep -n -F "<term>" -- '*.md' ':!specs/' ':!docs/proposals/' ':!docs/decisions/' ':!docs/superpowers/'`.
   - **Terms (identifiers whose meaning this feature changes):** `by hand`, `no CI`, `No language toolchains`, `build system`, `node --test`, `check-speckit-overrides.mjs`, `package.json`, `pnpm`, `nx`, `ci-failures`, `ci-step-logs`, `guardrails`, `Run the gate`.
   - **Results** (searched 2026-11-22, while generating this file):

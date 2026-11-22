@@ -1,0 +1,18 @@
+{
+  "name": "@belay/workspace",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@12.21.0",
+  "//engines": "Node floor for local development. CI runs Node 26.13.1 (constitution) via actions/setup-node in .forgejo/workflows/guardrails.yml. The Spec Kit gate's tests rely on Node 24 behaviour.",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "preinstall": "npx --yes only-allow pnpm"
+  },
+  "//devDependencies": "Pinning per constitution 'Dependency Security': nx is a lockstep group and stays exact; other dependencies may use ^ ranges, and pnpm-lock.yaml pins every install.",
+  "devDependencies": {
+    "nx": "24.0.6",
+    "yaml": "^2.9.1"
+  }
+}

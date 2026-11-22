@@ -1,0 +1,30 @@
+packages:
+  - 'frontend/*'
+  - 'backend/*'
+  - 'packages/*'
+
+# ═════════════════════════════════════════════════════════════════════════════════════════════════
+# `allowBuilds`: which dependencies may run install scripts. A postinstall script is arbitrary code
+# execution at install time, so this is a SUPPLY-CHAIN control, not a convenience toggle.
+#
+# pnpm 11+ makes an undecided package a HARD ERROR (`ERR_PNPM_IGNORED_BUILDS`, install exits 1),
+# so every package that ships an install script must be listed with an explicit true or false.
+# Never blanket-`true` the placeholder block pnpm writes. Flip an entry to `true` only with a
+# reason: the build script needs to run, and you accept it running.
+# ═════════════════════════════════════════════════════════════════════════════════════════════════
+allowBuilds:
+  nx: true # Nx's postinstall prepares its native task runner; required for `pnpm nx`
+
+# ═════════════════════════════════════════════════════════════════════════════════════════════════
+# `overrides` belong HERE, not in package.json's `pnpm` field. pnpm 11+ no longer reads that field
+# and only warns that the keys were ignored. Every override exists to force a vulnerable transitive
+# dependency to a patched version, so a silently ignored override re-admits the vulnerability. If a
+# pnpm bump warns about ignored keys, MIGRATE them; never dismiss the warning. None are needed yet.
+#
+# No `minimumReleaseAge` is set here on purpose. On an empty store, a cooldown makes a cold
+# `pnpm install --frozen-lockfile` reject any pinned dependency published younger than the
+# threshold. A frozen install cannot re-resolve to an older version, so CI fails. pnpm 11+ still
+# applies its own release-age policy when it verifies the lockfile on install. If an install fails
+# with ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION on a freshly published transitive, wait for it to age
+# past the cutoff and re-run. Use `minimumReleaseAgeExclude` only for a security fix needed now.
+# ═════════════════════════════════════════════════════════════════════════════════════════════════
