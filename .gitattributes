@@ -12,6 +12,8 @@
 # Spec Kit-managed scripts: keep the line endings Spec Kit writes (LF) so the
 # hashes in .specify/integrations/*.manifest.json still match on checkout
 .specify/scripts/**/*.ps1 text eol=lf
+# Spec Kit extension scripts (specify extension add): same reason, LF as installed
+.specify/extensions/**/*.ps1 text eol=lf
 
 # Shell scripts must stay LF
 *.sh    text eol=lf

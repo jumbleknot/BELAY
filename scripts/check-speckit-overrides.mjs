@@ -85,9 +85,16 @@ export const LOCAL_EDITS = [
  * that drops out of its manifest as "stale", so presence and marker are checked here; and if a
  * manifest lists the path again, the next `--force` upgrade would overwrite it, so that fails too.
  * Empty until an upgrade stops managing a file this repository has edited (move its LOCAL_EDITS
- * entry here when the gate reports registry-stale).
+ * entry here when the gate reports registry-stale). Also holds extension config this repository
+ * customises: `specify extension add` copies config files on install but lists them in no manifest.
  */
-export const PROJECT_OWNED = [];
+export const PROJECT_OWNED = [
+  {
+    file: '.specify/extensions/agent-context/agent-context-config.yml',
+    marker: 'context_file: AGENTS.md',
+    why: 'agent-context must write to AGENTS.md; CLAUDE.md is a shim that imports it',
+  },
+];
 
 export const EXTENSIONS_YML = '.specify/extensions.yml';
 export const EXTENSIONS_REGISTRY = '.specify/extensions/.registry';
@@ -97,14 +104,42 @@ export const EXTENSIONS_REGISTRY = '.specify/extensions/.registry';
  * `.specify/extensions/.registry` records; `commands` are the commands it registers, each of which
  * installs a skill at skillFileFor(command). Update in the same PR as an extension upgrade.
  */
-export const EXTENSIONS = [];
+export const EXTENSIONS = [
+  { id: 'git', version: '1.0.5', commands: ['speckit.git.feature', 'speckit.git.validate', 'speckit.git.remote', 'speckit.git.initialize', 'speckit.git.commit'] },
+  { id: 'agent-context', version: '1.0.3', commands: ['speckit.agent-context.update'] },
+];
 
 /**
  * Every hook .specify/extensions.yml must carry, matched on event + extension + command.
  * `local: true` marks a hook this repository added by hand: the installer does not write it, so a
  * reinstall drops it and the gate reports hook-lost until it is re-added.
  */
-export const EXTENSION_HOOKS = [];
+export const EXTENSION_HOOKS = [
+  { event: 'before_constitution', extension: 'git', command: 'speckit.git.initialize', optional: false },
+  { event: 'before_specify', extension: 'git', command: 'speckit.git.feature', optional: false },
+  { event: 'before_clarify', extension: 'git', command: 'speckit.git.commit', optional: true },
+  { event: 'before_plan', extension: 'git', command: 'speckit.git.commit', optional: true },
+  { event: 'before_tasks', extension: 'git', command: 'speckit.git.commit', optional: true },
+  { event: 'before_implement', extension: 'git', command: 'speckit.git.commit', optional: true },
+  { event: 'before_checklist', extension: 'git', command: 'speckit.git.commit', optional: true },
+  { event: 'before_analyze', extension: 'git', command: 'speckit.git.commit', optional: true },
+  { event: 'before_taskstoissues', extension: 'git', command: 'speckit.git.commit', optional: true },
+  { event: 'after_constitution', extension: 'git', command: 'speckit.git.commit', optional: true },
+  { event: 'after_specify', extension: 'git', command: 'speckit.git.commit', optional: true },
+  { event: 'after_clarify', extension: 'git', command: 'speckit.git.commit', optional: true },
+  { event: 'after_plan', extension: 'git', command: 'speckit.git.commit', optional: true },
+  { event: 'after_tasks', extension: 'git', command: 'speckit.git.commit', optional: true },
+  { event: 'after_implement', extension: 'git', command: 'speckit.git.commit', optional: true },
+  { event: 'after_checklist', extension: 'git', command: 'speckit.git.commit', optional: true },
+  { event: 'after_analyze', extension: 'git', command: 'speckit.git.commit', optional: true },
+  { event: 'after_taskstoissues', extension: 'git', command: 'speckit.git.commit', optional: true },
+  { event: 'after_specify', extension: 'agent-context', command: 'speckit.agent-context.update', optional: true },
+  { event: 'after_plan', extension: 'agent-context', command: 'speckit.agent-context.update', optional: true },
+  // Hand-added: the git extension registers no converge hooks, so /speckit-converge would skip the
+  // commit offer every other command makes. A reinstall drops these two.
+  { event: 'before_converge', extension: 'git', command: 'speckit.git.commit', optional: true, local: true },
+  { event: 'after_converge', extension: 'git', command: 'speckit.git.commit', optional: true, local: true },
+];
 
 /** `speckit.git.feature` → `.claude/skills/speckit-git-feature/SKILL.md`. */
 export const skillFileFor = (command) => `.claude/skills/${command.replace(/\./g, '-')}/SKILL.md`;

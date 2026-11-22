@@ -33,6 +33,12 @@ the core templates under `.specify/templates/`. An upgrade
 (`specify integration upgrade claude --force`) rewrites each one with no warning that a local edit
 is being lost.
 
+Spec Kit also **owns** what `specify extension add <id>` installs: everything under
+`.specify/extensions/<id>/`, `.specify/extensions/.registry`, `.specify/extensions.yml` and each
+extension command's skill (`.claude/skills/speckit-<id>-<command>/`). None of these is in an
+integration manifest. Reinstalling an extension (`--force`) rewrites `extensions.yml` from the
+extension manifests, dropping any hook added by hand; it preserves existing extension config files.
+
 The **project** owns everything else under `.specify/`: `templates/overrides/` and
 `memory/constitution.md`. An upgrade leaves these alone.
 
@@ -53,13 +59,17 @@ So a change to Spec Kit's behaviour takes one of three forms, in order of prefer
 | 2a | The `/speckit-tasks` skill's own "Tests are OPTIONAL" rule is replaced with "Tests are REQUIRED" in the row 2 format. Without this edit the skill's instruction contradicts the override, and the agent reads both | `.claude/skills/speckit-tasks/SKILL.md` (Task Generation Rules) | Registered local edit to a Spec Kit-owned file | It is the skill itself | `local-edit-reverted`, `unregistered-edit`, `registry-stale` |
 | 2b | `/speckit-converge` appends its **Convergence** tasks in the row 2 format: a test + implementation pair with **Verify RED** / **Verify GREEN** for any code gap, "Done when" for docs/config, and a **Doc-impact sweep** task for a gap that renames, moves or removes an identifier. Upstream writes one-line tasks that never see the override | `.claude/skills/speckit-converge/SKILL.md` (step 7, the append contract) | Registered local edit to a Spec Kit-owned file | It is the skill itself | `local-edit-reverted`, `unregistered-edit`, `registry-stale` |
 | 3 | The governing principles every spec, plan and task list is checked against | `.specify/memory/constitution.md` | Project-owned | Every `/speckit-*` command reads it | none needed: upgrades do not touch it |
+| 5 | Spec Kit extensions **git 1.0.5** (feature branch before `/speckit-specify`, optional commit offers around every command) and **agent-context 1.0.3** (refreshes the Spec Kit section of the agent context file after specify and plan) | `.specify/extensions/git/`, `.specify/extensions/agent-context/`, `.specify/extensions/.registry`, and the skills `.claude/skills/speckit-git-{feature,validate,remote,initialize,commit}/` and `.claude/skills/speckit-agent-context-update/` | Vendor files installed by `specify extension add` | Each `/speckit-*` skill reads `.specify/extensions.yml` and runs the registered hooks | `extension-lost`, `extension-unregistered`, `extension-changed` |
+| 5a | The hooks the extensions register (20, two of them mandatory: `before_constitution` → `speckit.git.initialize` and `before_specify` → `speckit.git.feature`), **plus two hand-added hooks**: `before_converge` and `after_converge` → `speckit.git.commit` (optional), so `/speckit-converge` offers the same commits as every other command | `.specify/extensions.yml`; the expected list is `EXTENSION_HOOKS` in `scripts/check-speckit-overrides.mjs` (hand-added entries carry `local: true`) | Vendor file plus a registered local edit (the two converge hooks) | Read by every `/speckit-*` skill's hook checks | `hook-lost`, `hook-unregistered` |
+| 5b | agent-context writes to **AGENTS.md**, never the `CLAUDE.md` shim | `.specify/extensions/agent-context/agent-context-config.yml` (`context_file: AGENTS.md`) | Project-owned (extension config: installed once, preserved on reinstall, in no manifest) | Read by `speckit.agent-context.update` | `project-file-lost` |
 | 4 | The CLI version this repository was initialised with | `speckit_version` in `.specify/init-options.json`; the version named in the Spec Kit section of [AGENTS.md](../../AGENTS.md) | Pins | n/a | none: keep the two equal by hand in the upgrade PR |
 
-Rows 1, 2, 2a and 2b are the ones an upgrade can break. The gate checks that this table names
-`.specify/templates/overrides/tasks-template.md`, `docs/templates/feature-test-tasks-template.md`,
-every file in its `LOCAL_EDITS` registry and every file in its `PROJECT_OWNED` list
-(`inventory-stale`). `PROJECT_OWNED` is empty today; it holds files Spec Kit used to manage that
-this repository keeps as its own.
+Rows 1, 2, 2a, 2b, 5, 5a and 5b are the ones an upgrade can break. The gate checks that this
+table names `.specify/templates/overrides/tasks-template.md`,
+`docs/templates/feature-test-tasks-template.md`, `.specify/extensions.yml`, every file in its
+`LOCAL_EDITS` registry and every file in its `PROJECT_OWNED` list (`inventory-stale`).
+`PROJECT_OWNED` holds files this repository keeps as its own that no manifest lists: today, the
+agent-context config (row 5b).
 
 ### Known gaps
 
@@ -68,9 +78,11 @@ this repository keeps as its own.
 - **The scripts are PowerShell only.** The repository was initialised with `--script ps`. An
   environment without `pwsh` falls back to resolving the feature directory from
   `.specify/feature.json` by hand.
-- **No extensions are installed.** There is no `.specify/extensions.yml`, so nothing creates a
-  feature branch before `/speckit-specify` or commits around each command. Create the branch by
-  hand. Installing an extension adds a row to the table above.
+- **The gate does not check `git-config.yml`.** BELAY uses the git extension's shipped config
+  unchanged (`auto_commit.default: false`, sequential branch numbers). If you customise it, add it
+  to `PROJECT_OWNED` and add a row to the table above in the same PR.
+- **Extension skills are checked for presence, not content.** Spec Kit records a hash only of each
+  extension's `extension.yml`, so an edit to an extension's command skill is not detected.
 
 ## Adding a customisation
 
@@ -147,4 +159,9 @@ The procedure, all in one PR:
 | `registry-stale` | A `LOCAL_EDITS` file is no longer listed in any manifest, so Spec Kit no longer manages it | To keep the file, move the entry to `PROJECT_OWNED` and update its row. If it is no longer needed, drop the entry and the row |
 | `project-file-lost` | A `PROJECT_OWNED` file is missing or lost its marker. An upgrade deletes files that drop out of its manifest | Restore it from git history |
 | `project-file-managed` | A `PROJECT_OWNED` file is listed in a manifest again, so the next `--force` upgrade overwrites it | Move the entry back to `LOCAL_EDITS`, or rename the project file so the paths no longer collide |
+| `hook-lost` | A hook in `EXTENSION_HOOKS` is missing from `.specify/extensions.yml`, is disabled, or has its `optional` flag changed. After an extension reinstall this is expected for the hand-added `converge` hooks (row 5a) | Re-add the hook in the installer's format, as listed in row 5a. If upstream changed a hook on purpose, update `EXTENSION_HOOKS` and row 5a |
+| `hook-unregistered` | `.specify/extensions.yml` has a hook that `EXTENSION_HOOKS` does not list, usually a new hook from an extension upgrade | Register it in `EXTENSION_HOOKS` and row 5a, or remove it |
+| `extension-lost` | A registered extension is missing from `.specify/extensions/.registry` or disabled there, its `extension.yml` or one of its command skills is gone, or `.registry` / `extensions.yml` is missing or unreadable | `specify extension add <id> --force`, re-add the hand-added hooks (row 5a), then re-run the gate |
+| `extension-unregistered` | `.registry` lists an extension that `EXTENSIONS` does not | Register it in `EXTENSIONS`, `EXTENSION_HOOKS` and the table, or `specify extension remove <id>` |
+| `extension-changed` | An extension's `extension.yml` no longer matches the `manifest_hash` recorded at install, or its version differs from `EXTENSIONS` | After an upgrade, update `EXTENSIONS` / `EXTENSION_HOOKS` and row 5. Otherwise restore the vendor file from git |
 | `inventory-stale` | This runbook is missing, or does not name a guarded customisation | Add the row to the table above |
