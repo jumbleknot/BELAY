@@ -121,3 +121,5 @@ out/
 !*.tfvars.example
 crash.log
 .terragrunt-cache/
+
+.claude/worktrees

@@ -1,5 +1,5 @@
-# CLAUDE.md
-
-This repository's agent instructions live in [AGENTS.md](AGENTS.md). They are imported below so that Claude Code loads them automatically. Make edits in AGENTS.md, not here.
+<!-- CLAUDE.md is a SHIM: every instruction lives in AGENTS.md, loaded by the import below. -->
+<!-- Tools that read only AGENTS.md never see this file, and a tool that reads both would load a copy twice, so content added here reaches Claude alone. -->
+<!-- Edit AGENTS.md instead. Not yet gated in BELAY (MovieCollectionManager's governance rule G15 enforces it there); see openwiki/process/wiki-maintenance.md. -->
 
 @AGENTS.md

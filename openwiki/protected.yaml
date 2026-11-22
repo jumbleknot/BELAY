@@ -1,0 +1,36 @@
+# Protection manifest — the authoritative concepts of the openwiki/ bundle.
+#
+# Every concept is EXACTLY ONE of:
+#   - derived: it carries a `resource` front-matter field naming the one file it summarises; or
+#   - authoritative: it carries no `resource` and is listed below. It is the canonical home of its
+#     subject, so a new learning about that subject is written into the concept itself.
+# The rule for where a new learning goes (openwiki/INSTRUCTIONS.md, section 7) is undecidable
+# without this list.
+#
+# A SIDECAR on purpose: protection that lived inside the concept it guards could be stripped by the
+# edit it exists to constrain, and a stripped marker reads as "not protected" rather than as a failure.
+#
+# NOT YET ENFORCED. MovieCollectionManager's governance gate (check-openwiki-governance.mjs) checks
+# this list and also fingerprints load-bearing passages under `passages:`. BELAY has not ported that
+# gate, so this file is kept by review and carries no fingerprints. When the gate is ported, compute
+# fingerprints with its --fingerprint mode; never hand-type one.
+#
+# The four reserved bundle files (index.md, INSTRUCTIONS.md, quickstart.md, log.md) are not concepts
+# and are not listed.
+
+version: 1
+
+authoritative:
+  - "gotchas/env-file-inline-comments.md"
+  - "gotchas/instrument-traps.md"
+  - "invariants/feature-validation-checklist.md"
+  - "invariants/nx-task-runner.md"
+  - "invariants/package-manager-enforcement.md"
+  - "invariants/rtk-token-compression.md"
+  - "invariants/secrets-management.md"
+  - "invariants/testing-tiers.md"
+  - "process/pull-request-batching.md"
+  - "process/spec-driven-development.md"
+  - "process/test-authoring-conventions.md"
+  - "process/wiki-maintenance.md"
+  - "projects/repository.md"
