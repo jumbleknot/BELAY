@@ -192,6 +192,12 @@ description: "Task list for feature 001: guardrails CI"
   - **Done when:** every FR-017 item has a section; the file is linked from `AGENTS.md` (T020) and `docs/runbooks/spec-kit.md` (T021); markdownlint shows no new warnings.
 - [X] T016 [US4] After T025's first green run: record the exact status-context string in `docs/runbooks/ci.md`, then hand the user the branch-protection steps.
   - **Done when:** the user reports protection is on, and a test `git push origin HEAD:main` from a scratch commit is refused (US4-AC1). Verify US4-AC2 on T026's red run: merge is blocked.
+  - **Done 2026-11-22.**
+    - The first run went green after about 36 minutes queued on the shared `ci-homelab` runner. The context recorded is `guardrails / guardrails (pull_request)`.
+    - The user enabled protection. The API reads back the `main` rule as push disabled, that status check required, and block-on-outdated on.
+    - A direct push of an empty commit to `main` was refused (`pre-receive hook declined`).
+    - **Ruling (user decision):** BELAY moved to its own repository runner `ci-belay` with the unique label `belay`, mapped to `docker://node:26-bookworm`. `runs-on`, the contract test (watched RED first), the contract document and `docs/runbooks/ci.md` were updated to match.
+    - US4-AC2 (merge blocked on a red run) is verified during T026.
 
 **Checkpoint**: `main` is protected.
 
