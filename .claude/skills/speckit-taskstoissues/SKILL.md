@@ -70,6 +70,19 @@ You **MUST** consider the user input before proceeding (if not empty).
    it (for example, `T001 already has an item, skipping`). `create` also refuses a duplicate title unless
    given `--allow-duplicate`; never pass it here. Title each item `T001: <description>`, with the leading
    `- [ ]` and any `[P]` / `[US#]` markers stripped.
+1. **Run the fan-out with `scripts/taskstoissues.mjs`**, which does every step below through
+   `scripts/backlog.mjs`, in this order: milestone, dedupe across all pages, one create per unfiled task,
+   then the dependency chain. Run the dry run first and show the user what it would create:
+
+```bash
+node scripts/taskstoissues.mjs <NNN-slug> --dry-run   # reads only; lists each item it would create
+node scripts/taskstoissues.mjs <NNN-slug>             # files them; a second run creates 0
+# --tasks <path> overrides the default specs/<NNN-slug>/tasks.md
+```
+
+   It exits 0 on success, 2 on a usage error, and otherwise with the failing `backlog.mjs` command's own
+   exit code, having issued no write after that failure. The individual commands it runs, for doing a
+   step by hand:
 
 ```bash
 # once per feature — the milestone must exist before it can be referenced
