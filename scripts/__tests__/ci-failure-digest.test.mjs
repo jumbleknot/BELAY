@@ -1899,3 +1899,30 @@ test('(failing-step-first) without a known failing step the ranked order is unch
   assert.match(d.markdown, /a out/);
   assert.doesNotMatch(d.markdown, /d out/);
 });
+
+// ── package-api: the repo-scoped evidence-package names, shared with MovieCollectionManager ───────
+// ci-status.mjs imports bundlePackageFor / bundlePackagesFor, so the two repositories keep one API.
+// BELAY never published to the legacy shared `ci-failures` name, so its readers never include it:
+// reading it would pull in another repository's evidence.
+import { bundlePackageFor, bundlePackagesFor, isEvidencePackage, bundleRefFor } from '../ci-failure-digest.mjs';
+
+test('(package-api) bundlePackageFor lowercases the repository name and refuses an empty one', () => {
+  assert.equal(bundlePackageFor('BELAY'), 'belay-ci-failures');
+  assert.equal(bundlePackageFor('  Other '), 'other-ci-failures');
+  assert.throws(() => bundlePackageFor(''), /repository/);
+  assert.throws(() => bundlePackageFor(undefined), /repository/);
+});
+
+test('(package-api) bundlePackagesFor is exactly the repo-scoped package — no legacy shared name', () => {
+  assert.deepEqual(bundlePackagesFor('BELAY'), ['belay-ci-failures']);
+});
+
+test('(package-api) isEvidencePackage recognizes any repository\'s evidence package and nothing else', () => {
+  for (const n of ['ci-failures', 'belay-ci-failures', 'other-ci-failures']) assert.equal(isEvidencePackage(n), true, n);
+  for (const n of ['ci-failures-old', 'belay-devcontainer', '-ci-failures', '']) assert.equal(isEvidencePackage(n), false, n);
+});
+
+test('(package-api) bundleRefFor joins package and version, and bundlePackage(env) is unchanged', () => {
+  assert.equal(bundleRefFor('belay-ci-failures', '1--guardrails'), 'belay-ci-failures:1--guardrails');
+  assert.equal(bundlePackage({ GITHUB_REPOSITORY: 'jumbleknot/BELAY' }), 'belay-ci-failures');
+});

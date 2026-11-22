@@ -26,7 +26,7 @@ description: "Task list for feature 002: PR and CI-status tooling"
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-- [ ] T001 **Doc-impact sweep** (REQUIRED in every tasks.md; constitution "Documentation").
+- [X] T001 **Doc-impact sweep** (REQUIRED in every tasks.md; constitution "Documentation").
   - **Command:** for each term, `git grep -n -F "<term>" -- '*.md' ':!specs/' ':!docs/proposals/' ':!docs/decisions/' ':!docs/superpowers/'`.
   - **Terms:** `ci-status`, `forge-pr`, `feature 002`, `features 002`, `Open the PR`, `PR and backlog`, `bundlePackage`, `FORGE_TOKEN`, `git push origin HEAD`.
   - **Results** (searched 2026-11-22, while generating this file):
@@ -46,7 +46,7 @@ description: "Task list for feature 002: PR and CI-status tooling"
 
 **⚠️ CRITICAL**: `ci-status.mjs` can't load until this phase is complete.
 
-- [ ] T002 Add package-API tests to `scripts/__tests__/ci-failure-digest.test.mjs`, following MCM's feature 106 cases, with BELAY's values. Contract: [contracts/cli.md](contracts/cli.md) → `ci-failure-digest.mjs` added exports. Data: [data-model.md](data-model.md) → Evidence bundle.package.
+- [X] T002 Add package-API tests to `scripts/__tests__/ci-failure-digest.test.mjs`, following MCM's feature 106 cases, with BELAY's values. Contract: [contracts/cli.md](contracts/cli.md) → `ci-failure-digest.mjs` added exports. Data: [data-model.md](data-model.md) → Evidence bundle.package.
   - **Cases:**
     - `bundlePackageFor('BELAY') === 'belay-ci-failures'`;
     - `bundlePackageFor('')` throws;
@@ -56,7 +56,7 @@ description: "Task list for feature 002: PR and CI-status tooling"
     - `bundlePackage({GITHUB_REPOSITORY:'jumbleknot/BELAY'}) === 'belay-ci-failures'`, unchanged.
   - **Scenarios covered:** US4-AC3 (only BELAY's evidence is ever read).
   - **Verify RED:** `node --test --test-name-pattern="package-api" scripts/__tests__/ci-failure-digest.test.mjs` → expected: failing with `does not provide an export named 'bundlePackageFor'`.
-- [ ] T003 Implement `bundlePackageFor`, `bundlePackagesFor`, `isEvidencePackage` and `bundleRefFor` in `scripts/ci-failure-digest.mjs`, with MCM's bodies, except `bundlePackagesFor`, which returns `[bundlePackageFor(repo)]`. Re-express `bundlePackage(env)` as `bundlePackageFor(repoSlug(env))`, and use `bundleRefFor` where the digest builds `bundleRef`. Prerequisite: T002 verified RED.
+- [X] T003 Implement `bundlePackageFor`, `bundlePackagesFor`, `isEvidencePackage` and `bundleRefFor` in `scripts/ci-failure-digest.mjs`, with MCM's bodies, except `bundlePackagesFor`, which returns `[bundlePackageFor(repo)]`. Re-express `bundlePackage(env)` as `bundlePackageFor(repoSlug(env))`, and use `bundleRefFor` where the digest builds `bundleRef`. Prerequisite: T002 verified RED.
   - **Verify GREEN:** the T002 command → expected: 0 failures; then `pnpm nx run scripts:test` passes, so feature 001's digest tests are unchanged.
 
 **Checkpoint**: the digest module exports what `ci-status` imports.
