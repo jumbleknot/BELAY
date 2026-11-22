@@ -1,0 +1,135 @@
+---
+name: "speckit-taskstoissues"
+description: "Convert existing tasks into actionable, dependency-ordered Forgejo backlog items for the feature based on available design artifacts."
+argument-hint: "Optional filter or label for backlog items"
+compatibility: "Requires spec-kit project structure with .specify/ directory"
+metadata:
+  author: "project"
+  source: "project-owned since Spec Kit 1.x moved taskstoissues out of core; forked from spec-kit 0.16.5 templates/commands/taskstoissues.md by way of MovieCollectionManager; registered in scripts/check-speckit-overrides.mjs PROJECT_OWNED; see docs/runbooks/spec-kit.md"
+user-invocable: true
+disable-model-invocation: false
+---
+
+
+## User Input
+
+```text
+$ARGUMENTS
+```
+
+You **MUST** consider the user input before proceeding (if not empty).
+
+## Pre-Execution Checks
+
+**Check for extension hooks (before tasks-to-issues conversion)**:
+- Check if `.specify/extensions.yml` exists in the project root.
+- If it exists, read it and look for entries under the `hooks.before_taskstoissues` key
+- If the YAML cannot be parsed or is invalid, do not skip silently: tell the user that `.specify/extensions.yml` could not be read (include the parser error) and that no hooks were checked, including any mandatory (`optional: false`) hooks registered there, then continue normally
+- Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
+- For each remaining hook, do **not** attempt to interpret or evaluate hook `condition` expressions:
+  - If the hook has no `condition` field, or it is null/empty, treat the hook as executable
+  - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
+- When constructing command invocations from hook command names, replace dots (`.`) with hyphens (`-`). For example, `speckit.git.commit` → `/speckit-git-commit`.
+- For each executable hook, output the following based on its `optional` flag:
+  - **Optional hook** (`optional: true`):
+    ```
+    ## Extension Hooks
+
+    **Optional Pre-Hook**: {extension}
+    Command: `/{command}`
+    Description: {description}
+
+    Prompt: {prompt}
+    To execute: `/{command}`
+    ```
+  - **Mandatory hook** (`optional: false`):
+    ```
+    ## Extension Hooks
+
+    **Automatic Pre-Hook**: {extension}
+    Executing: `/{command}`
+    EXECUTE_COMMAND: {command}
+
+    Wait for the result of the hook command before proceeding to the Outline.
+    ```
+    After emitting the block above you MUST actually invoke the hook and wait for it to finish before continuing. Run it the same way you would run the command yourself in this agent/session (the invocation may differ from the literal `{command}` id shown above, e.g. a skills-mode agent runs it as `/skill:speckit-...` or `$speckit-...`). Emitting the block alone does not run the hook.
+- If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently
+
+## Outline
+
+1. Run `.specify/scripts/powershell/check-prerequisites.ps1 -Json -RequireTasks -IncludeTasks` from repo root and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+1. **IF EXISTS**: Load `.specify/memory/constitution.md` for project principles and governance constraints.
+1. From the executed script, extract the path to **tasks**.
+1. Fan the tasks out onto **this repository's Forgejo tracker** using `scripts/backlog.mjs`, which derives
+   the API base and the owner/repo from `git remote get-url origin` — the same derivation the backlog
+   tooling uses everywhere. There is no GitHub gate and no MCP server involved: the backlog lives on
+   this repository's Forgejo tracker (see `.claude/skills/forgejo-issues/SKILL.md`).
+1. **Deduplicate first**: build the set of task IDs from `tasks.md` (a `T` followed by **at least** three
+   digits — `/speckit-converge` can produce four-digit IDs, so match `\bT\d{3,}\b`), then list the
+   feature milestone's items in both states and skip any task whose ID already appears in a title, reporting
+   it (for example, `T001 already has an item, skipping`). `create` also refuses a duplicate title unless
+   given `--allow-duplicate`; never pass it here. Title each item `T001: <description>`, with the leading
+   `- [ ]` and any `[P]` / `[US#]` markers stripped.
+
+```bash
+# once per feature — the milestone must exist before it can be referenced
+node scripts/backlog.mjs setup-milestone <NNN-slug>
+
+# what already exists (open and closed), for the dedupe above; a page caps at 50 rows, so add
+# --page 2, 3, … while a page comes back full and task IDs remain unmatched
+node scripts/backlog.mjs list --state all --milestone <NNN-slug> --limit 50 --json
+
+# one item per task; body from a file (or `-` for stdin), never a flag
+body="$(mktemp)"   # works in Git Bash on Windows too
+node scripts/backlog.mjs create --title "T012: <task title>" --body-file "$body" \
+  --label type/chore --label priority/p2 --milestone <NNN-slug>
+
+# encode the task ordering as blocking edges, so `ready` answers correctly
+node scripts/backlog.mjs dep <item-of-T013> --blocked-by <item-of-T012>
+```
+
+> [!CAUTION]
+> UNDER NO CIRCUMSTANCES EVER CREATE ISSUES IN REPOSITORIES THAT DO NOT MATCH THE REMOTE URL.
+> This is enforced, not merely asked for: every write in `backlog.mjs` asserts its target against the
+> origin remote and refuses a mismatch before issuing the call — checked once against any `--repo` value
+> and again at the request boundary. The write credential can reach other repositories by design, so that
+> guard is the only client-side bound. Do not work around it.
+
+**This fan-out is optional.** `tasks.md` remains the authoritative in-feature decomposition; the items are
+a mirror of it for coordination, never a replacement. The primary flow runs the other way — backlog items
+are *inputs* to `/speckit-specify`. Prefer it only for a feature large enough that the ordering is worth
+tracking in the open, and be aware that a 70-task feature becomes 70 items in a shared tracker.
+
+## Post-Execution Checks
+
+**Check for extension hooks (after tasks-to-issues conversion)**:
+Check if `.specify/extensions.yml` exists in the project root.
+- If it exists, read it and look for entries under the `hooks.after_taskstoissues` key
+- If the YAML cannot be parsed or is invalid, do not skip silently: tell the user that `.specify/extensions.yml` could not be read (include the parser error) and that no hooks were checked, including any mandatory (`optional: false`) hooks registered there, then continue normally
+- Filter out hooks where `enabled` is explicitly `false`. Treat hooks without an `enabled` field as enabled by default.
+- For each remaining hook, do **not** attempt to interpret or evaluate hook `condition` expressions:
+  - If the hook has no `condition` field, or it is null/empty, treat the hook as executable
+  - If the hook defines a non-empty `condition`, skip the hook and leave condition evaluation to the HookExecutor implementation
+- When constructing command invocations from hook command names, replace dots (`.`) with hyphens (`-`). For example, `speckit.git.commit` → `/speckit-git-commit`.
+- For each executable hook, output the following based on its `optional` flag:
+  - **Optional hook** (`optional: true`):
+    ```
+    ## Extension Hooks
+
+    **Optional Hook**: {extension}
+    Command: `/{command}`
+    Description: {description}
+
+    Prompt: {prompt}
+    To execute: `/{command}`
+    ```
+  - **Mandatory hook** (`optional: false`):
+    ```
+    ## Extension Hooks
+
+    **Automatic Hook**: {extension}
+    Executing: `/{command}`
+    EXECUTE_COMMAND: {command}
+    ```
+    After emitting the block above you MUST actually invoke the hook and wait for it to finish before continuing. Run it the same way you would run the command yourself in this agent/session (the invocation may differ from the literal `{command}` id shown above, e.g. a skills-mode agent runs it as `/skill:speckit-...` or `$speckit-...`). Emitting the block alone does not run the hook.
+- If no hooks are registered or `.specify/extensions.yml` does not exist, skip silently

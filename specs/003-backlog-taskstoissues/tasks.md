@@ -141,13 +141,13 @@ None. `backlog.mjs`'s dependencies (`forgeEndpoint`, `stripControlChars`, `redac
 
 ### Tests for User Story 3 (REQUIRED, TDD checkpoint format) ⚠️
 
-- [ ] T011 [US3] Register the skill in `scripts/check-speckit-overrides.mjs` `PROJECT_OWNED`, with the entry in [contracts/taskstoissues.md](contracts/taskstoissues.md) → Gate registration.
+- [X] T011 [US3] Register the skill in `scripts/check-speckit-overrides.mjs` `PROJECT_OWNED`, with the entry in [contracts/taskstoissues.md](contracts/taskstoissues.md) → Gate registration.
   - **Scenarios covered:** US3-AC5.
   - **Verify RED:** `node scripts/check-speckit-overrides.mjs` → expected: exit 1, with `project-file-lost` for `.claude/skills/speckit-taskstoissues/SKILL.md` and `inventory-stale` naming it. The skill and its inventory row don't exist yet.
 
 ### Implementation for User Story 3
 
-- [ ] T012 [US3] Port `.claude/skills/speckit-taskstoissues/SKILL.md` from MCM (research R4).
+- [X] T012 [US3] Port `.claude/skills/speckit-taskstoissues/SKILL.md` from MCM (research R4).
   - **Frontmatter:** `source` records "forked from spec-kit 0.16.5 via MovieCollectionManager; project-owned".
   - **Scratch file:** the body file goes to a `mktemp` path, not `/tmp/t012.md`.
   - **Wording:** no MCM item numbers or MCM-flavoured text.
