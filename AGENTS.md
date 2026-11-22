@@ -1,82 +1,72 @@
-# AGENTS.md
+# AGENTS.md — the instruction file for every coding assistant
 
-Guidance for AI coding agents working in this repository.
+BELAY is a polyglot monorepo of tooling that other repositories share, so every change here is a change to its consumers — [the repository](openwiki/projects/repository.md)
 
-## About this repo
+## Gates that run before you act
 
-BELAY (**B**uild, **E**ngineering, **L**ifecycle & **A**utomation **Y**ard) is a polyglot monorepo. It holds common tooling that other repositories share: SDLC, PDLC, DevSecOps, and general engineering utilities. Treat everything here as a dependency of other projects. A change here can affect every repo that uses BELAY.
+- **Never set `ANTHROPIC_API_KEY` where AI coding runs — it runs on the subscription** — Claude Code silently prefers that variable over a subscription login and bills per token (~$15 in one unnoticed day, measured in MovieCollectionManager); a tool that needs a model key takes it under another name, mapped only at the point of use — [secrets posture](openwiki/invariants/secrets-management.md)
+- **SDD is not optional for implementation** — code under `backend/`, `frontend/`, `agents/`, `mcp-servers/`, `packages/`, `tools/` or `infrastructure-as-code/` needs an existing `specs/NNN-*/` spec → plan → tasks set; write it first, or stop and ask. Docs, proposals and knowledge/index edits are exempt — [the lifecycle](openwiki/process/spec-driven-development.md)
+- **A structural decision is asked, not taken** — a new language toolchain, build plugin, top-level folder or dependency with an install script needs the maintainer's yes first; only pnpm + Nx is chosen — [the repository](openwiki/projects/repository.md)
+- **A PR's head MUST be a real branch — never an AGit push** — `git push origin HEAD:<branch>`, then `node scripts/forge-pr.mjs open`, `ci-status.mjs watch --pr <n>`, `forge-pr.mjs merge <n> --expect-head <sha>`; never hand-type a `git credential fill` recipe. An AGit (`refs/for/main`) head runs with NO Actions secrets — [the PR loop](openwiki/runbooks/ci.md)
+- **Commit or push only when asked; on `main`, branch first** — `main` is protected (no direct push, `guardrails` required) — [git](openwiki/projects/repository.md)
+- **Branch on `ci-status` exit codes: 3 is "still waiting", never a failure** — 0 mergeable, 1 required check failed, 2 bad arguments or missing token scope — [the PR loop](openwiki/runbooks/ci.md)
+- **A tool's "no" is about the tool, not your question — check before claiming anything verified OR impossible** — a skipped test exits 0 and reads as a pass (watch the SKIP COUNT); a forge empty list or 404 often means the wrong token or id — [testing tiers](openwiki/invariants/testing-tiers.md), [instrument traps](openwiki/gotchas/instrument-traps.md)
+- **"It can't run in this environment" needs the same proof as "it passes"** — a credential- or tool-driven skip is almost always a missing *file* or setting; name the missing input before retiring a tier to CI — [testing tiers](openwiki/invariants/testing-tiers.md)
+- **Before believing a result, check the INSTRUMENT** — `node --test <file> --test-name-pattern x` runs EVERYTHING (node's flags go before the path); RTK can rewrite an answer into its opposite (re-run under `rtk proxy`); confirm a script supports `--dry-run` before trusting one — [instrument traps](openwiki/gotchas/instrument-traps.md)
+- **Run the checks your DIFF touches — and CI's two targets before every push** — `pnpm nx run scripts:lint` and `pnpm nx run scripts:test` are exactly what CI runs; a change under `.specify/` or `.claude/skills/speckit-*` also needs `node scripts/check-speckit-overrides.mjs` first — [validation checklist](openwiki/invariants/feature-validation-checklist.md)
+- **A guard that fails because you changed what it protects gets UPDATED at the cause, never deleted** — make it assert the new premise so it still fails if that regresses — [testing tiers](openwiki/invariants/testing-tiers.md)
+- **Never edit a Spec Kit-owned file without registering it; never edit a core template** — `specify integration upgrade --force` overwrites them; use an override, or register the local edit in `scripts/check-speckit-overrides.mjs` and the runbook in the same change — [Spec Kit](openwiki/runbooks/spec-kit.md)
+- **Changing a file that an `openwiki/` page cites as its `resource` means refreshing that page IN THE SAME PR** — not yet gated (no V17 here; item #28), so it is on you and on review: `git grep -n "^resource: <path>" openwiki/` — [wiki maintenance](openwiki/process/wiki-maintenance.md)
+- **pnpm only, through Nx** — `pnpm install --frozen-lockfile`; npm and yarn are refused by `preinstall`; every package with an install script needs an `allowBuilds` entry — [pnpm](openwiki/invariants/package-manager-enforcement.md), [Nx](openwiki/invariants/nx-task-runner.md)
+- **Never commit secrets, `.env` files, keys or Terraform state; never print a credential** — templates are `*.example`; docs and wiki pages never name the forge host or a tailnet address — [secrets posture](openwiki/invariants/secrets-management.md)
 
-The repo is in early setup. The JavaScript toolchain is chosen (see "Toolchain" below). No other language toolchains have been chosen yet, so don't assume one. If a task needs a structural decision, such as a new language, a new build plugin or a new top-level folder, ask before introducing it.
+## Start here
 
-## Layout
+- **This is the ONE instruction file** — tools that read `AGENTS.md` read it directly; Claude Code reads it through the [CLAUDE.md](CLAUDE.md) shim's `@AGENTS.md` import
+- [openwiki/quickstart.md](openwiki/quickstart.md) — how the knowledge bundle is organized, and where to start by task
+- [openwiki/INSTRUCTIONS.md](openwiki/INSTRUCTIONS.md) — the brief: scope, exclusions, redaction, front matter, **where a new learning goes**
+- [openwiki/process/wiki-maintenance.md](openwiki/process/wiki-maintenance.md) — the same-PR refresh duty, and the gates not yet ported
+- [openwiki/protected.yaml](openwiki/protected.yaml) — which concepts are authoritative
 
-Top-level folders (most are still empty placeholders):
+## Where a new learning goes
 
-| Folder | Purpose |
-| --- | --- |
-| `docs/` | Documentation |
-| `openwiki/` | Wiki content |
-| `specs/` | Spec Kit feature specifications (see below) |
-| `scripts/` | Repo scripts, as the Nx project `scripts` (`scripts/project.json`). They include the Spec Kit override gate (`check-speckit-overrides.mjs`), the CI scripts (`install-pnpm.sh`, `ci-log-step.sh`, `ci-failure-digest.mjs`, `ci-digest-redact.mjs`, `secret-scan.mjs`, `check-ci-digest-coverage.mjs`), the PR and CI-status tools (`ci-status.mjs`, `forge-pr.mjs`, `lib/forge-credential.mjs`; see [docs/runbooks/ci.md](docs/runbooks/ci.md)), the backlog tools (`backlog.mjs` and the tasks-to-issues fan-out `taskstoissues.mjs`; see [docs/runbooks/backlog.md](docs/runbooks/backlog.md) and the [forgejo-issues skill](.claude/skills/forgejo-issues/SKILL.md)), and their tests in `scripts/__tests__/`. |
-| `.forgejo/workflows/` | CI. `guardrails.yml` runs on every PR and push to `main` (see [docs/runbooks/ci.md](docs/runbooks/ci.md)). |
-| `api-specs/` | API specifications |
-| `secrets/` | Local secrets. Only `.gitkeep`, `README.md` and `*.example` files are tracked. Never commit real secrets. |
-| `agents/` | AI agents |
-| `mcp-servers/` | MCP servers |
-| `backend/` | Backend code |
-| `frontend/` | Frontend code |
-| `packages/` | Shared packages and libraries |
-| `infrastructure-as-code/` | Infrastructure as code |
-| `assets/` | Static assets |
-| `security/` | Security tooling and policy |
-| `target/` | Build output. It's ignored by Git and never committed. |
-| `tools/` | Developer tools |
+- A concept citing a `resource` is a **derived summary** → write the learning into the cited source **and refresh the concept in the same PR** — [the rule](openwiki/INSTRUCTIONS.md)
+- A concept marked **[canonical]** below has no upstream document → write the learning **into the concept** — [the canonical list](openwiki/protected.yaml)
+- No concept covers the subject → **add one**, writing detail into the subject's canonical document where it has one — [how to](openwiki/INSTRUCTIONS.md)
+- **Never** into this file: it is an index — an entry keeps its rule, its trap and a link; the story goes in the linked page
+- **Never** into [CLAUDE.md](CLAUDE.md) either: it is a shim, so content there reaches Claude alone
 
-## Conventions
+## Knowledge index
 
-- **Line endings:** [.gitattributes](.gitattributes) stores text as LF. Windows script types (`.ps1`, `.psm1`, `.psd1`, `.bat`, `.cmd`, `.sln`) use CRLF, and shell scripts must stay LF. Don't override these per file.
-- **Ignored paths:** [.gitignore](.gitignore) ignores `bin/`, `build/`, `out/`, `dist/` and `target/` anywhere in the tree. If you need a tracked directory with one of those names, such as a scripts `bin/`, add an explicit `!` exception rather than renaming around it.
-- **Lock files:** commit lock files such as `Cargo.lock`, `package-lock.json` and `pnpm-lock.yaml`. This repo builds runnable tools, so reproducible builds matter.
-- **Secrets:** never commit secrets, `.env` files, keys or Terraform state. Use `*.example` files for templates.
-- **License:** MIT (see [LICENSE](LICENSE)). Don't add code or dependencies with licenses that are incompatible with MIT redistribution.
+### Projects
 
-## Toolchain
+- [BELAY repository — layout and working conventions](openwiki/projects/repository.md) **[canonical]** — folders, line endings, ignored paths, lock files, license, git
 
-- **pnpm and Nx**, as in MovieCollectionManager. `package.json` pins pnpm through `packageManager`, and `preinstall` refuses npm and yarn. Nx runs every test and lint operation (constitution "Monorepo Build Tool").
-- **Install:** `pnpm install --frozen-lockfile`. The pnpm-lock.yaml lock file is committed.
-- **Version pinning** follows the constitution's "Dependency Security": the lock file pins installs, lockstep groups (`nx`, `@nx/*`, `@playwright/test`) are exact, and other dependencies may use `^`. Every package with an install script needs an explicit `allowBuilds` entry in `pnpm-workspace.yaml`.
-- **Checks:** `pnpm nx run scripts:lint` runs the gates and selftests. `pnpm nx run scripts:test` runs the script tests. These are the same commands CI runs.
-- **CI:** [docs/runbooks/ci.md](docs/runbooks/ci.md) covers the guardrails workflow, failure digests, the runner, secrets and branch protection.
+### Invariants
 
-## Spec-driven development (Spec Kit)
+- [Final validation checklist](openwiki/invariants/feature-validation-checklist.md) **[canonical]** — what runs before a feature is complete
+- [Nx as the universal task runner](openwiki/invariants/nx-task-runner.md) **[canonical]** — `scripts:lint` / `scripts:test`, and the operator-CLI exception
+- [Package-manager enforcement (pnpm only)](openwiki/invariants/package-manager-enforcement.md) **[canonical]** — `preinstall`, `packageManager`, `allowBuilds`
+- [RTK (Rust Token Killer) token compression](openwiki/invariants/rtk-token-compression.md) **[canonical]**
+- [Secrets management posture](openwiki/invariants/secrets-management.md) **[canonical]** — the three forge credentials and their scopes
+- [Testing tiers and what gates a merge](openwiki/invariants/testing-tiers.md) **[canonical]**
 
-This repo uses [GitHub Spec Kit](https://github.com/github/spec-kit) 1.4.2, set up for Claude Code with PowerShell scripts.
+### Gotchas
 
-- **Feature specs** go in `specs/<NNN>-<feature-name>/`, numbered sequentially. Each one holds `spec.md`, `plan.md`, `tasks.md` and any checklists.
-- **Project principles** are in [.specify/memory/constitution.md](.specify/memory/constitution.md). Every `/speckit-*` command reads it.
-- **Customisations:** `/speckit-tasks` builds from the project override [.specify/templates/overrides/tasks-template.md](.specify/templates/overrides/tasks-template.md). The override requires a doc-impact sweep, test tasks in the Verify RED / Verify GREEN format of [docs/templates/feature-test-tasks-template.md](docs/templates/feature-test-tasks-template.md), and a close-out re-search. Two Spec Kit skills carry registered local edits. [docs/runbooks/spec-kit.md](docs/runbooks/spec-kit.md) lists every customisation and the upgrade procedure.
-- **Spec Kit owns** every file listed in `.specify/integrations/*.manifest.json`, and `specify integration upgrade --force` overwrites them. Never edit a core template; use an override. Register any edit to a Spec Kit-owned file in `scripts/check-speckit-overrides.mjs` and the runbook in the same change.
-- **Extensions:** Spec Kit's `git` and `agent-context` extensions are installed. `/speckit-specify` creates the feature branch through the mandatory `before_specify` hook, and every command offers an optional commit. agent-context maintains the section between `<!-- SPECKIT START -->` and `<!-- SPECKIT END -->` in this file; never edit inside it by hand. The gate checks the extensions and their hooks, including two hand-added `converge` hooks that a reinstall drops (see the runbook).
-- **Run the gate** before committing changes under `.specify/` or `.claude/skills/speckit-*`: `node scripts/check-speckit-overrides.mjs`. It needs no install. CI also runs it, with its selftest, on every PR and push to `main` (`scripts:lint`). When it fails because you changed something it protects, fix the cause. Never delete or weaken the gate.
-- **Skills** are in `.claude/skills/speckit-*`. The workflow runs in this order:
-  1. `/speckit-constitution`
-  2. `/speckit-specify`
-  3. `/speckit-clarify` (optional)
-  4. `/speckit-plan`
-  5. `/speckit-checklist` (optional)
-  6. `/speckit-tasks`
-  7. `/speckit-analyze` (optional)
-  8. `/speckit-implement`
+- [.env files — no inline comments on value lines](openwiki/gotchas/env-file-inline-comments.md) **[canonical]**
+- [Instrument traps — a tool's answer is about the tool](openwiki/gotchas/instrument-traps.md) **[canonical]**
 
-  `/speckit-converge` adds tasks for any work that's still missing from the codebase.
+### Runbooks
 
-## Working practices
+- [The agent-driven backlog (Forgejo Issues)](openwiki/runbooks/backlog.md) — `scripts/backlog.mjs`, `/speckit-taskstoissues`
+- [CI guardrails, the failure digest, and the PR loop](openwiki/runbooks/ci.md) — `guardrails.yml`, `ci-status.mjs`, `forge-pr.mjs`
+- [Doc drift: the doc-impact sweep and the quarterly audit](openwiki/runbooks/doc-drift.md)
+- [Spec Kit: this repository's customisations, and upgrading it](openwiki/runbooks/spec-kit.md) — the override gate and its failure codes
 
-- Keep changes focused. Shared tooling should stay small, documented and backward compatible where practical, because downstream repos depend on it.
-- When you add a tool or package, document what it's for and how to use it, either in its own README or in the root [README.md](README.md).
-- Update this file when you establish a new repo-wide convention: a layout, a build command, a test command or a release process.
+### Process
 
-## Git
-
-- The default branch is `main`, on the self-hosted remote `origin`.
-- Commit or push only when asked to.
+- [The governing constitution](openwiki/process/constitution.md)
+- [PR batching — split only when a failure would be ambiguous](openwiki/process/pull-request-batching.md) **[canonical]**
+- [Proposal → spec → plan → tasks → implementation lifecycle](openwiki/process/spec-driven-development.md) **[canonical]** — Spec Kit 1.4.2, the `/speckit-*` order
+- [Test authoring conventions — the RED/GREEN format](openwiki/process/test-authoring-conventions.md) **[canonical]**
+- [OpenWiki bundle maintenance](openwiki/process/wiki-maintenance.md) **[canonical]**

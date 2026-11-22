@@ -1,0 +1,54 @@
+---
+type: Convention
+title: Secrets management posture
+description: No clear-text secrets in git, what secrets/ may hold, the three forge credentials and their deliberately separate scopes, why ANTHROPIC_API_KEY is never set where AI coding runs, and the scan, redactor and never-print rules that keep a credential out of output, digests and wiki pages.
+tags: [secrets, security, credentials, forge]
+timestamp: 2026-11-22
+---
+
+# Secrets management posture
+
+**No clear-text secret is ever committed.** `.gitignore` ignores `.env` and `.env.*` (keeping
+`.env.example`) and key material (`*.pem`, `*.key`, `*.pfx`, `*.p12`). `secrets/` is tracked only for
+`.gitkeep`, `README.md` and `*.example` templates. A secret a tool needs lives in an environment
+variable or a gitignored file, and its template is an `*.example` file.
+
+## The credentials
+
+| Name | Where it lives | Scope | Used by |
+| --- | --- | --- | --- |
+| `FORGE_TOKEN` | user environment variable | read-only (`read:repository`, `read:issue`, `read:package`) | `ci-status.mjs`; read fallback for `backlog.mjs` |
+| `FORGE_ISSUE_TOKEN` | user environment variable | `write:issue` + `read:repository` | `backlog.mjs` and `taskstoissues.mjs` writes |
+| the git credential for `origin` | the git credential helper | the account's push access | `forge-pr.mjs` (open, merge, dispatch), through `git credential fill` |
+| `CI_DIGEST_TOKEN` | repository Actions secret | `write:issue`, `write:package`, `read:repository` | the CI failure-digest step only |
+
+Full detail is in the [CI runbook](../../docs/runbooks/ci.md#secrets) and the
+[backlog runbook](../../docs/runbooks/backlog.md#the-credential).
+
+## Gotchas
+
+- **Never set `ANTHROPIC_API_KEY` on a machine or container where AI coding runs.** AI coding runs on
+  the subscription. Claude Code silently prefers that variable over a subscription login and bills
+  per token. MovieCollectionManager measured about $15 in one unnoticed day. A tool that needs a
+  model key gets it under a different name, mapped to `ANTHROPIC_API_KEY` only in the process that
+  uses it.
+- **The tokens stay separate on purpose.** `FORGE_TOKEN`'s read-only scope is what `ci-status.mjs`
+  relies on. Widening it would quietly give the CI-status path write access and tie two tools to one
+  revocation. Forgejo tokens are account-wide, so scope is the server-side limit, and
+  `backlog.mjs`'s same-repository write guard is the client-side one.
+- **A credential is never printed.** No tool echoes a token, and `forge-pr.mjs` never logs what
+  `git credential fill` returns. Never type a `git credential fill` recipe by hand into a command
+  whose output is captured.
+- **Everything CI publishes goes through the fail-closed redactor** (`scripts/ci-digest-redact.mjs`).
+  It rewrites credentials and the forge host, and withholds an excerpt entirely if anything
+  credential-shaped survives. "Excerpt withheld" in a digest means exactly that.
+- **`scripts/secret-scan.mjs` exists, and its selftest runs in `scripts:lint`.** Keep test fixtures
+  that look like credentials obviously fake, so they never train anyone to ignore a real hit.
+- **Wiki pages and docs never name the forge host, a tailnet address or a host-and-port pair** (see
+  [the brief](../INSTRUCTIONS.md), §3). Refer to them abstractly.
+- **A running process keeps its old environment.** A token set after the editor or terminal started
+  is invisible to it, and a tool reports the variable as missing. Restart the process before
+  concluding the token is wrong.
+
+See [the .env inline-comment trap](../gotchas/env-file-inline-comments.md) for a way a correct secret
+gets corrupted on its way in.

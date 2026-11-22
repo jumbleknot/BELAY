@@ -5,7 +5,8 @@ Spec-Driven Development (SDD) here runs on GitHub Spec Kit (the `specify` CLI an
 to Spec Kit**, and the procedure for upgrading Spec Kit without losing any of them.
 
 - The rule that implementation needs a spec first, and the order of the `/speckit-*` commands,
-  are in [AGENTS.md](../../AGENTS.md) and the constitution.
+  are in [the spec-driven development page](../../openwiki/process/spec-driven-development.md) and
+  the constitution. [AGENTS.md](../../AGENTS.md) carries the rule as a gate.
 - The test task format the customisations enforce is in
   [docs/templates/feature-test-tasks-template.md](../templates/feature-test-tasks-template.md).
 
@@ -67,7 +68,7 @@ So a change to Spec Kit's behaviour takes one of three forms, in order of prefer
 | 5a | The hooks the extensions register (20, two of them mandatory: `before_constitution` → `speckit.git.initialize` and `before_specify` → `speckit.git.feature`), **plus two hand-added hooks**: `before_converge` and `after_converge` → `speckit.git.commit` (optional), so `/speckit-converge` offers the same commits as every other command | `.specify/extensions.yml`; the expected list is `EXTENSION_HOOKS` in `scripts/check-speckit-overrides.mjs` (hand-added entries carry `local: true`) | Vendor file plus a registered local edit (the two converge hooks) | Read by every `/speckit-*` skill's hook checks | `hook-lost`, `hook-unregistered` |
 | 5b | agent-context writes to **AGENTS.md**, never the `CLAUDE.md` shim | `.specify/extensions/agent-context/agent-context-config.yml` (`context_file: AGENTS.md`) | Project-owned (extension config: installed once, preserved on reinstall, in no manifest) | Read by `speckit.agent-context.update` | `project-file-lost` |
 | 6 | `/speckit-taskstoissues` fans a feature's `tasks.md` out to the Forgejo backlog through `scripts/taskstoissues.mjs`, which drives `scripts/backlog.mjs`: a milestone per feature, one issue per task (deduplicated by task id), dependencies for ordering. Spec Kit 1.x has no core `taskstoissues` command, so the skill is the project's own | `.claude/skills/speckit-taskstoissues/SKILL.md` (forked from spec-kit 0.16.5 by way of MovieCollectionManager); runbook: [backlog.md](backlog.md) | Project-owned (in no manifest) | It is the skill itself | `project-file-lost`, `project-file-managed` |
-| 4 | The CLI version this repository was initialised with | `speckit_version` in `.specify/init-options.json`; the version named in the Spec Kit section of [AGENTS.md](../../AGENTS.md) | Pins | n/a | none: keep the two equal by hand in the upgrade PR |
+| 4 | The CLI version this repository was initialised with | `speckit_version` in `.specify/init-options.json`; the version named on [the spec-driven development page](../../openwiki/process/spec-driven-development.md) | Pins | n/a | none: keep the two equal by hand in the upgrade PR |
 
 Rows 1, 2, 2a, 2b, 5, 5a and 5b are the ones an upgrade can break. The gate checks that this
 table names `.specify/templates/overrides/tasks-template.md`,
