@@ -1,0 +1,174 @@
+#!/usr/bin/env bash
+# Run a CI step, mirroring its combined output to a per-step log the failure digest collects
+#.
+#
+# WHY: the forge API exposes no job logs, and the digest collector only ever saw container logs and
+# health JSON. So for a TEST failure — which is most failures — the digest said "no log output was
+# captured for this job" and a human still had to paste the log. Three consecutive `e2e`
+# failures were diagnosed that way before this existed.
+#
+# CRITICAL — `set -o pipefail` is load-bearing, not hygiene. `cmd | tee` returns TEE's exit status,
+# so without pipefail a FAILING step would report SUCCESS and CI would go silently green. That is
+# strictly worse than the problem this solves. scripts/__tests__/ci-log-step.test.mjs pins it.
+#
+# Usage:  bash scripts/ci-log-step.sh <log-name> <command> [args...]
+# Example: bash scripts/ci-log-step.sh guardrails-test pnpm nx run scripts:test
+
+set -euo pipefail
+
+if [ "$#" -lt 2 ]; then
+  echo "usage: ci-log-step.sh <log-name> <command> [args...]" >&2
+  exit 2
+fi
+
+name="$1"
+shift
+
+# Scoped by run id so a PERSISTENT runner (this one is) cannot leak a previous run's output into
+# this run's digest. Falls back to `local` off-CI.
+#
+# And by JOB. `e2e` and `scan` run on the SAME self-hosted runner and share $HOME, so
+# a run-scoped directory was ONE directory shared by both: whichever job failed first wrote
+# `_failed-step`, and the other read it and published it as its own. MEASURED on an earlier run —
+# the `e2e` digest reported `scan-install-tools`, a step in the scan job. The same
+# sharing put each job's step logs into the other's digest as `step:` excerpts, which is why the
+# whole directory is scoped here and not just the marker file.
+#
+# There is deliberately NO run-scoped fallback on the reader side: a fallback would let the defect
+# survive behind it on exactly the runs where the two jobs overlap.
+# The default root is prefixed with the repository name (GITHUB_REPOSITORY, lowercased), so
+# repositories sharing a persistent runner's $HOME never read each other's step logs.
+repo="${GITHUB_REPOSITORY:-}"
+repo="${repo##*/}"
+repo="$(printf '%s' "${repo:-local}" | tr '[:upper:]' '[:lower:]')"
+root="${CI_STEP_LOG_ROOT:-$HOME/${repo}-ci-step-logs}"
+dir="$root/${GITHUB_RUN_ID:-local}/${GITHUB_JOB:-local}"
+mkdir -p "$dir"
+
+# Best-effort prune of old runs; never allowed to fail the step.
+find "$root" -maxdepth 1 -type d -mtime +7 -exec rm -rf {} + 2>/dev/null || true
+
+# Combined stdout+stderr: a stack trace on stderr is exactly what makes a failure diagnosable.
+# `set -e` is dropped from here so a failing command does not abort before the marker is written and
+# the real exit code is re-raised. pipefail is preserved (see below) — that is the load-bearing part.
+set +e
+# PER-STEP CEILING. `always()` does NOT survive a job kill: when the runner
+# enforces the job's `timeout-minutes`, the digest step never runs, so a HANG — the one failure
+# class with no other evidence trail — produces no digest at all.
+# The job hit its ceiling, and `ci-status failure` could only say "the job may have
+# died before the digest step ran".
+#
+# Enforcing the ceiling HERE, below the job's, converts that hang from a job kill into a STEP
+# failure: the job survives, the marker below is written, and the digest runs and can name what was
+# hanging.
+#
+# PER-STEP, NOT JOB-WIDE. One value for the whole job had to be loose enough for
+# the slowest wrapped step, which left every other step bounded at 9x-337x its observed maximum —
+# `e2e-run` runs in ~4.7 min against a 45 min bound. The per-step values live in a DATA file whose
+# every row states the sample it was derived from, because the defect this corrects was a figure
+# whose stated basis had drifted from what was actually measured.
+#
+# Resolution order: this step's row in the table -> CI_STEP_TIMEOUT_SECONDS as a BACKSTOP for a step
+# the sample has not reached -> unbounded. The backstop is not optional dressing: falling through to
+# unbounded on a table miss would silently restore the defect this ceiling fixes (a hang killing the JOB, so
+# `always()` never runs and no digest is published at all) for exactly the steps nobody has looked at.
+#
+# Located relative to THIS script, not to $PWD: workflows invoke the wrapper both as
+# `scripts/ci-log-step.sh` from the repo root and as `"$GITHUB_WORKSPACE/scripts/ci-log-step.sh"`
+# from inside a heredoc that has changed directory.
+ceilings_file="${CI_STEP_CEILINGS_FILE:-$(dirname "${BASH_SOURCE[0]}")/ci-step-ceilings.tsv}"
+timeout_seconds=""
+timeout_source=""
+if [ -r "$ceilings_file" ]; then
+  # WHOLE-NAME match on field 1. `e2e-run` and `e2e-run-model` differ only by a suffix and six steps
+  # share the `e2e-install` prefix, so a substring match would hand one step another's bound.
+  # Comment rows are skipped here as well as in the reader: `# e2e-run` parsing as a ceiling of 0
+  # would mean `timeout 0`, which is NO LIMIT — the guard removed by its own data file.
+  #
+  # Best-effort, like every other measurement in this script. An unreadable or malformed table falls
+  # through to the backstop rather than failing the step.
+  timeout_seconds="$(awk -F'\t' -v step="$name" \
+    '$0 !~ /^[[:space:]]*#/ && $1 == step && $2 ~ /^[0-9]+$/ && $2 > 0 { print $2; exit }' \
+    "$ceilings_file" 2>/dev/null || true)"
+fi
+if [ -n "$timeout_seconds" ]; then
+  timeout_source="$ceilings_file"
+else
+  # The backstop, for a step with no calibrated row.
+  timeout_seconds="${CI_STEP_TIMEOUT_SECONDS:-}"
+  [ -n "$timeout_seconds" ] && timeout_source="CI_STEP_TIMEOUT_SECONDS (backstop — this step has no calibrated row)"
+fi
+if [ -n "$timeout_seconds" ] && ! command -v timeout >/dev/null 2>&1; then
+  # Never silently drop the protection — an absent guard that reports nothing is this repository's
+  # most expensive failure shape. Warn into the step log, which the digest publishes.
+  #
+  # The warning NAMES THE SOURCE of the value, not a fixed variable name: since a past incident the ceiling
+  # usually comes from the table, and a message citing CI_STEP_TIMEOUT_SECONDS would send the reader
+  # to tune a number that had nothing to do with it — the same class of defect this item corrects.
+  echo "[ci-log-step] WARNING: ${timeout_seconds}s ceiling for \`$name\` (from $timeout_source) requested but \`timeout\` is not on PATH — running UNBOUNDED." >&2
+  timeout_seconds=""
+fi
+
+# Wall-clock start, for the duration row written below. `SECONDS` is a bash builtin
+# and integer-valued, which is the right resolution for ceilings expressed in minutes.
+step_started_at="$SECONDS"
+
+if [ -n "$timeout_seconds" ]; then
+  # TERM first so the command can flush; SIGKILL only if it ignores that. 124 = timed out (TERM),
+  # 137 = 128+9, killed after --kill-after.
+  timeout --signal=TERM --kill-after=30s "$timeout_seconds" "$@" 2>&1 | tee -a "$dir/${name}.log"
+else
+  "$@" 2>&1 | tee -a "$dir/${name}.log"
+fi
+# PIPESTATUS is only valid IMMEDIATELY after the pipe — any command in between (even an assignment)
+# clobbers it, and `set -u` then trips on the missing index. Capture the whole array in one go.
+pipe_status=("${PIPESTATUS[@]}")
+cmd_rc="${pipe_status[0]}"
+tee_rc="${pipe_status[1]:-0}"
+
+# PER-STEP DURATION, ON EVERY RUN. The 2700 s ceiling above was calibrated against an
+# e2e JOB duration misread as a `e2e-run` STEP duration, and could not be corrected because
+# nothing recorded how long a step actually takes: the digest publishes only on failure, and this
+# forge exposes no job logs, so "how long does this step normally take" was unanswerable from the
+# API. This row is the sample that answers it, and it is written whatever the outcome — a
+# distribution built only from failures describes the failures, not the step.
+#
+# Written AFTER `pipe_status` is captured: any command in between clobbers PIPESTATUS.
+#
+# One row per INVOCATION, appended, not one per name: a step wrapped twice (a workflow may wrap
+# `build-install-native-deps` twice) is two samples, because the ceiling applies
+# to each invocation separately.
+#
+# The exit code and the ceiling are both recorded so a reader can tell an OBSERVED duration from a
+# CENSORED one. A step killed at its ceiling lasted exactly the ceiling; averaging that in would
+# calibrate the next ceiling against its own kills and ratchet downward for ever.
+#
+# Best-effort throughout, like `_failed-step` below: measurement must never be able to fail a build.
+step_duration=$(( SECONDS - step_started_at ))
+durations_file="$dir/_step-durations.tsv"
+if [ ! -e "$durations_file" ]; then
+  # A header, so the file is self-describing when it is read out of a published bundle rather than
+  # from the runner it was written on.
+  printf '# step\tseconds\texit\tceiling\n' 2>/dev/null > "$durations_file" || true
+fi
+printf '%s\t%s\t%s\t%s\n' "$name" "$step_duration" "$cmd_rc" "$timeout_seconds" \
+  2>/dev/null >> "$durations_file" || true
+
+# Record which step failed, so the digest can name it instead of "_not reported_" (). Only the
+# first failing wrapped step is recorded — `set -e` in the job stops at the first failure, so that is
+# the one that actually broke the build. Best-effort; never allowed to change the outcome.
+if [ "$cmd_rc" -ne 0 ] && [ ! -s "$dir/_failed-step" ]; then
+  printf '%s\n' "$name" > "$dir/_failed-step" 2>/dev/null || true
+  # A TIMEOUT is not an ordinary failure and must not read like one: there is no assertion to go
+  # looking for, and the log tail ends mid-work rather than at an error. Recorded separately so the
+  # digest can say so.
+  if [ -n "$timeout_seconds" ] && { [ "$cmd_rc" -eq 124 ] || [ "$cmd_rc" -eq 137 ]; }; then
+    printf 'timeout after %ss (step ceiling, not the job ceiling)\n' "$timeout_seconds" \
+      > "$dir/_failed-step-reason" 2>/dev/null || true
+  fi
+fi
+
+# Exit with the COMMAND's status when it failed (pipefail semantics: the command's failure is what
+# must fail the job); otherwise surface a tee failure so a broken mirror never silently hides output.
+[ "$cmd_rc" -ne 0 ] && exit "$cmd_rc"
+exit "$tee_rc"

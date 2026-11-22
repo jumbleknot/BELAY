@@ -73,22 +73,28 @@ description: "Task list for feature 001: guardrails CI"
 
 **⚠️ CRITICAL**: no user story work starts until this phase is complete.
 
-- [ ] T004 [P] Port `scripts/install-pnpm.sh` from MCM (research R4, R-strip).
+- [X] T004 [P] Port `scripts/install-pnpm.sh` from MCM (research R4, R-strip).
   - **Done when:**
     - `bash scripts/install-pnpm.sh` exits 0 and `pnpm --version` prints 12.21.0;
     - run against a temp manifest with `"packageManager": "npm@10"`, it exits 2.
-- [ ] T005 [P] Port `scripts/__tests__/ci-log-step.test.mjs` from MCM (research R5): rename the log directory to `$HOME/<repo>-ci-step-logs` ([data-model.md](data-model.md) → Evidence bundle.host directories), and apply R-strip.
+  - **Done 2026-11-22:** the bad `packageManager` case and the missing-manifest case both exit 2. The success path was deliberately not run on the maintainer's machine, because it would replace the global pnpm 10.33.0 that other repos use. Workflow step 3 proves it on the first CI run (T025).
+- [X] T005 [P] Port `scripts/__tests__/ci-log-step.test.mjs` from MCM (research R5): rename the log directory to `$HOME/<repo>-ci-step-logs` ([data-model.md](data-model.md) → Evidence bundle.host directories), and apply R-strip.
   - **Scenarios covered:** FR-015. A failing command still fails through `tee` (`pipefail`), and output reaches the per-step log.
   - **Verify RED:** `node --test scripts/__tests__/ci-log-step.test.mjs` → expected: failing, with `ENOENT`/exit 127 for `scripts/ci-log-step.sh`.
-- [ ] T006 Port `scripts/ci-log-step.sh` from MCM (research R5): log directory `$HOME/<repo>-ci-step-logs`, with `<repo>` derived from `GITHUB_REPOSITORY` as data-model.md describes, and R-strip. Prerequisite: T005 verified RED.
+- [X] T006 Port `scripts/ci-log-step.sh` from MCM (research R5): log directory `$HOME/<repo>-ci-step-logs`, with `<repo>` derived from `GITHUB_REPOSITORY` as data-model.md describes, and R-strip. Prerequisite: T005 verified RED.
   - **Verify GREEN:** `node --test scripts/__tests__/ci-log-step.test.mjs` → expected: 0 failures; then `pnpm nx run scripts:test` passes.
-- [ ] T007 [P] Port `scripts/__tests__/ci-digest-redact.test.mjs` from MCM (research R6, R7). Remove the cases for the `mcm-dev-credential` rule and the `mcm_` / `Mcm-dev-` shapes, and keep every other case.
+- [X] T007 [P] Port `scripts/__tests__/ci-digest-redact.test.mjs` from MCM (research R6, R7). Remove the cases for the `mcm-dev-credential` rule and the `mcm_` / `Mcm-dev-` shapes, and keep every other case.
   - **Scenarios covered:** US2-AC4. Every occurrence is rewritten; a surviving credential drops the excerpt; the forge host is redacted.
   - **Verify RED:** `node --test scripts/__tests__/ci-digest-redact.test.mjs` → expected: failing with `ERR_MODULE_NOT_FOUND` for `ci-digest-redact.mjs`.
-- [ ] T008 Port `scripts/secret-scan.mjs` and `scripts/ci-digest-redact.mjs` from MCM (research R6, R7, R-strip). Prerequisite: T007 verified RED.
+- [X] T008 Port `scripts/secret-scan.mjs` and `scripts/ci-digest-redact.mjs` from MCM (research R6, R7, R-strip). Prerequisite: T007 verified RED.
   - **Rules:** `RULES` keeps exactly `anthropic-api-key`, `tmdb-v3-api-key` and `tmdb-v4-token` ([data-model.md](data-model.md) → Secret-scan rule.name). Leave out the `mcm-dev-credential` rule and its selftest fixtures.
   - **Lint target:** add `node scripts/secret-scan.mjs --selftest` and `node scripts/ci-digest-redact.mjs --selftest` to `scripts:lint` in `scripts/project.json`.
   - **Verify GREEN:** `node --test scripts/__tests__/ci-digest-redact.test.mjs` → expected: 0 failures; then `pnpm nx run scripts:lint` and `pnpm nx run scripts:test` pass.
+  - **Done 2026-11-22:**
+    - `scanText` also carried two non-`RULES` checks. `e2e-test-password-literal`, MCM's actual test-user password, was removed as MCM-specific. The generic credential-fallback and cassette-auth checks were kept.
+    - The redactor's MCM session-cookie rewrite (`mcm_access_token`) and its test case were removed, because BELAY has no sessions.
+    - Fail-closed test (d) now plants a `tmdb_key: <32 hex>` value. The scanner detects it and the generic rewrite does not touch it.
+    - Result: 22 of 22 redactor tests pass, and both selftests pass.
 
 **Checkpoint**: pnpm bootstraps, step logs are captured, and redaction works.
 
