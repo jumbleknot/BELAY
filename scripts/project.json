@@ -16,7 +16,8 @@
           "node scripts/check-ci-digest-coverage.mjs",
           "node scripts/secret-scan.mjs --selftest",
           "node scripts/ci-digest-redact.mjs --selftest",
-          "node scripts/ci-failure-digest.mjs --selftest"
+          "node scripts/ci-failure-digest.mjs --selftest",
+          "node scripts/ci-status.mjs --selftest"
         ]
       }
     },

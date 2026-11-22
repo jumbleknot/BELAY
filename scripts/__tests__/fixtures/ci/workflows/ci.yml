@@ -1,0 +1,16 @@
+# Test fixture: the job dependency shape the fixtures/ci status payloads were recorded against.
+# Only `jobs.<name>.needs` matters to ci-status; nothing here runs.
+name: ci
+on: pull_request
+jobs:
+  changes:
+    runs-on: none
+  affected:
+    runs-on: none
+    needs: [changes]
+  api-checks:
+    runs-on: none
+    needs: [changes]
+  e2e:
+    runs-on: none
+    needs: [affected, changes]

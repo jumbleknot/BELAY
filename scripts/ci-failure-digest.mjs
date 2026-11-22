@@ -123,13 +123,17 @@ export function buildDigest(context, { excerpts = [], health = [], absent = [], 
   // The BUNDLE carries every source; the DIGEST carries only the most diagnostic few. Fixing the
   // collector took sources from 6 to 13, and 13 x 200 lines is an unreadable PR comment. Sources
   // arrive already ranked by selectSources (status table, then unhealthy containers, then the rest).
-  // The FAILING step's own output leads, whatever its rank: every step log ranks equally and sorts by
-  // name, so in a job with more wrapped steps than DIGEST_MAX_SOURCES the one that failed could be
-  // held back while the passing ones were shown.
-  const failing = context.step ? excerpts.findIndex((e) => String(e.source) === `step:${context.step}`) : -1;
-  const ordered = failing > 0 ? [excerpts[failing], ...excerpts.filter((_, i) => i !== failing)] : excerpts;
-  excerpts = ordered;
-  const shown = excerpts.slice(0, DIGEST_MAX_SOURCES);
+  // Except one: the FAILING step's own log goes first. Every `step:` source ranks 0 in rankSource, so
+  // step logs tie and sort by name, and with more wrapped steps than DIGEST_MAX_SOURCES a failing step
+  // that sorts late was the one held back (2026-11-22: the digest named `guardrails-test` as the
+  // failing step and showed install-deps, install-pnpm and lint). No recorded step, or no excerpt for
+  // it, leaves the ranked order exactly as it arrived. Same code as MovieCollectionManager's.
+  const failingSource = context.step ? `step:${context.step}` : null;
+  const failingAt = failingSource ? excerpts.findIndex((e) => String(e.source) === failingSource) : -1;
+  const ordered = failingAt > 0
+    ? [excerpts[failingAt], ...excerpts.slice(0, failingAt), ...excerpts.slice(failingAt + 1)]
+    : excerpts;
+  const shown = ordered.slice(0, DIGEST_MAX_SOURCES);
   const heldBack = excerpts.length - shown.length;
   const distilled = shown.map((e) => distill(e, caps));
   const safe = (s) => redactForPublication(String(s ?? ''));
@@ -735,9 +739,33 @@ export function repoSlug(env = process.env) {
   return (name || 'local').toLowerCase();
 }
 
-/** The generic package that holds this repository's failure bundles, e.g. `belay-ci-failures`. */
+/** The shared pre-repo-scoping name. BELAY never published to it; only isEvidencePackage knows it. */
+export const LEGACY_BUNDLE_PACKAGE = 'ci-failures';
+const BUNDLE_PACKAGE_SUFFIX = '-ci-failures';
+
+/** `BELAY` → `belay-ci-failures`. No repository is an error, never a fall back to a shared name. */
+export function bundlePackageFor(repo) {
+  const name = typeof repo === 'string' ? repo.trim().toLowerCase() : '';
+  if (!name) throw new Error(`cannot name the evidence package: no repository name (got ${JSON.stringify(repo)})`);
+  return `${name}${BUNDLE_PACKAGE_SUFFIX}`;
+}
+
+/**
+ * Every package a READER covers. Exactly the repo-scoped one: the legacy shared name holds another
+ * repository's evidence (MovieCollectionManager's), so it is never read from here.
+ */
+export const bundlePackagesFor = (repo) => [bundlePackageFor(repo)];
+
+/** An evidence package of ANY repository, including the legacy shared name. */
+export const isEvidencePackage = (name) =>
+  name === LEGACY_BUNDLE_PACKAGE || (typeof name === 'string' && name.endsWith(BUNDLE_PACKAGE_SUFFIX) && name.length > BUNDLE_PACKAGE_SUFFIX.length);
+
+/** The `<package>:<version>` string a digest comment carries. */
+export const bundleRefFor = (pkg, version) => `${pkg}:${version}`;
+
+/** The generic package that holds this run's failure bundles, e.g. `belay-ci-failures`. */
 export function bundlePackage(env = process.env) {
-  return `${repoSlug(env)}-ci-failures`;
+  return bundlePackageFor(repoSlug(env));
 }
 
 /** The runner directory a job may leave a last-failure bundle in, e.g. `~/belay-ci-last-failure`. */
@@ -1365,7 +1393,7 @@ async function fetchWithTimeout(url, opts = {}, ms = Number(process.env.CI_HTTP_
 }
 
 function httpApi({ base, owner, repo, token }) {
-  const BUNDLE_PACKAGE = bundlePackage({ GITHUB_REPOSITORY: `${owner}/${repo}` });
+  const BUNDLE_PACKAGE = bundlePackageFor(repo);
   const call = async (method, path, body) => {
     const res = await fetchWithTimeout(`${base}${path}`, {
       method,
@@ -1505,7 +1533,7 @@ async function run() {
   const api = httpApi({ ...forgeEndpoint(), token: credential.token });
 
   const version = bundleVersion(context.runId, context.job);
-  context.bundleRef = `${bundlePackage()}:${version}`;
+  context.bundleRef = bundleRefFor(bundlePackage(), version);
   // The human-facing package page, surfaced in the digest so a reader can click through from the
   // job log. No longer used as a commit-status target_url — that status is gone ().
   const { base, owner } = forgeEndpoint();

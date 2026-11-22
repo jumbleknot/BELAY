@@ -154,8 +154,8 @@ test('(i2) an instrumentation exemption with NO reason is rejected', () => {
 
 // --- (k)-(l) the verdict must not depend on the contributor's line endings ----
 //
-// An earlier report showed this gate failing on three jobs — `ci / changes`, `ci / trigger-cd`,
-// `infra-image-scan / changes` — that are all correctly exempt, and recorded the local/CI divergence
+// An earlier report showed this gate failing on three jobs — `ci / changes`, `ci / notify`,
+// `image-scan / changes` — that are all correctly exempt, and recorded the local/CI divergence
 // as unexplained. It was line endings. `parseExemptions` split on '\n', leaving a trailing '\r' on
 // every line of a CRLF checkout; the marker pattern `#\s*<marker>:(.*)$` then could not match,
 // because '.' does not consume '\r' (it is a line terminator in JS regexes) and a non-multiline '$'
@@ -456,14 +456,14 @@ test('(x2) no wrapped command begins with an env-var assignment — ci-log-step.
 // MEASURED IN CI, 2026-08-11 — the THIRD variant of "the wrapper is not reachable where the step
 // runs", after (x) working-directory and (x2) the env-var prefix.
 //
-// `infra-image-scan` gates its `Checkout` on `if: ${{ env.RUN_SCAN == 'true' }}`, and its
+// `image-scan` gates its `Checkout` on `if: ${{ env.RUN_SCAN == 'true' }}`, and its
 // scan-skipped step runs on the OTHER branch of that same condition. Wrapping that step with
 // `bash scripts/ci-log-step.sh …` made the job die in 2 seconds: nothing is checked out, so the
 // script is not on disk.
 //
 // It broke EVERY docs-only PR (#172, #174, #175) while passing on PRs that touch infra files —
 // because those take the real-scan path, where checkout does run. That asymmetry is why it survived
-// the branch's own verification: an earlier PR changed infra-image-scan.yml, so it never took the skip
+// the branch's own verification: an earlier PR changed image-scan.yml, so it never took the skip
 // path. A step only reachable on the cheap path is exactly the one a feature branch never exercises.
 
 test('(x3) no step is wrapped on a path where the job skipped its checkout', () => {
@@ -516,7 +516,7 @@ test('(x3) no step is wrapped on a path where the job skipped its checkout', () 
 //
 // MEASURED 2026-08-29 — three live steps had a failure path outside their wrapper, and the gate
 // reported all three clean:
-//   cd-deploy / prod-apk               `exit 1` on the BASE_DOMAIN guard
+//   a deploy job                    `exit 1` on the BASE_DOMAIN guard
 //   devcontainer-image / build-publish `: "${REGISTRY:?…}"`
 //   wiki-maintain / maintain           `exit 2` on a malformed dispatch input
 // All three now wrap the whole block with the `bash -e /dev/stdin <<'CI_LOG_STEP'` idiom the repo

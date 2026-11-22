@@ -1,0 +1,28 @@
+[
+  {
+    "rule_name": "main",
+    "branch_name": "main",
+    "enable_status_check": true,
+    "status_check_contexts": [
+      "guardrails*",
+      "ci / changes*",
+      "ci / affected*",
+      "ci / api-checks*",
+      "ci / e2e*",
+      "image-scan / image-scan*",
+      "ci / app-image-scan*"
+    ]
+  },
+  {
+    "rule_name": "release/*",
+    "branch_name": "",
+    "enable_status_check": true,
+    "status_check_contexts": ["guardrails*"]
+  },
+  {
+    "rule_name": "legacy-no-checks",
+    "branch_name": "legacy-no-checks",
+    "enable_status_check": false,
+    "status_check_contexts": ["guardrails*"]
+  }
+]
