@@ -73,6 +73,15 @@ To recreate the runner:
 2. On the host, as `ci`, save the secret to `~/runner-belay/runner-token` with mode 600.
 3. Run `forgejo-runner daemon --url <forge url> --uuid <uuid> --token-url file:///home/ci/runner-belay/runner-token --label belay:docker://node:26-bookworm` from a systemd-user unit, set up like the global runner in MovieCollectionManager's server-setup runbook.
 
+**Runner security.** Pull-request code runs on this self-hosted runner. The runner registers only a `docker://` label, so every job runs in a fresh container that is removed when the job ends; nothing runs on the host.
+
+The one way out of that container is host Docker access. Pin it off explicitly rather than relying on the default:
+- run `./forgejo-runner generate-config > config.yaml`;
+- set `container.docker_host: "-"`;
+- add `--config /home/ci/runner-belay/config.yaml` to the unit's `ExecStart`.
+
+The repository is private, and Forgejo gives no secrets (`CI_DIGEST_TOKEN`) to fork PRs. If collaborators or fork PRs are ever allowed, require approval before a fork's workflows run.
+
 ## Secrets
 
 | Name | Where | Scopes | Used by |
