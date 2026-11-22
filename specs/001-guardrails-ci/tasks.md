@@ -190,7 +190,7 @@ description: "Task list for feature 001: guardrails CI"
   - **Branch protection for `main`:** Settings → Branches → add a rule for `main`; disable direct pushes; enable required status checks with the guardrails context; save. Leave the context string as a marked placeholder until T025 records it.
   - **Adding a job:** the digest step is required, or `# ci-digest-exempt: <reason>`.
   - **Done when:** every FR-017 item has a section; the file is linked from `AGENTS.md` (T020) and `docs/runbooks/spec-kit.md` (T021); markdownlint shows no new warnings.
-- [ ] T016 [US4] After T025's first green run: record the exact status-context string in `docs/runbooks/ci.md`, then hand the user the branch-protection steps.
+- [X] T016 [US4] After T025's first green run: record the exact status-context string in `docs/runbooks/ci.md`, then hand the user the branch-protection steps.
   - **Done when:** the user reports protection is on, and a test `git push origin HEAD:main` from a scratch commit is refused (US4-AC1). Verify US4-AC2 on T026's red run: merge is blocked.
 
 **Checkpoint**: `main` is protected.

@@ -14,7 +14,7 @@ This is what the workflow promises the maintainer, agents, and `main`'s branch p
 
 ## Job `guardrails`
 
-- `runs-on: ubuntu-latest`, served by `ci-homelab`.
+- `runs-on: belay`, served by BELAY's repository runner `ci-belay` (`docker://node:26-bookworm`). It was `ubuntu-latest` on the shared `ci-homelab` until 2026-11-22.
 - `timeout-minutes: 10`.
 
 | # | Step | Must fail the job when |

@@ -63,9 +63,15 @@ If the digest notes the **degraded channel**, `CI_DIGEST_TOKEN` was unavailable 
 
 ## Runner
 
-- **Runner:** `ci-homelab`, registered for this repository under **Settings → Actions → Runners**.
-- **Label:** jobs use `runs-on: ubuntu-latest`. The runner must advertise that label. On this homelab it maps to a Node container image, and the workflow installs Node 26 itself.
-- **A run stays "Waiting":** the runner is offline, or doesn't advertise `ubuntu-latest`. Check its status and labels on the Runners page. If the label differs, change `runs-on` in the workflow. `scripts/__tests__/guardrails-workflow.test.mjs` pins the label, so update that test in the same change.
+- **Runner:** `ci-belay`, a **repository** runner registered for BELAY only, under **Settings → Actions → Runners**. It runs on the homelab host as the `ci` user's systemd-user service `forgejo-runner-belay`, from `~/runner-belay`.
+- **Label:** jobs use `runs-on: belay`. The runner maps it to `docker://node:26-bookworm`, so a job starts in a Node 26 container. `setup-node` still pins the exact 26.13.1 in the workflow.
+- **Why its own runner:** the global `ci-homelab` runner (labels `ubuntu-latest`, `kvm`) is shared with MovieCollectionManager and runs one job at a time. BELAY's first run waited about 36 minutes behind it. The unique `belay` label keeps the two repositories from queuing behind each other.
+- **A run stays "Waiting for a runner with the following label: belay":** `ci-belay` is offline. On the host, run `systemctl --user status forgejo-runner-belay` and `journalctl --user -u forgejo-runner-belay -f`. `scripts/__tests__/guardrails-workflow.test.mjs` pins the label, so change it in the same commit as `runs-on`.
+
+To recreate the runner:
+1. Go to **Settings → Actions → Runners → Create new runner**, named `ci-belay`, and note the `--uuid` and the secret.
+2. On the host, as `ci`, save the secret to `~/runner-belay/runner-token` with mode 600.
+3. Run `forgejo-runner daemon --url <forge url> --uuid <uuid> --token-url file:///home/ci/runner-belay/runner-token --label belay:docker://node:26-bookworm` from a systemd-user unit, set up like the global runner in MovieCollectionManager's server-setup runbook.
 
 ## Secrets
 

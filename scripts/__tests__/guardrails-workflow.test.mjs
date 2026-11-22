@@ -30,10 +30,10 @@ test('concurrency: one run per ref, a newer run cancels an older one', () => {
   assert.equal(concurrency['cancel-in-progress'], true);
 });
 
-test('a single guardrails job on the ubuntu-latest label with a timeout', () => {
+test('a single guardrails job on the belay runner label with a timeout', () => {
   const { jobs } = load();
   assert.deepEqual(Object.keys(jobs), ['guardrails']);
-  assert.equal(jobs.guardrails['runs-on'], 'ubuntu-latest');
+  assert.equal(jobs.guardrails['runs-on'], 'belay', 'BELAY jobs run on its own repository runner (ci-belay), never the shared global one');
   assert.equal(jobs.guardrails['timeout-minutes'], 10);
 });
 
