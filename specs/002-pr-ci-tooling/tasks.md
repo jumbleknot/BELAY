@@ -122,7 +122,7 @@ description: "Task list for feature 002: PR and CI-status tooling"
 
 ### Tests for User Story 2 (REQUIRED, TDD checkpoint format) ⚠️
 
-- [ ] T008 [P] [US2] Port `scripts/__tests__/forge-pr.test.mjs` from MCM, including its `forge-credential` cases (MCM L29–90), with `jumbleknot/mcm` → `jumbleknot/belay`, `guardrails.yml` in the dispatch examples, and no exit code 4 in the merge loop (research R6).
+- [X] T008 [P] [US2] Port `scripts/__tests__/forge-pr.test.mjs` from MCM, including its `forge-credential` cases (MCM L29–90), with `jumbleknot/mcm` → `jumbleknot/belay`, `guardrails.yml` in the dispatch examples, and no exit code 4 in the merge loop (research R6).
   - **Added:** `(no-leak)`. A planted git credential, injected through `fill`, never appears in the output or errors of `open`, `merge` or `dispatch` when the forge returns 401, 403, 409 or success (SC-004).
   - **Scenarios covered:**
     - US2-AC1 to AC4;
@@ -135,11 +135,16 @@ description: "Task list for feature 002: PR and CI-status tooling"
 
 ### Implementation for User Story 2
 
-- [ ] T009 [US2] Port `scripts/lib/forge-credential.mjs` and `scripts/forge-pr.mjs` from MCM (research R4). Prerequisite: T008 verified RED.
+- [X] T009 [US2] Port `scripts/lib/forge-credential.mjs` and `scripts/forge-pr.mjs` from MCM (research R4). Prerequisite: T008 verified RED.
   - **USAGE and errors:** name `FORGE_TOKEN`.
   - **`remedy()`:** points at `docs/runbooks/ci.md`, without the dev-container or VS Code advice.
   - **Dispatch examples:** use `guardrails.yml`.
   - **Verify GREEN:** `node --test scripts/__tests__/forge-pr.test.mjs` → expected: 0 failures; then `pnpm nx run scripts:test` passes.
+
+  - **Done 2026-11-22.** 22 of 22 `forge-pr` tests pass.
+    - **Ruling:** `forge-pr` needs `partitionArgsWithValues` and `usageNamesEveryFlag`, which feature 001's trimmed `scripts/lib/argv-contract.mjs` didn't have. MCM's full module was ported with its `argv-contract-values.test.mjs` (13 tests): RED on the missing export, then GREEN. All existing callers are unchanged.
+    - `(no-leak)` went RED under a mutation that put the token into the forge's error message, then GREEN when restored.
+    - MCM's `remedy()` and dispatch notes now point at `docs/runbooks/ci.md`.
 
 **Checkpoint**: open, merge and dispatch are proven by tests. Their live use is T019.
 
@@ -151,7 +156,7 @@ description: "Task list for feature 002: PR and CI-status tooling"
 
 **Independent Test**: quickstart §6.
 
-- [ ] T010 [US3] Confirm the merge preconditions are covered and ordered as [data-model.md](data-model.md) → Merge preconditions states: the head is checked first, then CI, then the forge, and nothing is called after a refusal.
+- [X] T010 [US3] Confirm the merge preconditions are covered and ordered as [data-model.md](data-model.md) → Merge preconditions states: the head is checked first, then CI, then the forge, and nothing is called after a refusal.
   - **Done when:** T008's tests include a case where every one of the three refusals makes no merge call (the stubbed forge records zero `POST …/merge`), and one where success sends `head_commit_id` equal to the expected sha. Add any missing case test-first, watched RED, then GREEN.
 
 ---
