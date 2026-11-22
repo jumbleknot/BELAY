@@ -258,10 +258,11 @@ description: "Task list for feature 001: guardrails CI"
     - `no CI`, `No language toolchains`, `build system`, `run the gate by`, `ci-step-logs`: no hits.
     - `node --test`: `docs/runbooks/spec-kit.md:20` is still a valid direct command. Kept, and the Nx equivalents were added beside it.
     - `ci-failures`: only `docs/runbooks/ci.md`, which is the new, correct `belay-ci-failures` name.
-- [ ] T025 **Open the PR** from a real branch: `git push origin HEAD:001-guardrails-ci`, then open a PR to `main`. This is by hand: the PR tooling is feature 002. Use Forgejo's UI, or one `POST /repos/jumbleknot/BELAY/pulls` with `FORGE_ISSUE_TOKEN` from the environment.
+- [X] T025 **Open the PR** from a real branch: `git push origin HEAD:001-guardrails-ci`, then open a PR to `main`. This is by hand: the PR tooling is feature 002. Use Forgejo's UI, or one `POST /repos/jumbleknot/BELAY/pulls` with `FORGE_ISSUE_TOKEN` from the environment.
   - Confirm exactly one `guardrails` run, green, on `ci-homelab` (quickstart §2, SC-001). If it stays queued, change `runs-on` to the label `ci-homelab` advertises.
   - Tick this task in the branch's LAST commit, quoting the branch, the PR number and that commit's sha.
   - **CI evidence is never recorded here.** A file can't hold the CI result of the commit that contains it, and a commit added to record it is a new head that reruns every required CI job. The run ids, the CI verdict and the merge sha go in the PR's closing comment, and in the closing comment of each issue the PR resolves.
+  - **Opened 2026-11-22:** branch `001-guardrails-ci`, PR #3. This tick is in the branch's last commit. Run ids, verdicts and the merge sha are in PR #3's closing comment.
 - [X] T026 Live digest evidence (quickstart §3, SC-003, SC-004). On the PR, push a throwaway commit that fails one script test, then a second failing commit, then revert both.
   - **Done when:**
     - exactly one `<!-- ci-digest:job=guardrails -->` comment exists, updated by the second failure, and published with `CI_DIGEST_TOKEN`, not the degraded channel;
@@ -272,7 +273,7 @@ description: "Task list for feature 001: guardrails CI"
   - **Done 2026-11-22.** Run ids and verdicts are in the PR's closing comment, per the rule above.
     - Two throwaway failing commits each produced the same single digest comment on PR #3, edited in place and published with `CI_DIGEST_TOKEN`. The throwaway test was then removed.
     - **Finding fixed under TDD:** the first digest named the failing step but showed three *passing* step logs, because step logs rank equally and sort by name. `buildDigest` now leads with the failing step. The test `(failing-step-first)` went RED, then GREEN. The second live digest showed the real assertion.
-- [ ] T027 Run [quickstart.md](quickstart.md) §1–§7 end to end, then merge once protection (T016) is on and the PR is green.
+- [X] T027 Run [quickstart.md](quickstart.md) §1–§7 end to end, then merge once protection (T016) is on and the PR is green.
   - **Done when:** every quickstart "Expected" holds.
 
 
