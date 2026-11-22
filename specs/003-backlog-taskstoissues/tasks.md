@@ -204,13 +204,14 @@ None. `backlog.mjs`'s dependencies (`forgeEndpoint`, `stripControlChars`, `redac
 - [X] T019 **Close-out re-search**: re-run T001's searches.
   - **Done when:** every remaining hit in a doc that states current procedure has been fixed, or is justified here.
   - **Result** (2026-11-22): `backlog`, `FORGE_ISSUE_TOKEN`, `taskstoissues` and `PROJECT_OWNED` hit only this feature's new docs and skills and the updated lines from T017. Each describes the shipped behaviour. `.specify/extensions/git/README.md:37,46` is unchanged, as in T001. `issue_template` hits only `docs/runbooks/backlog.md:88`, which is correct. `bot-managed` and `feature 003` have no hits.
-- [ ] T020 **Open the PR** with the repository's PR tools (`docs/runbooks/ci.md`):
+- [X] T020 **Open the PR** with the repository's PR tools (`docs/runbooks/ci.md`):
   1. `git push origin HEAD:003-backlog-taskstoissues`
   2. `node scripts/forge-pr.mjs open --head 003-backlog-taskstoissues --title "Feature 003: backlog tooling and tasks-to-issues" --body-file <file>`
   3. `node scripts/ci-status.mjs watch --pr <n>`, until it exits 0
   4. `node scripts/forge-pr.mjs merge <n> --expect-head <full sha>`
 
   Tick this task in the branch's LAST commit, quoting the branch and the PR number. **CI evidence is never recorded here.** The run ids, the CI verdict and the merge sha go in the PR's closing comment.
+  - **Opened:** branch `003-backlog-taskstoissues`, as PR #26.
 - [X] T021 Run [quickstart.md](quickstart.md) §1 to §6.
   - **Done when:** every "Expected" holds. §6 is T020.
   - **Result** (2026-11-22):
