@@ -1,7 +1,7 @@
 # Spec Kit and Forgejo parity with MovieCollectionManager: design
 
 **Date:** 2026-11-22
-**Status:** Approved 2026-11-22
+**Status:** Approved 2026-11-22. Implemented 2026-11-22: Step 0 direct to `main`, then features 001, 002 and 003 through PRs #3, #4 and #26. See "How it turned out" for where the build differs from this design.
 **Tracking:** deferred guardrail checks are [issue #1](http://<tailnet-host>:3000/jumbleknot/BELAY/issues/1)
 
 ## Intent
@@ -161,7 +161,10 @@ The goal is the same disciplined spec-to-merge loop MCM has, in BELAY. Using it 
 - CI failure digests publish to issues as MCM's do, using a third token, `CI_DIGEST_TOKEN`.
 - `main` gets branch protection with `guardrails` required, enabled by the user after feature 001's first green run.
 
-## Calls made in the design (not yet confirmed by the user)
+## Calls made in the design (carried out)
+
+The user didn't confirm these one by one. Each was carried out as written and accepted in review of the
+PR that shipped it, except where "How it turned out" says otherwise.
 
 - **Step 0 lands as a direct push to `main`,** like every commit so far, because CI doesn't exist yet. From feature 001 onwards, work lands through PRs. Once branch protection is on, PRs are the only way in.
 - **Extension versions:** install whatever `specify extension add` resolves from the catalog for Spec Kit 1.4.2 (git may be 1.0.8, newer than MCM's 1.0.5). Record the exact versions in the runbook. The gate's hook registry is built from the installed versions' hooks, including git's `before/after_taskstoissues` hooks.
@@ -171,6 +174,23 @@ The goal is the same disciplined spec-to-merge loop MCM has, in BELAY. Using it 
   - BELAY forks MCM's existing Forgejo-adapted fork (originally from spec-kit 0.16.5), not the GitHub-MCP extension command.
   - The skill and the runbook record that provenance. Because the skill is project-owned, an upgrade has nothing upstream to diff it against.
 - **Node in CI:** follow MCM's working pattern on the same homelab infrastructure. Every job runs `actions/setup-node` to get Node 24+, through the same action source MCM's workflows use. The first CI run confirms that both the runner label and setup-node work.
+
+## How it turned out
+
+Where the shipped work differs from the design above:
+
+- **pnpm and Nx, not "no `package.json`".** The user decided that BELAY uses pnpm and Nx like MCM.
+  Feature 001 added the workspace, the lock file and the `yaml` dev dependency. Nx runs the checks:
+  `pnpm nx run scripts:lint` and `scripts:test`.
+- **Node in CI.** BELAY runs on its own repository runner, `ci-belay` (label `belay`, image
+  `node:26-bookworm`), instead of the shared `ci-homelab` runner. That runner's queue had cost a
+  36-minute wait. `actions/setup-node` still pins Node in every job.
+- **Failure digests** work as MCM's do: a PR comment on pull requests, a commit status otherwise,
+  with fuller evidence in the package registry. They don't file issues.
+- **`/speckit-taskstoissues`** runs the fan-out through `scripts/taskstoissues.mjs`, a tested script,
+  rather than having the skill issue each `backlog.mjs` command by hand.
+- **Exit on Windows.** `backlog.mjs` and `taskstoissues.mjs` set `process.exitCode` instead of calling
+  `process.exit()`, which aborted with exit 127 on Windows.
 
 ## Left to the builder
 

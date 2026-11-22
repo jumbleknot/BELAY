@@ -96,6 +96,17 @@ item per task, titled `T0NN: …`, deduplicated by task id across all pages, and
 `tasks.md` stays authoritative; the items are a mirror for coordination. The skill is project-owned and
 guarded by the Spec Kit gate ([spec-kit.md](spec-kit.md), row 6).
 
+The skill runs `scripts/taskstoissues.mjs`, which does the whole fan-out through `backlog.mjs`:
+
+```bash
+node scripts/taskstoissues.mjs NNN-slug --dry-run   # reads only; lists what it would create
+node scripts/taskstoissues.mjs NNN-slug             # milestone, creates, dependency chain
+```
+
+It defaults to `specs/NNN-slug/tasks.md` (`--tasks <path>` overrides it), labels each item `type/chore`
+and `priority/p2`, and exits 0, 2 for a usage error, or the failing `backlog.mjs` command's exit code.
+Its tests are `scripts/__tests__/taskstoissues.test.mjs`.
+
 ## Operating notes
 
 - **Closure is an explicit, verified act.** Merge-time auto-closing (`closes #N`) is deliberately not
