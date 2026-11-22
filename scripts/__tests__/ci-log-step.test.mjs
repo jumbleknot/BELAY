@@ -248,7 +248,7 @@ test('(probe3) the OLD probe would have passed that same shell — this is why i
 });
 
 test('(probe4) on THIS host the suite does not skip — a skip here would be a false pass', needsUsableBash, () => {
-  // Linux dev container and the CI node:22-bookworm image both have a usable bash, so every case
+  // Git Bash on Windows and the CI node:26-bookworm image both have a usable bash, so every case
   // above must actually execute. If this ever starts skipping, the skip count is the tell.
   assert.equal(needsBash.skip, false, `the ci-log-step suite skipped on a host with bash: ${needsBash.skip}`);
 });

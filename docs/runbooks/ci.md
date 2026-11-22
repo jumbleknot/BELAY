@@ -100,7 +100,7 @@ No repository variables are needed. If `CI_DIGEST_TOKEN` is missing or empty, th
 On your machine, CI doesn't need any of these:
 - `scripts/ci-status.mjs` reads with `FORGE_TOKEN`, a read-only token with `read:repository`, `read:issue` and `read:package`.
 - `scripts/forge-pr.mjs` writes (open, merge, dispatch) with the git credential stored for `origin`, through `git credential fill`.
-- The backlog script (feature 003) will write issues with `FORGE_ISSUE_TOKEN` (`write:issue`).
+- `scripts/backlog.mjs` writes issues with `FORGE_ISSUE_TOKEN` (`write:issue`), and reads with it or falls back to `FORGE_TOKEN` (see [backlog.md](backlog.md)).
 
 None of these ever appear in command output.
 

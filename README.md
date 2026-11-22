@@ -33,6 +33,9 @@ pnpm nx run scripts:test         # script unit tests
 
 Every pull request runs the same checks in CI. See [docs/runbooks/ci.md](docs/runbooks/ci.md).
 
+The backlog is this repository's Forgejo issue tracker, worked with `node scripts/backlog.mjs`. See
+[docs/runbooks/backlog.md](docs/runbooks/backlog.md).
+
 ## License
 
 [MIT](LICENSE) © 2026 Jumbleknot

@@ -94,6 +94,11 @@ export const PROJECT_OWNED = [
     marker: 'context_file: AGENTS.md',
     why: 'agent-context must write to AGENTS.md; CLAUDE.md is a shim that imports it',
   },
+  {
+    file: '.claude/skills/speckit-taskstoissues/SKILL.md',
+    marker: 'scripts/backlog.mjs',
+    why: 'fans tasks out to the Forgejo backlog through scripts/backlog.mjs; project-owned because Spec Kit 1.x has no core taskstoissues command',
+  },
 ];
 
 export const EXTENSIONS_YML = '.specify/extensions.yml';
