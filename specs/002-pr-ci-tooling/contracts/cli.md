@@ -17,8 +17,8 @@ durations [--job <name>] [--runs <n>] [--propose]
 
 | Exit | Meaning |
 | --- | --- |
-| 0 | mergeable (`status` / `watch`), or the evidence was printed (`failure` / `durations`) |
-| 1 | a required check failed (`status` / `watch`) |
+| 0 | mergeable (`status` / `watch`), nothing failed (`failure`), or the timings were printed (`durations`) |
+| 1 | a required check failed (`status` / `watch`), or a failure was found and its evidence printed (`failure`) |
 | 2 | bad arguments, or the read credential is missing or lacks scope |
 | 3 | still waiting. Never a failure. `watch` returns 3 at `--timeout`. |
 

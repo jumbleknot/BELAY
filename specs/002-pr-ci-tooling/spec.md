@@ -100,7 +100,7 @@ For a failed commit, PR, branch or run, the maintainer or an agent reads the fai
 **Acceptance Scenarios**:
 
 1. **Given** a failed run with a published evidence bundle, **When** failure evidence is asked for, **Then** the failing step, its output and the "not collected" notes are printed. With the full option, the whole bundle is printed.
-2. **Given** a passing run, or a run with no bundle, **When** failure evidence is asked for, **Then** it says so plainly and doesn't exit 0 as if evidence were found.
+2. **Given** a passing run, **When** failure evidence is asked for, **Then** it says plainly that nothing failed and exits 0. A run that did fail exits 1 with its evidence, the same meaning `status` gives exit 1. A failed run with no bundle says that no bundle was published.
 3. **Given** evidence from another repository under the same owner, **When** BELAY's failure evidence is asked for, **Then** only BELAY's repository-scoped evidence is read.
 
 ---

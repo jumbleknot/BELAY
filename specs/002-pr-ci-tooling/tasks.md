@@ -167,12 +167,14 @@ description: "Task list for feature 002: PR and CI-status tooling"
 
 **Independent Test**: quickstart §2.
 
-- [ ] T011 [US4] Live check: quickstart §2. Run `node scripts/ci-status.mjs failure --run 8169` and `--full`.
+- [X] T011 [US4] Live check: quickstart §2. Run `node scripts/ci-status.mjs failure --run 8169` and `--full`.
   - **Done when:**
-    - both exit 0;
+    - both exit 1, meaning a failure was found;
     - the output names `guardrails-test` and shows `deliberate failure #2`, read from `belay-ci-failures`;
     - each finishes in under 10 s (SC-005);
-    - `failure --run 8171`, a green run, says there is no failure evidence and doesn't exit 0 as if evidence were found.
+    - `failure --run 8171`, a green run, says nothing failed and exits 0.
+  - **Done 2026-11-22:** run 8169 took 173 ms, and `--full` took 170 ms and printed 263 lines; both exited 1 and showed the failing step and assertion. Run 8171 exited 0 with "No failed jobs on d5235d92".
+    - **Ruling:** the spec and contract had `failure`'s exit codes the other way round. MCM's convention was kept (1 = failure found, 0 = nothing failed), because it matches `status`. The spec's US4-AC2, the contract and this task were corrected.
 
 ---
 
