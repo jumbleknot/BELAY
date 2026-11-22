@@ -204,11 +204,14 @@ description: "Task list for feature 002: PR and CI-status tooling"
 
 ## Phase 8: User Story 5 - Step timings and manual runs (Priority: P3)
 
-- [ ] T015 [US5] Live check: run `node scripts/ci-status.mjs durations --runs 5`, then `node scripts/forge-pr.mjs dispatch guardrails.yml --ref 002-pr-ci-tooling` once the branch is pushed.
+- [X] T015 [US5] Live check: run `node scripts/ci-status.mjs durations --runs 5`, then `node scripts/forge-pr.mjs dispatch guardrails.yml --ref 002-pr-ci-tooling` once the branch is pushed.
   - **Done when:**
     - durations lists per-step timings for `guardrails`;
     - dispatch exits 0 and prints its note that dispatched runs post no commit status;
     - the dispatched run appears in BELAY's Actions list, and it passes.
+  - **Done 2026-11-22:**
+    - `durations --runs 5` listed four `guardrails` steps from the two bundles (only failed runs publish one).
+    - `dispatch guardrails.yml --ref 002-pr-ci-tooling` exited 0 with its no-commit-status note, and the dispatched run passed.
 
 ---
 
@@ -226,7 +229,7 @@ description: "Task list for feature 002: PR and CI-status tooling"
   - **Done 2026-11-22:** re-searched.
     - `feature 002`, `features 002`, `PR and backlog`, `bundlePackage`: no hits.
     - `ci-status` and `forge-pr` appear only in the updated `AGENTS.md`, `docs/runbooks/ci.md`, `docs/runbooks/spec-kit.md` row 1, and the override's "Open the PR" task.
-- [ ] T019 **Open the PR** with this feature's own tools (quickstart §5 and §6; SC-001, SC-003):
+- [X] T019 **Open the PR** with this feature's own tools (quickstart §5 and §6; SC-001, SC-003):
   1. `git push origin HEAD:002-pr-ci-tooling`.
   2. `node scripts/forge-pr.mjs open --head 002-pr-ci-tooling --title "Feature 002: PR and CI-status tooling" --body-file <file>`.
   3. Run the §6 refusals: a wrong `--expect-head` exits 1 with nothing merged; `--expect-head abc123` exits 2; `open --head refs/for/main` exits 1 with nothing created.
@@ -234,10 +237,16 @@ description: "Task list for feature 002: PR and CI-status tooling"
   5. `node scripts/forge-pr.mjs merge <n> --expect-head "$(git rev-parse HEAD)"`.
 
   Tick this task in the branch's LAST commit, quoting the branch and the PR number.
+  - **Opened 2026-11-22:** branch `002-pr-ci-tooling`, PR #4, opened by `forge-pr open`.
+    - Refusals checked against PR #4: `open --head refs/for/main` exited 1; a wrong `--expect-head` exited 1, naming both shas; `--expect-head abc123` exited 2. The PR was still open and unmerged afterwards.
+    - This tick is in the branch's last commit. The watch, the merge and the CI evidence go in PR #4's closing comment.
 
   **CI evidence is never recorded here.** A file can't hold the CI result of the commit that contains it, and a commit added to record it is a new head that reruns every required CI job. The run ids, the CI verdict and the merge sha go in the PR's closing comment.
-- [ ] T020 Run [quickstart.md](quickstart.md) §1 to §7.
+- [X] T020 Run [quickstart.md](quickstart.md) §1 to §7.
   - **Done when:** every "Expected" holds. §5's merge is the last step of T019.
+  - **Done 2026-11-22:**
+    - §1: T007. §2: T011. §3: T015. §4: `scripts:lint` passes, and `scripts:test` passes 485 tests. §6: T019. §7: T012.
+    - §5 completes with the merge.
 
 ---
 
