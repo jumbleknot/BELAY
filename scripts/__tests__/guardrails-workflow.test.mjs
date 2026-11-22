@@ -43,8 +43,10 @@ test('steps run in contract order with pinned actions, Node 26 and the Nx target
   assert.equal(steps[0].uses, CHECKOUT);
   assert.equal(steps[1].uses, SETUP_NODE);
   assert.equal(String(steps[1].with['node-version']), NODE_VERSION);
-  assert.equal(steps[2].run.trim(), 'bash scripts/install-pnpm.sh');
-  assert.equal(steps[3].run.trim(), 'pnpm install --frozen-lockfile');
+  // Every run step goes through ci-log-step.sh, so an install failure still reaches the digest
+  // with its output and a failing-step marker (enforced by check-ci-digest-coverage.mjs).
+  assert.equal(steps[2].run.trim(), 'bash scripts/ci-log-step.sh guardrails-install-pnpm bash scripts/install-pnpm.sh');
+  assert.equal(steps[3].run.trim(), 'bash scripts/ci-log-step.sh guardrails-install-deps pnpm install --frozen-lockfile');
   assert.equal(steps[4].run.trim(), 'bash scripts/ci-log-step.sh guardrails-lint pnpm nx run scripts:lint');
   assert.equal(steps[5].run.trim(), 'bash scripts/ci-log-step.sh guardrails-test pnpm nx run scripts:test');
 });

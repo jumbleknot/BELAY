@@ -71,8 +71,8 @@ The source for everything here is MovieCollectionManager (MCM) at `E:\Programmin
   - **Steps, in order:**
     1. `actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7`, MCM's pinned SHA.
     2. `actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7` with `node-version: 26.13.1`, MCM's pinned SHA and the constitution's Node version.
-    3. `bash scripts/install-pnpm.sh`.
-    4. `pnpm install --frozen-lockfile`.
+    3. `bash scripts/ci-log-step.sh guardrails-install-pnpm bash scripts/install-pnpm.sh`.
+    4. `bash scripts/ci-log-step.sh guardrails-install-deps pnpm install --frozen-lockfile`. MCM's coverage gate requires every `run:` step to be wrapped, and MCM wraps its install steps the same way.
     5. `bash scripts/ci-log-step.sh guardrails-lint pnpm nx run scripts:lint`.
     6. `bash scripts/ci-log-step.sh guardrails-test pnpm nx run scripts:test`.
     7. MCM's "Publish failure digest" step, verbatim: `if: always()`, `continue-on-error: true`, env `CI_DIGEST_TOKEN`, `GITHUB_TOKEN: ${{ github.token }}` and `CI_DIGEST_JOB_STATUS: ${{ job.status }}`, running `node scripts/ci-failure-digest.mjs`.

@@ -47,9 +47,9 @@ jobs:
         with:
           node-version: 26.13.1
       - name: Install pnpm (version from package.json packageManager)
-        run: bash scripts/install-pnpm.sh
+        run: bash scripts/ci-log-step.sh guardrails-install-pnpm bash scripts/install-pnpm.sh
       - name: Install workspace dependencies (frozen lockfile)
-        run: pnpm install --frozen-lockfile
+        run: bash scripts/ci-log-step.sh guardrails-install-deps pnpm install --frozen-lockfile
       - name: Gates and selftests (scripts:lint)
         run: bash scripts/ci-log-step.sh guardrails-lint pnpm nx run scripts:lint
       - name: Script unit tests (scripts:test)

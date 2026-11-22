@@ -205,17 +205,20 @@ description: "Task list for feature 001: guardrails CI"
 
 ### Tests for User Story 3 (REQUIRED, TDD checkpoint format) ⚠️
 
-- [ ] T017 [US3] Port `scripts/__tests__/check-ci-digest-coverage.test.mjs` from MCM (research R9, R-strip). Replace MCM job names in the fixtures with neutral ones. See [data-model.md](data-model.md) → Digest exemption.marker, Digest exemption.reason.
+- [X] T017 [US3] Port `scripts/__tests__/check-ci-digest-coverage.test.mjs` from MCM (research R9, R-strip). Replace MCM job names in the fixtures with neutral ones. See [data-model.md](data-model.md) → Digest exemption.marker, Digest exemption.reason.
   - **Scenarios covered:** US3-AC1 to AC6, plus the "unparseable workflow" edge case (exit 2).
   - **Verify RED:** `node --test scripts/__tests__/check-ci-digest-coverage.test.mjs` → expected: failing with `ERR_MODULE_NOT_FOUND` for `check-ci-digest-coverage.mjs`.
 
 ### Implementation for User Story 3
 
-- [ ] T018 [US3] Port `scripts/check-ci-digest-coverage.mjs` from MCM unchanged apart from R-strip. It keeps `import { parse } from 'yaml'`.
+- [X] T018 [US3] Port `scripts/check-ci-digest-coverage.mjs` from MCM unchanged apart from R-strip. It keeps `import { parse } from 'yaml'`.
   - **Lint target:** add its `--selftest` and its scan to `scripts:lint`, as the contract orders them.
   - Prerequisite: T017 verified RED.
   - **Verify GREEN:** `node --test scripts/__tests__/check-ci-digest-coverage.test.mjs` → expected: 0 failures; then `pnpm nx run scripts:lint` passes on the real `.forgejo/workflows/guardrails.yml`.
-- [ ] T019 [US3] Mutation check (SC-006). On a scratch copy, delete step 7 from `guardrails.yml`, then run `node scripts/check-ci-digest-coverage.mjs`. Add `# ci-digest-exempt: test` to the job and run it again. Restore the file with `git checkout --`.
+  - **Done 2026-11-22.** 32 of 32 coverage tests pass; the full suite passes 290, with 2 skipped.
+    - **Ruling:** MCM's coverage gate also requires every `run:` step to go through `ci-log-step.sh`, and it flagged BELAY's bare install steps 3 and 4. Following MCM, both are now wrapped (`guardrails-install-pnpm`, `guardrails-install-deps`). That gives install failures a step log. The contract test (T009), the contract document and research R3 were updated to match, with the contract test updated first and watched RED.
+    - When imported, the gate scans the real workflows unless it's run with `--selftest`. Its test file therefore fails to load if a workflow has a gap, which is the same as in MCM.
+- [X] T019 [US3] Mutation check (SC-006). On a scratch copy, delete step 7 from `guardrails.yml`, then run `node scripts/check-ci-digest-coverage.mjs`. Add `# ci-digest-exempt: test` to the job and run it again. Restore the file with `git checkout --`.
   - **Done when:**
     - without step 7: exit 1, naming `guardrails.yml` and job `guardrails`;
     - with the exemption: exit 0;
