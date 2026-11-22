@@ -74,7 +74,7 @@ table names `.specify/templates/overrides/tasks-template.md`,
 `docs/templates/feature-test-tasks-template.md`, `.specify/extensions.yml`, every file in its
 `LOCAL_EDITS` registry and every file in its `PROJECT_OWNED` list (`inventory-stale`).
 `PROJECT_OWNED` holds files this repository keeps as its own that no manifest lists: today, the
-agent-context config (row 5b).
+agent-context config (row 5b) and `/speckit-taskstoissues` (row 6).
 
 ### Known gaps
 

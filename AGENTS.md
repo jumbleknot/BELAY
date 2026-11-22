@@ -17,7 +17,7 @@ Top-level folders (most are still empty placeholders):
 | `docs/` | Documentation |
 | `openwiki/` | Wiki content |
 | `specs/` | Spec Kit feature specifications (see below) |
-| `scripts/` | Repo scripts, as the Nx project `scripts` (`scripts/project.json`). They include the Spec Kit override gate (`check-speckit-overrides.mjs`), the CI scripts (`install-pnpm.sh`, `ci-log-step.sh`, `ci-failure-digest.mjs`, `ci-digest-redact.mjs`, `secret-scan.mjs`, `check-ci-digest-coverage.mjs`), the PR and CI-status tools (`ci-status.mjs`, `forge-pr.mjs`, `lib/forge-credential.mjs`; see [docs/runbooks/ci.md](docs/runbooks/ci.md)), and their tests in `scripts/__tests__/`. |
+| `scripts/` | Repo scripts, as the Nx project `scripts` (`scripts/project.json`). They include the Spec Kit override gate (`check-speckit-overrides.mjs`), the CI scripts (`install-pnpm.sh`, `ci-log-step.sh`, `ci-failure-digest.mjs`, `ci-digest-redact.mjs`, `secret-scan.mjs`, `check-ci-digest-coverage.mjs`), the PR and CI-status tools (`ci-status.mjs`, `forge-pr.mjs`, `lib/forge-credential.mjs`; see [docs/runbooks/ci.md](docs/runbooks/ci.md)), the backlog tool (`backlog.mjs`; see [docs/runbooks/backlog.md](docs/runbooks/backlog.md) and the [forgejo-issues skill](.claude/skills/forgejo-issues/SKILL.md)), and their tests in `scripts/__tests__/`. |
 | `.forgejo/workflows/` | CI. `guardrails.yml` runs on every PR and push to `main` (see [docs/runbooks/ci.md](docs/runbooks/ci.md)). |
 | `api-specs/` | API specifications |
 | `secrets/` | Local secrets. Only `.gitkeep`, `README.md` and `*.example` files are tracked. Never commit real secrets. |

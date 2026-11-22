@@ -6,7 +6,7 @@
 // run state, commit statuses, and — once the write side lands — the digest published into a PR
 // comment or commit status.
 //
-// Three measured constraints shape every request (2026-07-19, dev container → homelab forge over a
+// Three measured constraints shape every request (2026-07-19, from MovieCollectionManager to the homelab forge over a
 // ~135 KB/s tailnet link). They are correctness rules, not optimizations:
 //
 //   * `?head_sha=<full-sha>` is a true server-side filter: 0.48 s / 15 KB. Unfiltered: 94 s / 12.4 MB.

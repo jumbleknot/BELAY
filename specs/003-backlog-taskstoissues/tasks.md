@@ -24,7 +24,7 @@ description: "Task list for feature 003: backlog tooling and tasks-to-issues"
 
 ## Phase 1: Setup (Shared Infrastructure)
 
-- [ ] T001 **Doc-impact sweep** (REQUIRED in every tasks.md; constitution "Documentation").
+- [X] T001 **Doc-impact sweep** (REQUIRED in every tasks.md; constitution "Documentation").
   - **Command:** for each term, `git grep -n -F "<term>" -- '*.md' ':!specs/' ':!docs/proposals/' ':!docs/decisions/' ':!docs/superpowers/'`.
   - **Terms:** `backlog`, `FORGE_ISSUE_TOKEN`, `taskstoissues`, `PROJECT_OWNED`, `issue_template`, `bot-managed`, `feature 003`.
   - **Results** (searched 2026-11-22, while generating this file):
@@ -172,14 +172,14 @@ None. `backlog.mjs`'s dependencies (`forgeEndpoint`, `stripControlChars`, `redac
 
 ## Phase 8: User Story 6 - The rules for using the backlog (Priority: P3)
 
-- [x] T014 [P] [US6] Port `.claude/skills/forgejo-issues/SKILL.md` from MCM (research R8).
+- [X] T014 [P] [US6] Port `.claude/skills/forgejo-issues/SKILL.md` from MCM (research R8).
   - **BELAY's version:** the BELAY backlog, `FORGE_ISSUE_TOKEN`, no dev-container requirement, no bot-managed or Renovate passages, generic item examples, and the forge measurement kept as a forge property.
   - **Done when:** the filing, closing, labelling, lifecycle and no-bulk rules are present with BELAY's nine labels, and `git grep -niE 'mcm|movie|bot-managed|renovate|dev container' .claude/skills/forgejo-issues` finds nothing.
-- [x] T015 [P] [US6] Port `docs/runbooks/backlog.md` from MCM (research R8).
+- [X] T015 [P] [US6] Port `docs/runbooks/backlog.md` from MCM (research R8).
   - **Dropped:** the backup section, the dev-container and `setx` advice, and the bot-managed and Renovate rows.
   - **Changed:** the Nx paragraph now points at `pnpm nx run scripts:test`.
   - **Done when:** every command in [contracts/backlog-cli.md](contracts/backlog-cli.md) appears with its exit codes and credential, and the same MCM-term grep is clean.
-- [x] T016 [P] [US6] Port `.forgejo/issue_template/backlog-item.yaml` from MCM, with BELAY placeholders (research R5).
+- [X] T016 [P] [US6] Port `.forgejo/issue_template/backlog-item.yaml` from MCM, with BELAY placeholders (research R5).
   - **Done when:**
     - it parses as YAML (`node -e "require('yaml').parse(...)"`);
     - it has no MCM terms;
@@ -189,16 +189,21 @@ None. `backlog.mjs`'s dependencies (`forgeEndpoint`, `stripControlChars`, `redac
 
 ## Phase 9: Polish & Cross-Cutting Concerns
 
-- [ ] T017 [P] Doc updates from the sweep (T001):
+- [X] T017 [P] Doc updates from the sweep (T001):
   - `docs/runbooks/ci.md:103`: the backlog script writes issues with `FORGE_ISSUE_TOKEN` (see `docs/runbooks/backlog.md`);
   - `docs/runbooks/spec-kit.md:75-76`: `PROJECT_OWNED` today holds the agent-context config and `/speckit-taskstoissues`;
   - `AGENTS.md`: the `scripts/` row names `backlog.mjs`, with links to `docs/runbooks/backlog.md` and the `forgejo-issues` skill.
   - **Done when:** each is updated, and `node scripts/check-speckit-overrides.mjs` passes.
-- [ ] T018 No-MCM check.
+  - **Result:** all three updated, and `README.md` gained a one-line pointer to the backlog runbook (AGENTS.md "document what it's for"). The gate passes.
+- [X] T018 No-MCM check.
   - **Command:** `git grep -niE 'mcm|movie|mc-service|bot-managed|renovate|MCM_FORGE|dev container' -- scripts .claude/skills/speckit-taskstoissues .claude/skills/forgejo-issues docs/runbooks/backlog.md .forgejo/issue_template`.
   - **Done when:** only deliberate provenance notes and the `themoviedb` vendor regex remain, each justified here.
-- [ ] T019 **Close-out re-search**: re-run T001's searches.
+  - **Result:** two stale comments were fixed: `scripts/__tests__/ci-log-step.test.mjs:251` (a dev container and node 22, now Git Bash and node 26) and `scripts/ci-status.mjs:9` (the measurement is now attributed to MCM). The remaining hits are justified:
+    - provenance: `.claude/skills/speckit-taskstoissues/SKILL.md:8` (fork source), `scripts/backlog.mjs:4` ("Ported from MovieCollectionManager"), `scripts/__tests__/backlog.test.mjs:506` (why MCM's bot-managed test has no counterpart), and `scripts/ci-failure-digest.mjs:130,755` with `scripts/__tests__/ci-failure-digest.test.mjs:1903` (the evidence-package names shared with MCM, feature 001);
+    - vendor: `scripts/secret-scan.mjs:36`, the `themoviedb` key regex.
+- [X] T019 **Close-out re-search**: re-run T001's searches.
   - **Done when:** every remaining hit in a doc that states current procedure has been fixed, or is justified here.
+  - **Result** (2026-11-22): `backlog`, `FORGE_ISSUE_TOKEN`, `taskstoissues` and `PROJECT_OWNED` hit only this feature's new docs and skills and the updated lines from T017. Each describes the shipped behaviour. `.specify/extensions/git/README.md:37,46` is unchanged, as in T001. `issue_template` hits only `docs/runbooks/backlog.md:88`, which is correct. `bot-managed` and `feature 003` have no hits.
 - [ ] T020 **Open the PR** with the repository's PR tools (`docs/runbooks/ci.md`):
   1. `git push origin HEAD:003-backlog-taskstoissues`
   2. `node scripts/forge-pr.mjs open --head 003-backlog-taskstoissues --title "Feature 003: backlog tooling and tasks-to-issues" --body-file <file>`
@@ -206,8 +211,14 @@ None. `backlog.mjs`'s dependencies (`forgeEndpoint`, `stripControlChars`, `redac
   4. `node scripts/forge-pr.mjs merge <n> --expect-head <full sha>`
 
   Tick this task in the branch's LAST commit, quoting the branch and the PR number. **CI evidence is never recorded here.** The run ids, the CI verdict and the merge sha go in the PR's closing comment.
-- [ ] T021 Run [quickstart.md](quickstart.md) §1 to §6.
+- [X] T021 Run [quickstart.md](quickstart.md) §1 to §6.
   - **Done when:** every "Expected" holds. §6 is T020.
+  - **Result** (2026-11-22):
+    - §1: lint and test exit 0 (565 tests, 563 pass, 2 skipped).
+    - §2: the list shows #1 with a total of 23 items; `show 1` prints it; `validate-form` gives the expected pre-merge answer (no templates on the default branch).
+    - §3: the live writes ran in T008 and T009; re-checked: the dry run reports nothing to create, #1 carries both labels and is in `ready`.
+    - §4: exits 2, 2 and 3, with no writes.
+    - §5: ran in T013; re-checked: 21 items in the milestone, 21 unique task ids, and `ready` shows #5 (T001).
 
 ---
 
