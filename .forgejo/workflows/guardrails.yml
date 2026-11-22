@@ -1,0 +1,77 @@
+# Guardrails: the checks every change to BELAY must pass. Branch protection on `main` requires this
+# workflow's status (docs/runbooks/ci.md).
+#
+# ACTION-LIGHT by design: `uses:` is kept to actions mirrored on the Forgejo instance's default
+# action registry (actions/checkout, actions/setup-node), so this workflow runs on the homelab
+# runner without pointing action resolution at github. Both are pinned by commit SHA.
+#
+# Runner: `belay` is the label of BELAY's own repository-scoped runner (ci-belay), mapped on the
+# host to a node:26-bookworm container. Jobs never queue on the shared global runner.
+#
+# Toolchain: setup-node still pins the constitution's exact Node (26.13.1) here in the repo, where
+# it is reviewed and tested; the runner's image only sets the major. pnpm comes from
+# scripts/install-pnpm.sh at exactly package.json `packageManager` (Node 26 has no corepack).
+#
+# Every check runs through the `scripts` Nx project (scripts/project.json), as the constitution's
+# "Monorepo Build Tool" rule requires. Each wrapped step's output is mirrored by
+# scripts/ci-log-step.sh into the per-step log the failure digest reads.
+name: guardrails
+
+on:
+  workflow_dispatch: {}
+  # `push` is scoped to `main`; `pull_request` stays unscoped. WHY: with a bare `push:`, pushing a
+  # branch that has an open PR fires BOTH events, so guardrails would run TWICE per push. The two
+  # runs would not even cancel each other: `concurrency` keys on `github.ref`, which differs
+  # between the events.
+  #
+  # This is BRANCH scoping, not path scoping: every check still runs over the WHOLE tree, on every
+  # PR and on every push to `main`. Branch protection is unaffected, because a PR's required
+  # guardrails status comes from the `pull_request` event.
+  #
+  # Accepted trade-off: a push to a branch with NO open PR is not checked. It cannot reach `main`
+  # without a PR (protected), and opening one runs every check before merge.
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: guardrails-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guardrails:
+    runs-on: belay
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node (constitution pin)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 26.13.1
+      - name: Install pnpm (version from package.json packageManager)
+        run: bash scripts/ci-log-step.sh guardrails-install-pnpm bash scripts/install-pnpm.sh
+      - name: Install workspace dependencies (frozen lockfile)
+        run: bash scripts/ci-log-step.sh guardrails-install-deps pnpm install --frozen-lockfile
+      - name: Gates and selftests (scripts:lint)
+        run: bash scripts/ci-log-step.sh guardrails-lint pnpm nx run scripts:lint
+      - name: Script unit tests (scripts:test)
+        run: bash scripts/ci-log-step.sh guardrails-test pnpm nx run scripts:test
+      # Publish an agent-readable failure digest. The forge API exposes no log or artifact endpoint,
+      # so each job PUSHES a distilled, redacted digest into a channel the API can already read: a PR
+      # comment, or a commit status on push. `always()` + `continue-on-error` + an unconditional
+      # exit 0 inside the script: a broken digest must NEVER mask, replace or delay the real job
+      # result. `job.status` carries `cancelled` for a superseded run, which the script suppresses
+      # rather than publishing a failure for a commit that was never broken.
+      - name: Publish failure digest
+        if: always()
+        continue-on-error: true
+        env:
+          CI_DIGEST_TOKEN: ${{ secrets.CI_DIGEST_TOKEN }}
+          # Fallback: when the secret above is empty (a run from a ref that gets no secrets), the
+          # digest publishes with this run-provisioned token instead. Without this line the fallback
+          # is dead code: the script reads GITHUB_TOKEN from the step env, and nothing else puts it
+          # there.
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_DIGEST_JOB_STATUS: ${{ job.status }}
+        run: node scripts/ci-failure-digest.mjs

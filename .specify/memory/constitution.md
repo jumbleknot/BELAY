@@ -1,7 +1,9 @@
 <!--
 VERSION HISTORY:
 - v1.0.0: Initial ratification for BELAY, derived from the MovieCollectionManager
-  constitution v2.11.0 (2026-11-21) [CURRENT]
+  constitution v2.11.0 (2026-11-21)
+- v1.0.1: Dependency Security states the version-pinning policy that is enforced
+  (lock file pins installs; lockstep groups exact; other ranges allowed) (2026-11-22) [CURRENT]
 -->
 
 # BELAY Constitution
@@ -89,7 +91,10 @@ Conditional Access (CA) policies — including network location checks, device c
 - **Access Control Alerting:** Repeated access control failures must trigger alerts to administrators for investigation. (Logging of access control failures is governed by Core Logging & Monitoring § Audit Logging.)
 - **Rate Limiting:** Implement rate limits on all API and controller endpoints, applied per IP address and per authenticated user, to minimize the impact of automated attack tooling and brute force attempts.
 - **Web Server Hardening:** Disable directory listing on all web servers. Ensure that metadata files (e.g., `.git`, `.env`), backup files, and configuration files are never present within the web root.
-- **Dependency Security:** All third-party dependencies must be kept up to date and regularly scanned for known vulnerabilities using automated tooling (e.g., Dependabot, `npm audit`, Snyk). Critical vulnerabilities must be remediated within a defined SLA. Dependency versions must be pinned to prevent unexpected updates.
+- **Dependency Security:** All third-party dependencies must be kept up to date and regularly scanned for known vulnerabilities using automated tooling (e.g., Dependabot, `npm audit`, Snyk). Critical vulnerabilities must be remediated within a defined SLA. Dependency versions are pinned as follows:
+  - **Installs are pinned by the lock file.** The committed lock file (e.g., `pnpm-lock.yaml`) is the source of truth for every installed version, and CI installs from it without modifying it (`pnpm install --frozen-lockfile`).
+  - **Lockstep groups MUST be exact.** Packages that must move together MUST be declared with exact versions in the manifest, never ranges. These are `nx` and every `@nx/*` package, `@playwright/test`, and any group a toolchain-consistency gate treats as lockstep. Rationale: a lock file refresh re-resolves manifest ranges with no grouping, so a range lets one refresh split a lockstep set. In MovieCollectionManager, a `^` Playwright range once ran zero end-to-end tests, and a range let three Nx versions coexist.
+  - **Other dependencies MAY use ranges** (e.g., `^`). A lock file refresh can then pick up a security fix the range already permits, without a manifest edit. Rationale: exact-pinning everything blocked such an in-range vulnerability fix for ten days in MovieCollectionManager.
 
 ### Test-Driven Development (NON-NEGOTIABLE)
 
@@ -1017,4 +1022,4 @@ All pull requests and code reviews MUST verify compliance with active principles
 
 Runtime development guidance for AI Assistants is maintained in [AGENTS.md](../../AGENTS.md), which `CLAUDE.md` imports. It is separate from this constitution and must not contradict it.
 
-**Version**: 1.0.0 | **Ratified**: 2026-11-21 | **Last Amended**: 2026-11-21
+**Version**: 1.0.1 | **Ratified**: 2026-11-21 | **Last Amended**: 2026-11-22

@@ -6,7 +6,7 @@ Guidance for AI coding agents working in this repository.
 
 BELAY (**B**uild, **E**ngineering, **L**ifecycle & **A**utomation **Y**ard) is a polyglot monorepo. It holds common tooling that other repositories share: SDLC, PDLC, DevSecOps, and general engineering utilities. Treat everything here as a dependency of other projects. A change here can affect every repo that uses BELAY.
 
-The repo is in early setup. No language toolchains or build system have been chosen yet. Don't assume one. If a task needs a structural decision, such as a build tool, a language for a new tool or a new top-level folder, ask before introducing it.
+The repo is in early setup. The JavaScript toolchain is chosen (see "Toolchain" below). No other language toolchains have been chosen yet, so don't assume one. If a task needs a structural decision, such as a new language, a new build plugin or a new top-level folder, ask before introducing it.
 
 ## Layout
 
@@ -17,7 +17,8 @@ Top-level folders (most are still empty placeholders):
 | `docs/` | Documentation |
 | `openwiki/` | Wiki content |
 | `specs/` | Spec Kit feature specifications (see below) |
-| `scripts/` | Repo scripts, including the Spec Kit override gate (`check-speckit-overrides.mjs`) and its tests in `scripts/__tests__/` |
+| `scripts/` | Repo scripts, as the Nx project `scripts` (`scripts/project.json`). They include the Spec Kit override gate (`check-speckit-overrides.mjs`), the CI scripts (`install-pnpm.sh`, `ci-log-step.sh`, `ci-failure-digest.mjs`, `ci-digest-redact.mjs`, `secret-scan.mjs`, `check-ci-digest-coverage.mjs`), and their tests in `scripts/__tests__/`. |
+| `.forgejo/workflows/` | CI. `guardrails.yml` runs on every PR and push to `main` (see [docs/runbooks/ci.md](docs/runbooks/ci.md)). |
 | `api-specs/` | API specifications |
 | `secrets/` | Local secrets. Only `.gitkeep`, `README.md` and `*.example` files are tracked. Never commit real secrets. |
 | `agents/` | AI agents |
@@ -39,6 +40,14 @@ Top-level folders (most are still empty placeholders):
 - **Secrets:** never commit secrets, `.env` files, keys or Terraform state. Use `*.example` files for templates.
 - **License:** MIT (see [LICENSE](LICENSE)). Don't add code or dependencies with licenses that are incompatible with MIT redistribution.
 
+## Toolchain
+
+- **pnpm and Nx**, as in MovieCollectionManager. `package.json` pins pnpm through `packageManager`, and `preinstall` refuses npm and yarn. Nx runs every test and lint operation (constitution "Monorepo Build Tool").
+- **Install:** `pnpm install --frozen-lockfile`. The pnpm-lock.yaml lock file is committed.
+- **Version pinning** follows the constitution's "Dependency Security": the lock file pins installs, lockstep groups (`nx`, `@nx/*`, `@playwright/test`) are exact, and other dependencies may use `^`. Every package with an install script needs an explicit `allowBuilds` entry in `pnpm-workspace.yaml`.
+- **Checks:** `pnpm nx run scripts:lint` runs the gates and selftests. `pnpm nx run scripts:test` runs the script tests. These are the same commands CI runs.
+- **CI:** [docs/runbooks/ci.md](docs/runbooks/ci.md) covers the guardrails workflow, failure digests, the runner, secrets and branch protection.
+
 ## Spec-driven development (Spec Kit)
 
 This repo uses [GitHub Spec Kit](https://github.com/github/spec-kit) 1.4.2, set up for Claude Code with PowerShell scripts.
@@ -48,7 +57,7 @@ This repo uses [GitHub Spec Kit](https://github.com/github/spec-kit) 1.4.2, set 
 - **Customisations:** `/speckit-tasks` builds from the project override [.specify/templates/overrides/tasks-template.md](.specify/templates/overrides/tasks-template.md). The override requires a doc-impact sweep, test tasks in the Verify RED / Verify GREEN format of [docs/templates/feature-test-tasks-template.md](docs/templates/feature-test-tasks-template.md), and a close-out re-search. Two Spec Kit skills carry registered local edits. [docs/runbooks/spec-kit.md](docs/runbooks/spec-kit.md) lists every customisation and the upgrade procedure.
 - **Spec Kit owns** every file listed in `.specify/integrations/*.manifest.json`, and `specify integration upgrade --force` overwrites them. Never edit a core template; use an override. Register any edit to a Spec Kit-owned file in `scripts/check-speckit-overrides.mjs` and the runbook in the same change.
 - **Extensions:** Spec Kit's `git` and `agent-context` extensions are installed. `/speckit-specify` creates the feature branch through the mandatory `before_specify` hook, and every command offers an optional commit. agent-context maintains the section between `<!-- SPECKIT START -->` and `<!-- SPECKIT END -->` in this file; never edit inside it by hand. The gate checks the extensions and their hooks, including two hand-added `converge` hooks that a reinstall drops (see the runbook).
-- **Run the gate** before committing changes under `.specify/` or `.claude/skills/speckit-*`: `node scripts/check-speckit-overrides.mjs`. When it fails because you changed something it protects, fix the cause. Never delete or weaken the gate.
+- **Run the gate** before committing changes under `.specify/` or `.claude/skills/speckit-*`: `node scripts/check-speckit-overrides.mjs`. It needs no install. CI also runs it, with its selftest, on every PR and push to `main` (`scripts:lint`). When it fails because you changed something it protects, fix the cause. Never delete or weaken the gate.
 - **Skills** are in `.claude/skills/speckit-*`. The workflow runs in this order:
   1. `/speckit-constitution`
   2. `/speckit-specify`

@@ -61,6 +61,7 @@ coverage/
 # ---------------------------------------------------------------------------
 node_modules/
 .pnpm-store/
+.nx/
 .npm/
 .yarn/*
 !.yarn/releases

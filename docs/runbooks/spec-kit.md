@@ -18,12 +18,16 @@ lost, or if one of Spec Kit's own files is edited without being added here.
 node scripts/check-speckit-overrides.mjs                            # scan: exit 0 clean, 1 drift, 2 bad arguments
 node scripts/check-speckit-overrides.mjs --selftest                 # prove every failure code is detected
 node --test scripts/__tests__/check-speckit-overrides.test.mjs      # the gate's own tests
+pnpm nx run scripts:lint                                            # the gate and selftest, plus every other gate (what CI runs)
+pnpm nx run scripts:test                                            # every script test, including the gate's
 ```
 
 It needs only Node.js, with no dependencies to install and no network access. It reads the
-PowerShell scripts as text and never runs them. The repository has no CI yet, so run the gate by
-hand before any commit that touches `.specify/`, `.claude/skills/speckit-*` or this runbook. When
-CI exists, it belongs in the required checks of every PR.
+PowerShell scripts as text and never runs them. The guardrails workflow runs the gate and its
+selftest on every PR and every push to `main`, and branch protection requires that check (see
+[ci.md](ci.md)). Still run it locally before any commit that touches `.specify/`,
+`.claude/skills/speckit-*` or this runbook, so the PR doesn't go red on something you could have
+caught.
 
 ## Who owns which file
 
