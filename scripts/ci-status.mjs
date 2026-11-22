@@ -638,7 +638,10 @@ export function computeMergeVerdict(
           // --run by hand. Matched via the context's OWN event, since the same job appears once per
           // event and the two can be different runs.
           runId: run?.id ?? null,
-          required: patterns.some((re) => re.test(job)),
+          // Against the job half (a glob such as `guardrails*`) AND the full context: branch protection
+          // may name an exact context, event suffix included (`guardrails / guardrails (pull_request)`),
+          // which the suffix-stripped job half can never match.
+          required: patterns.some((re) => re.test(job) || re.test(s.context)),
         };
       });
 

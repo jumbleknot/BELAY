@@ -240,6 +240,7 @@ description: "Task list for feature 002: PR and CI-status tooling"
   - **Opened 2026-11-22:** branch `002-pr-ci-tooling`, PR #4, opened by `forge-pr open`.
     - Refusals checked against PR #4: `open --head refs/for/main` exited 1; a wrong `--expect-head` exited 1, naming both shas; `--expect-head abc123` exited 2. The PR was still open and unmerged afterwards.
     - This tick is in the branch's last commit. The watch, the merge and the CI evidence go in PR #4's closing comment.
+    - **Finding fixed under TDD:** the first `watch --pr 4` said "mergeable", but listed guardrails as ADVISORY. BELAY's protection names an exact context, `guardrails / guardrails (pull_request)`, while MCM's are globs. `ci-status` matched globs only against the suffix-stripped job half, so nothing was required, and an empty required set read as mergeable. A check is now required if a glob matches the job half or the full context. The `(exact-context)` tests went RED, then GREEN, and the live `status --pr 4` now lists guardrails under REQUIRED.
 
   **CI evidence is never recorded here.** A file can't hold the CI result of the commit that contains it, and a commit added to record it is a new head that reruns every required CI job. The run ids, the CI verdict and the merge sha go in the PR's closing comment.
 - [X] T020 Run [quickstart.md](quickstart.md) §1 to §7.

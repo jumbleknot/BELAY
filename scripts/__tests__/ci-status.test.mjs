@@ -2043,3 +2043,34 @@ test('(no-leak) a planted FORGE_TOKEN never appears in status, watch or failure 
   assert.ok(out.length > 0, 'the commands produced no output to check');
   assert.equal(out.join('\n').includes(PLANT), false, 'the planted token appeared in output or an error');
 });
+
+// ── exact protection contexts ────────────────────────────────────────────────────────────────────
+// Branch protection may name an EXACT context, event suffix included — BELAY's does:
+// `guardrails / guardrails (pull_request)`. Matching only the job half (suffix stripped) never matched
+// that, so every check read as advisory and an empty required set made any commit "mergeable".
+// Found live on PR #4: watch said mergeable with guardrails listed as ADVISORY.
+test('(exact-context) an exact protection context, event suffix included, is REQUIRED', () => {
+  const globs = ['guardrails / guardrails (pull_request)'];
+  const failed = computeMergeVerdictRaw(
+    [{ context: 'guardrails / guardrails (pull_request)', status: 'failure', description: 'Failing after 48s' }],
+    { requiredGlobs: globs, event: 'pull_request', needsGraph: FIXTURE_NEEDS },
+  );
+  assert.equal(failed.required.length, 1, 'the exact context must be required');
+  assert.equal(failed.mergeable, false, 'a failing required context must block');
+  assert.equal(exitCodeForVerdict(failed), 1);
+
+  const green = computeMergeVerdictRaw(
+    [{ context: 'guardrails / guardrails (pull_request)', status: 'success', description: 'Successful in 47s' }],
+    { requiredGlobs: globs, event: 'pull_request', needsGraph: FIXTURE_NEEDS },
+  );
+  assert.equal(green.required.length, 1);
+  assert.equal(green.mergeable, true);
+});
+
+test('(exact-context) the same job on another event is NOT required by an event-specific context', () => {
+  const v = computeMergeVerdictRaw(
+    [{ context: 'guardrails / guardrails (push)', status: 'failure', description: 'x' }],
+    { requiredGlobs: ['guardrails / guardrails (pull_request)'], event: 'push', needsGraph: FIXTURE_NEEDS },
+  );
+  assert.equal(v.required.length, 0, 'protection names the pull_request context only');
+});
