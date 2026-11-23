@@ -4,8 +4,8 @@ title: CI guardrails, the failure digest, and the PR loop
 description: The single guardrails Forgejo Actions workflow required on main — what it runs and how to reproduce it locally, how a failure is read back from the redacted digest and its package bundle with ci-status.mjs, the dedicated repository runner and the one exception to it (the dev-container image job, which never runs pull-request code), the sast job beside guardrails, the report-only registry-retention job, branch protection, the terminal PR loop through forge-pr.mjs, and the rule every new job must follow.
 tags: [ci, forgejo, pull-requests, runbook]
 resource: docs/runbooks/ci.md
-resource-sha256: 37c301ff21befda0505cc75bc59ab8455864610a26ed8eff514e3f5989956a84
-timestamp: 2026-11-23T16:00:42.594Z
+resource-sha256: 608b2295d31d46e2e898e30488c9b7fe0ee760add05da188778f996b64f92f3b
+timestamp: 2026-11-23T19:33:32.338Z
 ---
 
 # CI guardrails, the failure digest, and the PR loop
@@ -14,7 +14,7 @@ BELAY's required CI is one workflow, `.forgejo/workflows/guardrails.yml`. Two ot
 checks: `devcontainer-image.yml` publishes the dev-container image, and `registry-retention.yml`
 reports which old package versions would be deleted. Guardrails runs on every pull request,
 every push to `main` and manual dispatch, and branch protection on `main` requires its
-`guardrails / guardrails (pull_request)` context. Its `guardrails` job installs Node and the pinned pnpm, then
+`guardrails / guardrails (pull_request)` and `guardrails / sast (pull_request)` contexts. Its `guardrails` job installs Node and the pinned pnpm, then
 runs `pnpm nx run scripts:lint` (every gate: Spec Kit overrides, digest coverage, egress allowlist,
 secret scan, topology scrub, toolchain consistency, inline and argv secrets, override floors,
 resource naming, OpenWiki OKF and governance, each after its selftest) and `pnpm nx run scripts:test`. So **those two commands, run locally,

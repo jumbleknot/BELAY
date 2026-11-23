@@ -21,6 +21,7 @@ pnpm nx run scripts:sast                              # full scan, then the gate
 node scripts/sast-scan.mjs --scope changed --base origin/main   # Semgrep on changed files only; SCA still full
 node scripts/sast-scan.mjs --test-rules               # prove the custom rules against their fixtures
 node scripts/check-sast-findings.mjs                  # the gate alone (exit 0 pass / 1 blocking / 2 bad input)
+node scripts/check-dependency-downgrade.mjs --base origin/main   # after a scan: did this branch move a package INTO an advisory?
 ```
 
 Reports land in `security/sast/reports/` (gitignored):
@@ -42,16 +43,16 @@ request and every push to `main`, next to `guardrails`, on the `belay` runner. I
 5. the scan: changed files on a PR, full on push. **SCA always runs in full**, because a new advisory
    can hit an unchanged dependency;
 6. the gate;
-7. upload the `sast-report` artifact (always, kept 14 days);
-8. the failure digest.
+7. on a PR only, the dependency-downgrade check against the PR base (feature 007);
+8. upload the `sast-report` artifact (always, kept 14 days);
+9. the failure digest.
 
 Read a failure with `node scripts/ci-status.mjs failure --pr <n> --job sast`. Every step runs
 through `ci-log-step.sh`, so the digest names the failing step and carries its output.
 
-**Making it required.** Branch protection lists required contexts by name. After the job's first
-green run on a PR, add `guardrails / sast (pull_request)` next to `guardrails / guardrails
-(pull_request)` (see [ci.md](ci.md#branch-protection-for-main)). Until then, a red `sast` shows on
-the PR but does not block the merge.
+**It is required.** `guardrails / sast (pull_request)` is a required context on `main`, next to
+`guardrails / guardrails (pull_request)` (see [ci.md](ci.md#branch-protection-for-main)). A red
+`sast` blocks the merge.
 
 ## When the gate goes red
 
@@ -59,7 +60,20 @@ the PR but does not block the merge.
   **runtime** dependency. **Fix it**, or triage it into
   [`security/sast/allowlist.yaml`](../../security/sast/allowlist.yaml) with `scanner`, `id`,
   `locationPattern`, `justification` and `addedBy`, plus an optional `expiry`. An allowlisted finding
-  stays in the report. Dev-scope advisories and Medium/Low findings are warnings and never block.
+  stays in the report. Dev-scope advisories and Medium/Low findings are warnings, except in the
+  downgrade check below.
+- **The downgrade check lists `<pkg> <base versions> -> <version> enters <advisory>`:** this PR moved
+  a package INTO an advisory's vulnerable range, and none of that package's versions at the base was
+  in it. That blocks in **every** scope, dev included, because the dev tree runs in CI jobs that hold
+  tokens. A sideways move into a range counts as well as a downgrade. It is usually a dependency that
+  pins an older release of a shared transitive. **Restore the clean resolution** with a
+  `pnpm-workspace.yaml` override floor (such as `undici@>=7.0.0 <7.29.1: ">=7.29.1 <8"`), or record
+  an allowlist entry: the same entry, matcher and expiry as the main gate, so one entry accepts the
+  version in both. Not a regression, and not reported: a package that was already exposed at the base
+  (the main gate owns it), and a package or lockfile new in this PR (an ordinary finding). It reads
+  the advisories from the scan's `pnpm-audit-native.json` and the base lockfiles from git, and fails
+  closed (exit 1) on a missing report, an unreadable lockfile or a range it cannot parse. It runs on
+  PRs only: a push has no base.
 - **It says TRANSPORT/SERVICE ERROR:** a scanner could not reach the rule registry or the advisory
   service. It retried 3 times with backoff (`scripts/lib/scanner-retry.mjs`) and still fails closed,
   because a scanner that could not run must never report clean. This is an outage, not a finding:

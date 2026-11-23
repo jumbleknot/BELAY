@@ -499,7 +499,9 @@ landed as feature 006, after the maintainer approved uv: a separate `sast` job i
 runs Semgrep and `pnpm audit`, ported from MCM's feature 033. The enabled scanners are a list in
 `security/sast/scan.yaml`, so cargo-audit (the first Rust code) and pip-audit (the first Python
 project) are a list entry plus a toolchain step. Copy `scripts/sast-scan.mjs`,
-`scripts/check-sast-findings.mjs`, `scripts/allowlist-expiry.mjs`, `scripts/lib/scanner-retry.mjs`
+`scripts/check-sast-findings.mjs`, `scripts/allowlist-expiry.mjs`, `scripts/lib/scanner-retry.mjs`,
+`scripts/check-dependency-downgrade.mjs` (feature 007: the PR-only step that blocks a package moved
+into an advisory in any scope)
 and `security/sast/`, seed the allowlist from a full scan (BELAY's was empty), and add
 `guardrails / sast (pull_request)` to branch protection after its first green run. See
 [the SAST runbook](runbooks/sast.md).
