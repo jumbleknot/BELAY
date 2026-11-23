@@ -203,8 +203,26 @@ Update `BELAY_DEVCONTAINER_IMAGE` in `~/.belay-sandbox-env` with that digest. Th
 `docker pull "$BELAY_DEVCONTAINER_IMAGE"` and recreate. The packages API's first row is an
 attestation, not the image, so never take the digest from there.
 
-**Re-pin before recreating the sandbox, too.** Nothing deletes old images yet (backlog item #32). Once
-a retention rule exists, a recorded pin can disappear.
+**Record the pin so retention keeps it.** The weekly
+[`registry-retention`](ci.md#the-registry-retention-workflow) workflow keeps the newest **4**
+`belay-devcontainer` versions, or every version younger than **21 days**, whichever keeps more. A pin
+older than that window survives only if it is listed under `protect:` in
+[`infrastructure-as-code/forgejo/registry-retention.yaml`](../../infrastructure-as-code/forgejo/registry-retention.yaml).
+So after every re-pin, open a PR that adds the digest there and removes the one it replaces:
+
+```yaml
+protect:
+  - { package: belay-devcontainer, digest: sha256:<digest>, note: sandbox pin, 2026-11-23 }
+```
+
+The digest is neither a secret nor a host, so it may be committed. The registry host stays in the VM's
+env file. **Re-pin before recreating the sandbox, too**: once retention runs in apply mode, an
+unrecorded pin older than the window can disappear.
+
+Retention ships in **report** mode: it prints what it would keep and delete, and deletes nothing.
+Switching to apply takes two steps. First, a PR that flips `mode: report` to `mode: apply`, linking a
+reviewed report. Then a dispatch of the workflow with `apply: true`. The schedule itself never
+deletes.
 
 **A local build** (`pnpm nx run scripts:build-devcontainer-image`, tag `belay-devcontainer`) needs an
 engine with **open egress**, such as CI or Docker Desktop. **It never works inside the sandbox**,

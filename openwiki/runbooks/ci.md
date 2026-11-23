@@ -1,19 +1,23 @@
 ---
 type: Runbook
 title: CI guardrails, the failure digest, and the PR loop
-description: The single guardrails Forgejo Actions workflow required on main — what it runs and how to reproduce it locally, how a failure is read back from the redacted digest and its package bundle with ci-status.mjs, the dedicated repository runner and the one exception to it (the dev-container image job, which never runs pull-request code), branch protection, the terminal PR loop through forge-pr.mjs, and the rule every new job must follow.
+description: The single guardrails Forgejo Actions workflow required on main — what it runs and how to reproduce it locally, how a failure is read back from the redacted digest and its package bundle with ci-status.mjs, the dedicated repository runner and the one exception to it (the dev-container image job, which never runs pull-request code), the report-only registry-retention job, branch protection, the terminal PR loop through forge-pr.mjs, and the rule every new job must follow.
 tags: [ci, forgejo, pull-requests, runbook]
 resource: docs/runbooks/ci.md
-timestamp: 2026-11-22
+resource-sha256: 8e632bf8d14165524b7147bf9a83fe49932f903b7a912cda01d3b33544455ab4
+timestamp: 2026-11-23T14:59:57.497Z
 ---
 
 # CI guardrails, the failure digest, and the PR loop
 
-BELAY's required CI is one workflow, `.forgejo/workflows/guardrails.yml` (a second,
-`devcontainer-image.yml`, publishes the dev-container image and is not a merge check). Guardrails runs on every pull request,
+BELAY's required CI is one workflow, `.forgejo/workflows/guardrails.yml`. Two others are not merge
+checks: `devcontainer-image.yml` publishes the dev-container image, and `registry-retention.yml`
+reports which old package versions would be deleted. Guardrails runs on every pull request,
 every push to `main` and manual dispatch, and branch protection on `main` requires its
 `guardrails / guardrails (pull_request)` context. Its one job installs Node and the pinned pnpm, then
-runs `pnpm nx run scripts:lint` and `pnpm nx run scripts:test`. So **those two commands, run locally,
+runs `pnpm nx run scripts:lint` (every gate: Spec Kit overrides, digest coverage, egress allowlist,
+secret scan, topology scrub, toolchain consistency, inline and argv secrets, override floors,
+resource naming, OpenWiki OKF and governance, each after its selftest) and `pnpm nx run scripts:test`. So **those two commands, run locally,
 reproduce the required check**. A failure-digest step always runs last and never changes the result.
 Full detail is in [docs/runbooks/ci.md](../../docs/runbooks/ci.md).
 
@@ -57,6 +61,11 @@ node scripts/forge-pr.mjs merge <n> --expect-head "$(git rev-parse HEAD)"
     the weekly schedule, and a guard test fails on any `pull_request` trigger.
   - **Its result is not readable from the run.** The forge cannot read back the step summary, so the
     published digest is resolved from the registry (see the [dev container](./devcontainer.md)).
+- **Registry retention deletes only with two keys.** The weekly run only reports. `--apply` reaches
+  the script only on a dispatch with `apply: true`, and the script refuses it unless the committed
+  config says `mode: apply`; it ships in `mode: report`. A package the config does not list (another
+  repository's, under the same owner) is never deleted. Its token is `REGISTRY_CLEANUP_TOKEN`; without
+  it the job fails loudly rather than reporting an empty registry.
 - **Every job ends with the failure-digest step, and every other `run:` step goes through
   `scripts/ci-log-step.sh`.** `check-ci-digest-coverage.mjs` fails `scripts:lint` otherwise. An
   opt-out needs a marker with a written reason. A blank reason is rejected.

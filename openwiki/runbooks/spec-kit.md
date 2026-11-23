@@ -4,7 +4,8 @@ title: "Spec Kit: this repository's customisations, and upgrading it"
 description: The one inventory of every way BELAY changes or adds to GitHub Spec Kit — the tasks-template override (doc-impact sweep, required RED/GREEN tests, the Open the PR task), the registered local edits to /speckit-tasks and /speckit-converge, the git and agent-context extensions and their hooks, the project-owned /speckit-taskstoissues — with who owns which file, the gate and its failure codes, and the upgrade procedure.
 tags: [spec-kit, sdd, gates, upgrade, runbook]
 resource: docs/runbooks/spec-kit.md
-timestamp: 2026-11-22
+resource-sha256: cbf424c5b5eb19a6ee7b5574e5a55b56e5c6dcde469bcf2605804e58ea2922bb
+timestamp: 2026-11-23T13:26:41.480Z
 ---
 
 # Spec Kit: this repository's customisations, and upgrading it

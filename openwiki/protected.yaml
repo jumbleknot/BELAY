@@ -10,10 +10,12 @@
 # A SIDECAR on purpose: protection that lived inside the concept it guards could be stripped by the
 # edit it exists to constrain, and a stripped marker reads as "not protected" rather than as a failure.
 #
-# NOT YET ENFORCED. MovieCollectionManager's governance gate (check-openwiki-governance.mjs) checks
-# this list and also fingerprints load-bearing passages under `passages:`. BELAY has not ported that
-# gate, so this file is kept by review and carries no fingerprints. When the gate is ported, compute
-# fingerprints with its --fingerprint mode; never hand-type one.
+# ENFORCED by scripts/check-openwiki-governance.mjs, in `scripts:lint` (the required `guardrails`
+# check): a page that is neither derived nor listed here, or both, fails G11. A load-bearing passage
+# may also be protected under `passages:` ({concept, anchor, fingerprint}); a reworded or removed one
+# then fails G5/G6 until its fingerprint is updated in the same change. Compute a fingerprint with
+# `node scripts/check-openwiki-governance.mjs --fingerprint openwiki/<concept> "<heading>"`; never
+# hand-type one. No passage is protected yet.
 #
 # The four reserved bundle files (index.md, INSTRUCTIONS.md, quickstart.md, log.md) are not concepts
 # and are not listed.

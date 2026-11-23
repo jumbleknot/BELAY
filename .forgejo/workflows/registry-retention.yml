@@ -1,0 +1,94 @@
+# Package-registry retention. Weekly REPORT of what infrastructure-as-code/forgejo/registry-retention.yaml
+# keeps and deletes in the forge's package registry; deletes only on a dispatch with `apply: true`
+# AND `mode: apply` in that file.
+#
+# The schedule NEVER deletes: `--apply` is passed only by a workflow_dispatch whose `apply` input is
+# true (scripts/__tests__/registry-retention.test.mjs fails otherwise), and the script refuses it
+# while the config says `mode: report`. Two independent keys, held in two places.
+#
+# The protected set is the config's `protect:` list, not git history, so a default (shallow)
+# checkout is enough.
+#
+# Runner: `belay`, BELAY's own repository-scoped runner, like guardrails. No Docker is needed: the
+# script talks to the forge API only. Node is pinned by setup-node exactly as guardrails pins it.
+#
+# Credentials: the forge base is the runner's GITHUB_SERVER_URL (never a committed value).
+# REGISTRY_CLEANUP_TOKEN is an Actions secret, a forge token scoped `write:package` ONLY; without it
+# the report step fails loudly. REGISTRY_USER is the repository variable devcontainer-image already
+# uses (the registry basic-auth user; the script defaults it to the config's owner).
+name: registry-retention
+
+on:
+  schedule:
+    # Sundays 06:00 UTC: two days after the Friday devcontainer-image build, so a new image has
+    # settled and a re-pin has had time to land in `protect:`. Cron is UTC-only and ignores DST.
+    - cron: '0 6 * * 0'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Delete the `delete` rows (also requires `mode: apply` in the committed config)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: registry-retention
+  cancel-in-progress: false
+
+jobs:
+  registry-retention:
+    runs-on: belay
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node (constitution pin)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 26.13.1
+      - name: Install pnpm (version from package.json packageManager)
+        run: bash scripts/ci-log-step.sh registry-retention-install-pnpm bash scripts/install-pnpm.sh
+      - name: Install workspace dependencies (frozen lockfile; the script reads its config with `yaml`)
+        run: bash scripts/ci-log-step.sh registry-retention-install-deps pnpm install --frozen-lockfile
+
+      - name: Report (and, on an apply dispatch, delete)
+        env:
+          REGISTRY_CLEANUP_TOKEN: ${{ secrets.REGISTRY_CLEANUP_TOKEN }}
+          REGISTRY_USER: ${{ vars.REGISTRY_USER }}
+          # Through env, never interpolated into `run:` (shell injection). Empty unless a dispatch
+          # asked for apply.
+          RETENTION_ARGS: ${{ (github.event_name == 'workflow_dispatch' && inputs.apply == true) && '--apply' || '' }}
+        run: |
+          bash scripts/ci-log-step.sh registry-retention bash -e /dev/stdin <<'CI_LOG_STEP'
+          set -o pipefail
+          node scripts/registry-retention.mjs ${RETENTION_ARGS:+"$RETENTION_ARGS"} \
+            | tee registry-retention-report.txt
+          CI_LOG_STEP
+
+      # The delete rows and the totals only: the full report has a row per version.
+      - name: Write the report to the job summary
+        if: always()
+        run: |
+          bash scripts/ci-log-step.sh registry-retention-summary bash -e /dev/stdin <<'CI_LOG_STEP'
+          [ -f registry-retention-report.txt ] || { echo "no report was written"; exit 0; }
+          {
+            echo "## Registry retention"
+            echo ""
+            echo '```'
+            grep -v '  keep:' registry-retention-report.txt || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          CI_LOG_STEP
+
+      # Publish an agent-readable failure digest, exactly as guardrails does: `always()` +
+      # `continue-on-error` + an unconditional exit 0 inside the script, so a broken digest never
+      # masks, replaces or delays the real job result.
+      - name: Publish failure digest
+        if: always()
+        continue-on-error: true
+        env:
+          CI_DIGEST_TOKEN: ${{ secrets.CI_DIGEST_TOKEN }}
+          # Fallback: when the secret above is empty, the digest publishes with this run-provisioned
+          # token instead. Without this line the fallback is dead code.
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_DIGEST_JOB_STATUS: ${{ job.status }}
+        run: node scripts/ci-failure-digest.mjs

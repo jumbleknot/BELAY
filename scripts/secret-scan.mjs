@@ -7,7 +7,8 @@
  * run time; none should EVER land in a committed file, log, span, trace, or cassette.
  *
  * In BELAY these rules are consumed by scripts/ci-digest-redact.mjs (the fail-closed check on
- * published CI digests). Running this file as its own CI scan is tracked separately (issue #1).
+ * published CI digests), and the tree scan runs as its own gate in `scripts:lint`, so a committed
+ * credential fails the required check. A finding names the file, line and rule — never the value.
  *
  * Patterns (deliberately narrow to avoid false positives on commit hashes / placeholders):
  *   - Anthropic API key:  sk-ant-<40+ key chars>  (real keys are ~100 chars; the test markers like
@@ -20,6 +21,10 @@
  * Usage:
  *   node scripts/secret-scan.mjs            # scan all git-tracked files; exit 1 on any hit
  *   node scripts/secret-scan.mjs --selftest # validate detection (planted key → hit; clean → none)
+ *   node scripts/secret-scan.mjs --dir <root> # scan another git work tree (tests use this)
+ *   node scripts/secret-scan.mjs --help
+ *
+ * Exit codes: 0 clean / selftest passed · 1 finding / selftest broken · 2 bad args or no git tree.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -29,6 +34,10 @@ import { dirname, resolve, posix } from 'node:path';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SELF = 'scripts/secret-scan.mjs';
+const USAGE = 'Usage: secret-scan.mjs [--selftest | --dir <root> | --help]';
+
+/** 1-based line number of a character offset. */
+const lineAt = (text, index) => text.slice(0, index).split('\n').length;
 
 // --- Detection rules ---------------------------------------------------------
 const ANTHROPIC_KEY = /sk-ant-[A-Za-z0-9_-]{40,}/;
@@ -61,19 +70,21 @@ export function scanText(relPath, text) {
   const hits = [];
   for (const { name, re } of RULES) {
     const m = re.exec(text);
-    if (m && !PLACEHOLDER.test(m[0])) hits.push({ rule: name, sample: m[0].slice(0, 16) + '…' });
+    if (m && !PLACEHOLDER.test(m[0])) hits.push({ rule: name, line: lineAt(text, m.index), sample: m[0].slice(0, 16) + '…' });
   }
   if (relPath.includes('tests/golden/cassettes/')) {
     const m = CASSETTE_FIELD.exec(text);
-    if (m) hits.push({ rule: 'cassette-auth-field', sample: m[1] });
+    if (m) hits.push({ rule: 'cassette-auth-field', line: lineAt(text, m.index), sample: m[1] });
   }
   const mFallback = CRED_FALLBACK_JS.exec(text) || CRED_FALLBACK_GET.exec(text);
-  if (mFallback) hits.push({ rule: 'e2e-credential-fallback-literal', sample: mFallback[0].slice(0, 40) });
+  if (mFallback) {
+    hits.push({ rule: 'e2e-credential-fallback-literal', line: lineAt(text, mFallback.index), sample: mFallback[0].slice(0, 40) });
+  }
   return hits;
 }
 
-function trackedFiles() {
-  const out = execFileSync('git', ['ls-files'], { cwd: REPO_ROOT, encoding: 'utf8' });
+function trackedFiles(root) {
+  const out = execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
   return out.split(/\r?\n/).filter(Boolean).map((p) => posix.normalize(p));
 }
 
@@ -84,13 +95,20 @@ function isProbablyText(buf) {
   return true;
 }
 
-function runScan() {
+function runScan(root) {
+  let files;
+  try {
+    files = trackedFiles(root);
+  } catch (e) {
+    console.error(`[secret-scan] cannot list tracked files in ${root}: ${String(e.stderr || e.message).trim()}`);
+    process.exit(2);
+  }
   const findings = [];
-  for (const rel of trackedFiles()) {
+  for (const rel of files) {
     if (rel === SELF) continue; // the scanner holds the patterns as regex source
     let buf;
     try {
-      buf = readFileSync(resolve(REPO_ROOT, rel));
+      buf = readFileSync(resolve(root, rel));
     } catch {
       continue; // deleted/unreadable
     }
@@ -99,9 +117,9 @@ function runScan() {
     for (const h of hits) findings.push({ file: rel, ...h });
   }
   if (findings.length) {
-    console.error('[secret-scan] ❌ credential-shaped strings found in committed files:');
-    for (const f of findings) console.error(`  ${f.file}: ${f.rule} (${f.sample})`);
-    console.error('[secret-scan] Secrets are per-user and injected at run time — never commit one.');
+    // The value (or any prefix of it) is never printed: this output lands in CI logs and digests.
+    for (const f of findings) console.error(`${f.file}:${f.line}: ${f.rule}: credential-shaped value (withheld)`);
+    console.error(`[secret-scan] ❌ ${findings.length} credential-shaped string(s) in committed files — secrets are per-user and injected at run time, never commit one.`);
     process.exit(1);
   }
   console.log('[secret-scan] ✅ no credential-shaped strings in committed files.');
@@ -149,7 +167,28 @@ function selftest() {
 // Importable as a module (the CI digest reuses these detection rules to VERIFY its redaction
 // output) without running a tree scan as a side effect.
 const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
+function parseArgs(argv) {
+  const opts = { selftest: false, help: false, dir: REPO_ROOT };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--selftest') opts.selftest = true;
+    else if (a === '--help' || a === '-h') opts.help = true;
+    else if (a === '--dir') {
+      const v = argv[++i];
+      if (!v || v.startsWith('--')) return { error: '--dir needs a directory' };
+      opts.dir = resolve(v);
+    } else return { error: `Unknown argument: ${a}` };
+  }
+  return opts;
+}
+
 if (invokedPath === fileURLToPath(import.meta.url)) {
-  if (process.argv.includes('--selftest')) selftest();
-  else runScan();
+  const opts = parseArgs(process.argv.slice(2));
+  if (opts.error) {
+    console.error(`${opts.error}. ${USAGE}`);
+    process.exit(2);
+  }
+  if (opts.help) console.log(USAGE);
+  else if (opts.selftest) selftest();
+  else runScan(opts.dir);
 }

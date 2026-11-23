@@ -4,7 +4,8 @@ title: The governing constitution
 description: BELAY's ratified, versioned constitution, derived from MovieCollectionManager's — the non-negotiable principles (AI assistant constraints, security, TDD), the common stack rules (pnpm, Nx, RTK, dependency pinning, documentation and the doc-impact sweep), the per-layer principles a future project inherits, and the amendment process every spec and plan is checked against.
 tags: [constitution, governance, process, spec-kit]
 resource: .specify/memory/constitution.md
-timestamp: 2026-11-22
+resource-sha256: 49b6e1267898d8da6891d17ff4cb92a75e9490650b5c89bd5ec877f13eb622b5
+timestamp: 2026-11-23T13:26:41.481Z
 ---
 
 # The governing constitution

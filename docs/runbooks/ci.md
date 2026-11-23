@@ -27,6 +27,20 @@ A push to a branch with an open PR runs once, through the `pull_request` event. 
    - the digest-coverage gate, with its selftest;
    - the secret-scan, redactor, digest and `ci-status` selftests;
    - the egress allowlist check (`node scripts/gen-egress-policy.mjs --check`), which validates `.devcontainer/egress-allowlist.json`.
+   - the tree scans, each run as its own command after its selftest, so a failure names its gate:
+     - `secret-scan.mjs`: no credential-shaped string in any tracked file. A finding names the file, line and rule, never the value.
+     - `check-topology-scrub.mjs`: no real tailnet host (`*.ts.net`) in any tracked file. A host containing `tailnet` or `example` is a placeholder; use `<tailnet-host>` in prose.
+     - `check-toolchain-consistency.mjs`: every Node pin is the same major and meets `engines.node`, every Node-running workflow job pins Node with `setup-node`, pnpm is named only by root `packageManager`, and `nx`, `@nx/*` and `@playwright/test` are exact versions.
+     - `check-openwiki-okf.mjs`: the `openwiki/` bundle's front matter, links and `index.md` files, and V17, which fails a derived page whose source changed after its recorded `resource-sha256`. Fix with `node scripts/wiki-refresh.mjs --stale`, then `--diff` and `--record <page>`.
+     - `check-no-inline-secrets.mjs`: no tracked compose file holds a literal credential, a password-bearing URL or an inline `${VAR:-default}` for a secret-shaped key. Use a pure `${VAR}` or a `*_FILE` secret file.
+     - `check-no-argv-secrets.mjs`: no Maestro command line passes an environment argument (`--env` or `-e`) whose name contains KEY, PASSWORD, SECRET or TOKEN, because `ps` would expose its value. Pass secrets through Maestro's `MAESTRO_`-prefixed environment instead.
+     - `check-override-consistency.mjs`: every keyed `pnpm-workspace.yaml` override (`pkg@<X: '>=X <N'`) has its key bound equal to its value floor, and its cap does not widen past the declared major. Raise both halves together.
+     - `check-resource-naming.mjs`: compose volumes are `<context>-<role>-<engine>-data` (or `-logs` / `-snapshots`), networks end `-network` and are listed in the gate's `APPROVED_NETWORKS`, no name carries a compose-project underscore, and `container_name` equals the service key. A context is a project directory under `backend/`, `frontend/`, `agents/` or `mcp-servers/`, or an entry in the gate's `INFRASTRUCTURE_CONTEXTS`. Vendor bundles, retired keys and approved networks are lists in the gate. The approved-networks list is enforced even while empty, so the first named network fails until a one-line edit approves it; a network with no `name:` needs no entry.
+
+     The last four guard surfaces BELAY does not have yet: compose files, Maestro and overrides. Each prints how many files or entries it examined, so a scan of nothing shows as 0, not as a silent pass.
+     - `check-openwiki-governance.mjs`: `AGENTS.md` stays an index within its size budget, `CLAUDE.md` stays the shim, and every concept is either derived or listed in `openwiki/protected.yaml`.
+
+   Every gate exits 0 when clean, 1 on a finding or a broken selftest, and 2 on bad arguments or unreadable input. Fix a finding in the file it names; never weaken the gate to pass.
 6. `pnpm nx run scripts:test`, which runs every `scripts/__tests__/*.test.mjs`.
 7. The failure digest. It always runs and never changes the job's result.
 
@@ -102,12 +116,40 @@ The repository is private, and Forgejo gives no secrets (`CI_DIGEST_TOKEN`) to f
 - **The result:** the job writes the digest-pinned reference to the step summary, which this forge cannot read back. Resolve the digest from the registry instead (the recipe is in [devcontainer.md](devcontainer.md)).
 - **Failure digest:** the job ends with the standard failure-digest step, like every job here.
 
+## The registry-retention workflow
+
+[`.forgejo/workflows/registry-retention.yml`](../../.forgejo/workflows/registry-retention.yml) runs
+[`scripts/registry-retention.mjs`](../../scripts/registry-retention.mjs) against the forge's package
+registry. It is not a merge check.
+
+- **Triggers:** Sundays at 06:00 UTC, and manual dispatch with a boolean `apply` input. The schedule
+  never deletes.
+- **What it keeps:** the rules are in
+  [`infrastructure-as-code/forgejo/registry-retention.yaml`](../../infrastructure-as-code/forgejo/registry-retention.yaml).
+  - `belay-devcontainer`: the newest 4, or anything younger than 21 days, plus every digest under
+    `protect:`.
+  - `belay-ci-failures`: at least 75 versions and 45 days, the floor `ci-status durations` needs. The
+    floor is 25 runs × 3 bundle-publishing jobs, so a new job that publishes a bundle makes the config
+    fail until the number is raised.
+  - A package the file does not list (another repository's, under the same owner) is reported and
+    never deleted.
+- **Deleting takes two keys.** `--apply` reaches the script only on a dispatch with `apply: true`, and
+  the script refuses it (exit 2) unless the committed config says `mode: apply`. The config ships with
+  `mode: report`.
+- **Fail-safe exits:**
+  - exit 5: a `protect:` digest is missing from the registry, and nothing is deleted;
+  - `keep:unverified`: a manifest could not be read, so that package's children are all kept.
+- **Locally:** with `FORGE_TOKEN` (`read:package`), `node scripts/registry-retention.mjs --package
+  belay-devcontainer` prints the report. The forge address comes from `origin`.
+- **The result:** the report is in the job log, and the non-keep rows are in the step summary.
+
 ## Secrets
 
 | Name | Where | Scopes | Used by |
 | --- | --- | --- | --- |
 | `CI_DIGEST_TOKEN` | Repository **Settings → Actions → Secrets** | `write:issue`, `write:package`, `read:repository` | The failure-digest step only |
 | `REGISTRY_TOKEN` | Repository **Settings → Actions → Secrets** | `write:package` | The `devcontainer-image` push step only |
+| `REGISTRY_CLEANUP_TOKEN` | Repository **Settings → Actions → Secrets** | `write:package` | The `registry-retention` report step only. Without it, the job fails loudly rather than reporting an empty registry |
 
 Guardrails needs no repository variables. If `CI_DIGEST_TOKEN` is missing or empty, the digest falls back to the run token, then to the job log. CI never fails because of it.
 

@@ -1,0 +1,295 @@
+// Tests for the OKF conformance gate (scripts/check-openwiki-okf.mjs).
+//
+// Drives the REAL gate CLI as a subprocess against one fixture bundle per rule and asserts the
+// gate contract's exit codes: 0 clean / selftest passed · 1 violation / selftest broken · 2 bad args.
+// The rules (V1–V15, V17) are listed in the gate's header.
+//
+// Deterministic, offline, token-free, `node:` built-ins only; runs in CI under `scripts:test`, in a
+// container with no forge access and no network.
+//
+// Ported from MovieCollectionManager. The fixtures are re-pointed at a BELAY-shaped subject; the
+// rules and the cases are unchanged, plus a `--help` case for BELAY's gate contract.
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
+import { join, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const GATE = join(REPO_ROOT, 'scripts', 'check-openwiki-okf.mjs');
+const FIXTURES = join(REPO_ROOT, 'scripts', '__tests__', 'fixtures', 'openwiki-okf');
+
+function runGate(args) {
+  const r = spawnSync(process.execPath, [GATE, ...args], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+    env: { ...process.env, NO_COLOR: '1' },
+  });
+  return { code: r.status, out: `${r.stdout ?? ''}${r.stderr ?? ''}` };
+}
+
+const onFixture = (name) => runGate(['--bundle', join(FIXTURES, name)]);
+
+// A temp-built concept that cites the real README.md is a derived page, so it must carry README's
+// current fingerprint (V17) — computed here, never pasted.
+const README_FP = createHash('sha256').update(readFileSync(join(REPO_ROOT, 'README.md'), 'utf8').replace(/\r\n/g, '\n')).digest('hex');
+
+// ── V13: the conformant baseline ────────────────────────────────────────────────
+test('V13 a fully conformant bundle passes with no findings', () => {
+  const { code, out } = onFixture('valid');
+  assert.equal(code, 0, `expected exit 0, got ${code}\n${out}`);
+  assert.match(out, /conformant/i);
+});
+
+// ── V1–V5: front matter ─────────────────────────────────────────────────────────
+test('V1 unparseable front matter fails and names the file', () => {
+  const { code, out } = onFixture('unparseable-frontmatter');
+  assert.equal(code, 1, `expected exit 1, got ${code}\n${out}`);
+  assert.match(out, /broken\.md/);
+});
+
+test('V2 a missing required `type` fails and names the file', () => {
+  const { code, out } = onFixture('missing-type');
+  assert.equal(code, 1, `expected exit 1, got ${code}\n${out}`);
+  assert.match(out, /no-type\.md/);
+  assert.match(out, /type/i);
+});
+
+test('V3 a present-but-blank optional field fails', () => {
+  const { code, out } = onFixture('blank-optional-field');
+  assert.equal(code, 1, `expected exit 1, got ${code}\n${out}`);
+  assert.match(out, /blank\.md/);
+});
+
+test('V4 `tags` as a bare string fails — it must be an array', () => {
+  const { code, out } = onFixture('tags-not-array');
+  assert.equal(code, 1, `expected exit 1, got ${code}\n${out}`);
+  assert.match(out, /badtags\.md/);
+  assert.match(out, /tags/i);
+});
+
+test('V5 a non-ISO-8601 timestamp fails and names the field', () => {
+  const { code, out } = onFixture('bad-timestamp');
+  assert.equal(code, 1, `expected exit 1, got ${code}\n${out}`);
+  assert.match(out, /badtime\.md/);
+  assert.match(out, /timestamp/i);
+});
+
+// ── V6/V7: source-link resolution (offline in BOTH branches) ────────────────────
+test('V6 a dangling repository-relative resource fails and names the missing path', () => {
+  const { code, out } = onFixture('dangling-resource');
+  assert.equal(code, 1, `expected exit 1, got ${code}\n${out}`);
+  assert.match(out, /dangling\.md/);
+  assert.match(out, /this-file-does-not-exist\.md/);
+});
+
+test('V7 an external resource is shape-checked only and never fetched', () => {
+  // The fixture cites an unresolvable .invalid host: if the gate ever fetches, this cannot pass.
+  const { code, out } = onFixture('external-resource');
+  assert.equal(code, 0, `expected exit 0, got ${code}\n${out}`);
+  assert.doesNotMatch(out, /ENOTFOUND|EAI_AGAIN|fetch failed/i);
+});
+
+// ── V8/V9: directory structure ──────────────────────────────────────────────────
+test('V8 a directory with concepts but no index.md fails', () => {
+  const { code, out } = onFixture('missing-index');
+  assert.equal(code, 1, `expected exit 1, got ${code}\n${out}`);
+  assert.match(out, /index\.md/);
+});
+
+test('V9 a concept absent from its directory index fails and names it', () => {
+  const { code, out } = onFixture('orphaned-concept');
+  assert.equal(code, 1, `expected exit 1, got ${code}\n${out}`);
+  assert.match(out, /unlisted\.md/);
+});
+
+// ── V10: fail-closed on an absent or empty bundle ───────────────────────────────
+test('V10 an absent bundle fails CLOSED with exit 1 (a violation, not a usage error)', () => {
+  const { code, out } = runGate(['--bundle', join(FIXTURES, 'no-such-bundle-dir')]);
+  assert.equal(code, 1, `expected exit 1 (not 2), got ${code}\n${out}`);
+  assert.match(out, /no bundle|required artifact/i);
+});
+
+test('V10 an empty bundle directory fails CLOSED', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'okf-empty-'));
+  try {
+    const { code, out } = runGate(['--bundle', dir]);
+    assert.equal(code, 1, `expected exit 1, got ${code}\n${out}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('V10 a partially-written bundle (concepts, no index) fails rather than merging as a subset', () => {
+  const { code } = onFixture('missing-index');
+  assert.equal(code, 1);
+});
+
+// ── V11: the hand-authored brief is exempt ──────────────────────────────────────
+test('V11 INSTRUCTIONS.md is exempt from concept validation', () => {
+  // It legitimately carries NO front matter. A gate that validates it fails on its own brief.
+  const { code, out } = onFixture('instructions-only');
+  assert.equal(code, 0, `expected exit 0, got ${code}\n${out}`);
+  assert.doesNotMatch(out, /INSTRUCTIONS\.md/);
+});
+
+function oneConceptBundle(frontMatter) {
+  const dir = mkdtempSync(join(tmpdir(), 'okf-stamp-'));
+  writeFileSync(join(dir, 'index.md'),
+    '---\ntype: Reference\ntitle: Test Bundle\ndescription: Index.\n---\n# Test Bundle\n- [Page](page.md) — a concept.\n');
+  writeFileSync(join(dir, 'page.md'), `---\ntype: Decision\ntitle: Page\nresource: README.md\nresource-sha256: ${README_FP}\n${frontMatter}---\nBody.\n`);
+  return dir;
+}
+
+test('V17 a derived page still carrying `verified:` fails, however recent its date', () => {
+  // `verified.at` once counted as a stamp. openwiki Claims are retired, so the field is forbidden:
+  // a re-verification can no longer stand in for refreshing the page.
+  const dir = oneConceptBundle('timestamp: 2001-01-01T00:00:00Z\nverified:\n  - by: openwiki/0.5.2\n    at: 2999-01-01T00:00:00Z\n');
+  try {
+    const { code, out } = runGate(['--bundle', dir]);
+    assert.equal(code, 1, out);
+    assert.match(out, /V17/);
+    assert.match(out, /forbidden field verified/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('V17 a `verified:` list is a forbidden field, not a date to validate', () => {
+  // `verified` is a list of events. V5 used to validate each `verified.at`; with Claims retired the
+  // whole field is rejected instead, so a malformed one cannot pass as "not a stamp".
+  const dir = oneConceptBundle('verified:\n  - by: openwiki/0.5.2\n    at: nope\n');
+  try {
+    const { code, out } = runGate(['--bundle', dir]);
+    assert.equal(code, 1, out);
+    assert.match(out, /V17/);
+    assert.match(out, /verified/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ── Reporting contract ──────────────────────────────────────────────────────────
+// ── V14/V15: body links ─────────────────────────────────────────────────────────
+test('V14 a site-root-absolute body link fails, even though every other rule is satisfied', () => {
+  // The defect this fixture isolates: the target IS a real repository path and the `resource`
+  // field resolves, so V6 and every front-matter rule pass. Only the leading `/` is wrong — which
+  // is precisely why 204 of these survived on MovieCollectionManager's `main`.
+  const { code, out } = onFixture('site-root-link');
+  assert.equal(code, 1, `expected exit 1, got ${code}\n${out}`);
+  assert.match(out, /absolute\.md/);
+  assert.match(out, /V14/);
+});
+
+test('V14 names the file-relative form to write instead', () => {
+  // A finding that says only "wrong" makes the reader re-derive the fix once per link.
+  const { code, out } = runGate(['--bundle', join(FIXTURES, 'site-root-link'), '--json']);
+  assert.equal(code, 1);
+  const f = JSON.parse(out).findings.find((x) => x.rule === 'V14');
+  assert.ok(f, 'expected a V14 finding');
+  assert.match(f.message, /\.\.\/\.\.\/\.\.\/openwiki\/INSTRUCTIONS\.md/, `expected the relative form, got: ${f.message}`);
+});
+
+test('V15 a relative link that resolves to nothing fails', () => {
+  const { code, out } = onFixture('unresolvable-link');
+  assert.equal(code, 1, `expected exit 1, got ${code}\n${out}`);
+  assert.match(out, /dangling\.md/);
+  assert.match(out, /V15/);
+});
+
+test('V14/V15 ignore links inside a code fence or a code span', () => {
+  // The brief has to be able to SHOW the wrong form (openwiki/INSTRUCTIONS.md §6). A gate that
+  // fails on documentation of the defect cannot be used to document the defect.
+  const dir = mkdtempSync(join(tmpdir(), 'okf-code-'));
+  try {
+    writeFileSync(join(dir, 'index.md'), '---\ntype: Reference\n---\n# Root\n- [A](a.md)\n');
+    writeFileSync(join(dir, 'a.md'),
+      '---\ntype: R\n---\nnever `[x](/openwiki/a.md)`:\n\n```md\n[y](/openwiki/b.md)\n[z](nope.md)\n```\n');
+    const { code, out } = runGate(['--bundle', dir]);
+    assert.equal(code, 0, `code samples must not fail the gate, got ${code}\n${out}`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('V15 resolves a link from its own file\'s directory, not from the bundle root', () => {
+  // The mirror-image bug: resolving from the bundle root would pass a dangling sibling link and
+  // fail a valid one. Both directions are asserted in one bundle.
+  const dir = mkdtempSync(join(tmpdir(), 'okf-relbase-'));
+  try {
+    mkdirSync(join(dir, 'area'), { recursive: true });
+    writeFileSync(join(dir, 'index.md'), '---\ntype: Reference\n---\n# Root\n- [A](area/a.md)\n');
+    writeFileSync(join(dir, 'area', 'index.md'), '# Area\n- [a](a.md)\n- [b](b.md)\n');
+    writeFileSync(join(dir, 'area', 'b.md'), '---\ntype: R\n---\nb\n');
+    // `b.md` is a sibling — valid. `area/b.md` would only resolve from the bundle root — invalid.
+    writeFileSync(join(dir, 'area', 'a.md'), '---\ntype: R\n---\n[ok](b.md) and [bad](area/b.md)\n');
+    const { code, out } = runGate(['--bundle', dir, '--json']);
+    assert.equal(code, 1);
+    const found = JSON.parse(out).findings.filter((f) => f.rule === 'V15');
+    assert.equal(found.length, 1, `expected exactly one V15 finding, got ${found.length}: ${out}`);
+    assert.match(found[0].message, /area\/b\.md/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the real bundle has no site-root-absolute or dangling body link', () => {
+  // The regression guard on the shipped bundle itself, not a fixture.
+  const { code, out } = runGate(['--json']);
+  const findings = JSON.parse(out).findings.filter((f) => f.rule === 'V14' || f.rule === 'V15');
+  assert.deepEqual(findings, [], `openwiki/ carries ${findings.length} broken body link(s)`);
+  assert.equal(code, 0, `the shipped bundle must be conformant, got ${code}`);
+});
+
+test('all findings are reported in one run, not just the first', () => {
+  // Fixing a generated bundle one finding per run would be an N-run loop.
+  const dir = mkdtempSync(join(tmpdir(), 'okf-multi-'));
+  try {
+    mkdirSync(join(dir, 'sub'), { recursive: true });
+    writeFileSync(join(dir, 'index.md'), '---\ntype: Reference\n---\n# Root\n- [A](a.md)\n');
+    writeFileSync(join(dir, 'a.md'), '---\ntitle: No type here\n---\nBody.\n');
+    writeFileSync(join(dir, 'sub', 'b.md'), '---\ntitle: Also no type\n---\nBody.\n');
+    const { code, out } = runGate(['--bundle', dir]);
+    assert.equal(code, 1);
+    assert.match(out, /a\.md/);
+    assert.match(out, /b\.md/, 'second finding missing — the gate stopped early');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('--json emits machine-readable findings', () => {
+  const { code, out } = runGate(['--bundle', join(FIXTURES, 'missing-type'), '--json']);
+  assert.equal(code, 1);
+  const parsed = JSON.parse(out);
+  assert.ok(Array.isArray(parsed.findings) && parsed.findings.length > 0);
+  assert.ok(parsed.findings.some((f) => f.file.includes('no-type.md')));
+});
+
+// ── CLI contract ────────────────────────────────────────────────────────────────
+test('--selftest proves the detector and exits 0', () => {
+  const { code, out } = runGate(['--selftest']);
+  assert.equal(code, 0, `selftest must pass, got ${code}\n${out}`);
+});
+
+test('--help prints the usage and exits 0 without scanning', () => {
+  const { code, out } = runGate(['--help']);
+  assert.equal(code, 0, out);
+  assert.match(out, /Usage: node scripts\/check-openwiki-okf\.mjs/);
+  assert.doesNotMatch(out, /conformant|violation/);
+});
+
+test('an unknown argument exits 2 (usage error, distinct from a violation)', () => {
+  const { code } = runGate(['--not-a-real-flag']);
+  assert.equal(code, 2);
+});
+
+test('the gate offers no skip or allowlist escape hatch', () => {
+  // The gate is fail-closed with no opt-out, and a rejected page is fixed, never allowlisted.
+  const { code } = runGate(['--bundle', join(FIXTURES, 'no-such-bundle-dir'), '--allow-missing']);
+  assert.equal(code, 2, '--allow-missing must not be a recognised flag');
+});
