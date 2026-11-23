@@ -1,0 +1,128 @@
+# Dev-container toolchain image publish (feature 004).
+#
+# Builds the heavy, build-once dev image from .devcontainer/toolchain.Dockerfile in CI and pushes it
+# (tag + immutable @sha256 digest) to the forge registry as `belay-devcontainer`. The sandbox VM pins
+# that digest in its env file (BELAY_DEVCONTAINER_IMAGE), so a dev-container recreate is a pull, not
+# a rebuild. The image carries no credential and no personal tool. Build in CI (or on a host engine
+# with open egress), never inside the sandbox: rustup's hosts are not allowlisted there (research R5).
+#
+# ⚠️ RUNNER EXCEPTION — AND THE RULE THAT MAKES IT SAFE.
+# Every other BELAY job runs on BELAY's own runner (`runs-on: belay`), which runs each job in a fresh
+# container with no host Docker access. This job needs a Docker daemon, so it runs on the shared
+# host runner (`kvm`), which has the host's rootless Docker. PULL-REQUEST CODE MUST THEREFORE NEVER
+# RUN HERE: the triggers are push to a protected branch, manual dispatch and the schedule only.
+# Adding `pull_request` or `pull_request_target` would let a PR reach the host's Docker daemon.
+# Pinned by scripts/__tests__/devcontainer-image-workflow.guard.test.mjs.
+#
+# A `packageManager` bump is a toolchain change too: the image installs pnpm at that pin. Path
+# filters cannot see inside package.json, so it is in `paths:`, and the `gate` step stops the run
+# after checkout unless the packageManager value itself moved (scripts/devcontainer-image-gate.mjs).
+#
+# Reading the result: this forge cannot read back the step summary, so resolve the digest from the
+# registry's manifests endpoint (docs/runbooks/devcontainer.md, "Re-pin the image").
+name: devcontainer-image
+
+on:
+  workflow_dispatch:
+  push:
+    # Keep in step with IMAGE_INPUTS in scripts/devcontainer-image-gate.mjs (+ package.json, gated).
+    paths:
+      - '.devcontainer/toolchain.Dockerfile'
+      - '.devcontainer/Dockerfile'
+      - '.forgejo/workflows/devcontainer-image.yml'
+      - 'scripts/install-pnpm.sh'
+      - 'scripts/devcontainer-image-gate.mjs'
+      - 'package.json'
+  schedule:
+    # Weekly refresh (Friday 06:00 UTC): picks up base-image and toolchain security patches even
+    # when nothing in the repository changed. Cron is UTC-only and does not observe DST.
+    - cron: '0 6 * * 5'
+
+concurrency:
+  group: devcontainer-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-publish:
+    # The shared, Docker-capable host runner. See the RUNNER EXCEPTION note above.
+    runs-on: kvm
+    timeout-minutes: 60
+    env:
+      # The ci user's rootless Docker daemon on the host runner (adjust 1001 if `id -u ci` differs).
+      DOCKER_HOST: unix:///run/user/1001/docker.sock
+      # Host-free registry coordinates: repository variables, never a git literal.
+      REGISTRY: ${{ vars.REGISTRY }}
+      NS: ${{ vars.NS }}
+      REGISTRY_USER: ${{ vars.REGISTRY_USER }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The gate diffs against the push's `before` sha, which a depth-1 clone does not contain.
+          fetch-depth: 0
+
+      # Pin Node: without this the job runs the host runner's implicit Node, not the repository's.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 26.13.1
+
+      - name: Decide whether the image inputs changed
+        id: gate
+        env:
+          GATE_BEFORE: ${{ github.event.before }}
+        run: bash scripts/ci-log-step.sh devcontainer-image-gate node scripts/devcontainer-image-gate.mjs
+
+      - name: Check the Docker CLI reaches the runner's daemon
+        if: steps.gate.outputs.build == 'true'
+        run: |
+          bash scripts/ci-log-step.sh build-publish-check-docker bash -e /dev/stdin <<'CI_LOG_STEP'
+          if ! command -v docker >/dev/null 2>&1; then
+            echo "::error::docker CLI not found on the runner"; exit 1
+          fi
+          docker version >/dev/null || { echo "::error::cannot reach the Docker daemon at $DOCKER_HOST"; exit 1; }
+          CI_LOG_STEP
+
+      - name: Build the toolchain image
+        if: steps.gate.outputs.build == 'true'
+        run: |
+          bash scripts/ci-log-step.sh devcontainer-image-build bash -e /dev/stdin <<'CI_LOG_STEP'
+          : "${REGISTRY:?set the REGISTRY repository variable}" "${NS:?set the NS repository variable}"
+          TAG="${REGISTRY}/${NS}/belay-devcontainer:${GITHUB_SHA}"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          docker build -f .devcontainer/toolchain.Dockerfile -t "$TAG" .
+          CI_LOG_STEP
+
+      - name: Push (tag + digest) and report the pinned reference
+        if: steps.gate.outputs.build == 'true'
+        env:
+          REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+        run: |
+          bash scripts/ci-log-step.sh build-publish-push bash -e /dev/stdin <<'CI_LOG_STEP'
+          : "${REGISTRY_USER:?set the REGISTRY_USER repository variable}"
+          echo "$REGISTRY_TOKEN" | docker login "$REGISTRY" -u "$REGISTRY_USER" --password-stdin
+          docker push "$TAG"
+          DIGEST="$(docker inspect --format='{{index .RepoDigests 0}}' "$TAG" | cut -d'@' -f2)"
+          PINNED="${REGISTRY}/${NS}/belay-devcontainer@${DIGEST}"
+          echo "Published dev-container toolchain image:"
+          echo "  tag    : $TAG"
+          echo "  digest : $DIGEST"
+          {
+            echo "## Dev-container toolchain image published"
+            echo ""
+            echo "Set BELAY_DEVCONTAINER_IMAGE in the sandbox VM's ~/.belay-sandbox-env to the digest-pinned ref:"
+            echo ""
+            echo '```'
+            echo "BELAY_DEVCONTAINER_IMAGE=$PINNED"
+            echo '```'
+            echo ""
+            echo "Then recreate the dev container. See docs/runbooks/devcontainer.md."
+          } >> "$GITHUB_STEP_SUMMARY"
+          CI_LOG_STEP
+
+      - name: Publish failure digest
+        if: always()
+        continue-on-error: true
+        env:
+          CI_DIGEST_TOKEN: ${{ secrets.CI_DIGEST_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_DIGEST_JOB_STATUS: ${{ job.status }}
+        run: node scripts/ci-failure-digest.mjs

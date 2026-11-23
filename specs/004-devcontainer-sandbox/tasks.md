@@ -126,7 +126,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
 
 ### Tests (written first)
 
-- [ ] T007 [P] [US2] Write `scripts/__tests__/gen-egress-policy.test.mjs`
+- [x] T007 [P] [US2] Write `scripts/__tests__/gen-egress-policy.test.mjs`
   - **Scenarios covered:** US2-AC2, US2-AC4, FR-007, FR-008, FR-009. Contract: [contracts/cli.md, gen-egress-policy](contracts/cli.md).
   - **Asserts, with `--file` fixtures in temp directories:**
     - `--check` exits 0 on a valid list.
@@ -140,7 +140,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
       - **Neutral wording:** no string value **anywhere in the file**, including `reason`, `$comment`, `$schemaNotes`, `$consideredAndExcluded` and `$mustNeverAppearHere`, matches `/\bmcm\b|mc-service|movie-mcp|web-api-mcp|spreadsheet-mcp|@mcm\/|\bBFF\b|movie[- ]assistant|\bfeature \d{3}\b|item #\d+|docs\/proposals\//i`.
   - **Verify RED:** `node --test scripts/__tests__/gen-egress-policy.test.mjs` → expected: all failing, with `Cannot find module … gen-egress-policy.mjs`.
 
-- [ ] T008 [P] [US2] Write `scripts/__tests__/assert-egress-governed.test.mjs`, using bash through `shell-probe.mjs`, with a stub `curl` on `PATH` whose behaviour is set by environment variable
+- [x] T008 [P] [US2] Write `scripts/__tests__/assert-egress-governed.test.mjs`, using bash through `shell-probe.mjs`, with a stub `curl` on `PATH` whose behaviour is set by environment variable
   - **Scenarios covered:** US2-AC3, FR-010. Contract: [contracts/cli.md, assert-egress-governed](contracts/cli.md).
   - **Asserts:**
     - Blocked refused and allowed reached → exit 0 and `PASS`.
@@ -152,20 +152,20 @@ Documentation, config and operator tasks use the "Done when" form instead.
 
 ### Implementation
 
-- [ ] T009 [US2] Create `scripts/gen-egress-policy.mjs`, ported from MCM's: the names, help text and default path are BELAY's, and its behaviour is per contracts/cli.md. This needs T007 verified RED.
+- [x] T009 [US2] Create `scripts/gen-egress-policy.mjs`, ported from MCM's: the names, help text and default path are BELAY's, and its behaviour is per contracts/cli.md. This needs T007 verified RED.
   - Its `--check` enforces [data-model.md, Egress allowlist](data-model.md): the rules for `destinations[].domain`, `destinations[].group`, `destinations[].reason`, `destinations[].cdnRotating` (a boolean when present) and `destinations[]` (unique domains, at least one entry).
 
-- [ ] T010 [US2] Create `.devcontainer/egress-allowlist.json` from MCM's at `ab1f68ca`, per [research R8](research.md). This needs T007 verified RED.
+- [x] T010 [US2] Create `.devcontainer/egress-allowlist.json` from MCM's at `ab1f68ca`, per [research R8](research.md). This needs T007 verified RED.
   - Remove `api.themoviedb.org`, leaving 102 entries ([data-model.md](data-model.md), Egress allowlist, `destinations[]`).
   - Record the removal under `$removedFromMcmBaseline` (data-model.md, Egress allowlist, `$removedFromMcmBaseline`).
   - Reword every `reason` (data-model.md, Egress allowlist, `destinations[].reason`) and every note neutrally, keeping every measured fact, date, error string and host pair.
   - Keep each entry's `domain` and `group` unchanged (data-model.md, Egress allowlist, `destinations[].domain` and `destinations[].group`).
   - **Verify GREEN (T009 + T010):** `node --test scripts/__tests__/gen-egress-policy.test.mjs` → 0 failures. Then `node scripts/gen-egress-policy.mjs --format sbx-policy | wc -l` prints 102.
 
-- [ ] T011 [US2] Add `node scripts/gen-egress-policy.mjs --check` to the `lint` target in `scripts/project.json`.
+- [x] T011 [US2] Add `node scripts/gen-egress-policy.mjs --check` to the `lint` target in `scripts/project.json`.
   - **Done when:** `pnpm nx run scripts:lint` runs the check, and a deliberately malformed entry makes it fail. Revert the entry afterwards.
 
-- [ ] T012 [US2] Implement `.devcontainer/assert-egress-governed.sh`, ported from MCM with the neutral probe variable names. This needs T008 verified RED.
+- [x] T012 [US2] Implement `.devcontainer/assert-egress-governed.sh`, ported from MCM with the neutral probe variable names. This needs T008 verified RED.
   - **Verify GREEN:** `node --test scripts/__tests__/assert-egress-governed.test.mjs` → 0 failures, with a skip count of 0.
 
 **Checkpoint:** the allowlist, its generator and the self-check are ready to apply.
@@ -183,7 +183,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
 
 ### Tests (written first)
 
-- [ ] T013 [P] [US4] Port MCM's `scripts/__tests__/devcontainer-image-gate.test.mjs`, adapted to BELAY's paths
+- [x] T013 [P] [US4] Port MCM's `scripts/__tests__/devcontainer-image-gate.test.mjs`, adapted to BELAY's paths
   - **Scenarios covered:** US4-AC1, US4-AC2, FR-018. Contract: [contracts/cli.md, devcontainer-image-gate](contracts/cli.md).
   - **Covers:**
     - a non-push event → `build=true`;
@@ -194,7 +194,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
     - an unresolvable diff → `true` (fail-safe).
   - **Verify RED:** `node --test scripts/__tests__/devcontainer-image-gate.test.mjs` → expected: all failing, with `Cannot find module … devcontainer-image-gate.mjs`.
 
-- [ ] T014 [P] [US4] Write `scripts/__tests__/devcontainer-image-workflow.guard.test.mjs`
+- [x] T014 [P] [US4] Write `scripts/__tests__/devcontainer-image-workflow.guard.test.mjs`
   - **Scenarios covered:** US4-AC1, US4-AC2, FR-018, FR-020, [research R7](research.md).
   - **Asserts, on `.forgejo/workflows/devcontainer-image.yml`:**
     - The triggers are exactly `workflow_dispatch`, `push` and `schedule`. There is **no** `pull_request` and **no** `pull_request_target`.
@@ -208,7 +208,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
     - The file contains no `mcm` substring.
   - **Verify RED:** `node --test scripts/__tests__/devcontainer-image-workflow.guard.test.mjs` → expected: all failing, with `ENOENT … devcontainer-image.yml`.
 
-- [ ] T015 [P] [US4] Write the tests for `scripts/build-devcontainer-image.mjs` in `scripts/__tests__/build-devcontainer-image.test.mjs`
+- [x] T015 [P] [US4] Write the tests for `scripts/build-devcontainer-image.mjs` in `scripts/__tests__/build-devcontainer-image.test.mjs`
   - **Scenarios covered:** FR-019 (the local build path). Contract: [contracts/cli.md, build-devcontainer-image](contracts/cli.md).
   - **Asserts:**
     - `--help` exits 0 and prints the usage, which says the command needs an engine with open egress.
@@ -218,7 +218,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
     - With a stub that records its arguments, it calls `build -f <root>/.devcontainer/toolchain.Dockerfile -t belay-devcontainer <root>`, or the `--tag` value.
   - **Verify RED:** `node --test scripts/__tests__/build-devcontainer-image.test.mjs` → expected: all failing, with `Cannot find module … build-devcontainer-image.mjs`.
 
-- [ ] T016 [P] [US4] Write `scripts/__tests__/check-image-pin.test.mjs`, using bash through `shell-probe.mjs`
+- [x] T016 [P] [US4] Write `scripts/__tests__/check-image-pin.test.mjs`, using bash through `shell-probe.mjs`
   - **Scenarios covered:** US4-AC3, FR-019, and the edge case "the image pin is missing or unexported". Contract: [contracts/cli.md, check-image-pin](contracts/cli.md). Rule: [data-model.md, Sandbox environment file](data-model.md), `BELAY_DEVCONTAINER_IMAGE`.
   - **Asserts:**
     - A ref with `@sha256:<64 hex>` → `✓ pinned: sha256:…`, and the registry host is **not** printed.
@@ -228,16 +228,16 @@ Documentation, config and operator tasks use the "Done when" form instead.
 
 ### Implementation
 
-- [ ] T017 [US4] Create `scripts/devcontainer-image-gate.mjs`, ported from MCM. It reuses the existing `scripts/lib/argv-contract.mjs` and `scripts/lib/is-main.mjs`. This needs T013 verified RED.
+- [x] T017 [US4] Create `scripts/devcontainer-image-gate.mjs`, ported from MCM. It reuses the existing `scripts/lib/argv-contract.mjs` and `scripts/lib/is-main.mjs`. This needs T013 verified RED.
   - **Verify GREEN:** `node --test scripts/__tests__/devcontainer-image-gate.test.mjs` → 0 failures.
 
-- [ ] T018 [US4] Create `.forgejo/workflows/devcontainer-image.yml`, ported from MCM per [contracts/cli.md](contracts/cli.md) and research R7, with a header comment explaining the `kvm` exception and the no-PR rule. This needs T014 verified RED.
+- [x] T018 [US4] Create `.forgejo/workflows/devcontainer-image.yml`, ported from MCM per [contracts/cli.md](contracts/cli.md) and research R7, with a header comment explaining the `kvm` exception and the no-PR rule. This needs T014 verified RED.
   - **Verify GREEN:** `node --test scripts/__tests__/devcontainer-image-workflow.guard.test.mjs` → 0 failures. Then `pnpm nx run scripts:lint` passes: the digest-coverage gate accepts the new workflow, and `guardrails-workflow.test.mjs` still pins `guardrails` to `belay`.
 
-- [ ] T019 [US4] Create `scripts/build-devcontainer-image.mjs`, ported from MCM with the default tag `belay-devcontainer` and the open-egress note in its usage, and add the Nx target `build-devcontainer-image` to `scripts/project.json`. This needs T015 verified RED.
+- [x] T019 [US4] Create `scripts/build-devcontainer-image.mjs`, ported from MCM with the default tag `belay-devcontainer` and the open-egress note in its usage, and add the Nx target `build-devcontainer-image` to `scripts/project.json`. This needs T015 verified RED.
   - **Verify GREEN:** `node --test scripts/__tests__/build-devcontainer-image.test.mjs` → 0 failures. Then `pnpm nx show project scripts` lists the target.
 
-- [ ] T020 [US4] Implement `.devcontainer/check-image-pin.sh` per contracts/cli.md. This needs T016 verified RED. It follows [data-model.md, Sandbox environment file](data-model.md), `BELAY_DEVCONTAINER_IMAGE`.
+- [x] T020 [US4] Implement `.devcontainer/check-image-pin.sh` per contracts/cli.md. This needs T016 verified RED. It follows [data-model.md, Sandbox environment file](data-model.md), `BELAY_DEVCONTAINER_IMAGE`.
   - **Verify GREEN:** `node --test scripts/__tests__/check-image-pin.test.mjs` → 0 failures, with a skip count of 0. Then T003's guard still passes.
 
 - [ ] T021 [US4] **Operator:**
