@@ -31,7 +31,8 @@ This guide gives the order and links to them, and doesn't repeat them.
 | 10 | Backlog in Forgejo issues and `/speckit-taskstoissues` | feature 003 | 1–2 h |
 | 11 | `AGENTS.md` as an index, the `openwiki/` bundle, doc drift | PR | 1–2 h |
 | 12 | Dev container on Docker Sandbox | feature 004 | half a day |
-| 13 | Final checks | n/a | 15 min |
+| 13 | The remaining guardrail gates, the wiki gates and registry retention | feature 005 | half a day |
+| 14 | Final checks | n/a | 15 min |
 
 Steps 1 to 4 go straight to `main`, because there is no CI or protection yet. From step 5 on, every
 change goes through a Spec Kit feature and a pull request. That way the process you are building is
@@ -70,7 +71,7 @@ Install these on the Windows workstation:
    | File | What it holds | Copy from BELAY? |
    | --- | --- | --- |
    | `README.md` | What the repo is, a Development section and a license line | Adapt |
-   | `.gitattributes` | Stores text as LF. CRLF for `.ps1`, `.psm1`, `.psd1`, `.bat`, `.cmd`, `.sln`. LF for `.sh`. Lock files marked generated. Binary types listed | Copy as is |
+   | `.gitattributes` | Stores text as LF. CRLF for `.ps1`, `.psm1`, `.psd1`, `.bat`, `.cmd`, `.sln`. LF for `.sh`. Lock files marked generated. Binary types listed. `scripts/__tests__/fixtures/** -text`, so a fixture keeps its exact bytes (step 13) | Copy as is |
    | `.gitignore` | Polyglot ignores: OS files, editors, `node_modules`, `bin/`, `build/`, `out/`, `dist/`, `target/`, `.env*` (keeping `.env.example`), key material, `.claude/settings.local.json` | Copy as is |
    | `LICENSE` | MIT | Adapt the holder and year |
    | `AGENTS.md` | The one instruction file for every coding assistant | Start small. It becomes an index in step 11 |
@@ -257,7 +258,7 @@ Copy and adapt:
 | `scripts/ci-log-step.sh` | Wraps every `run:` step: keeps its exit code and mirrors its output for the digest |
 | `scripts/ci-failure-digest.mjs`, `scripts/ci-digest-redact.mjs` | On failure, publishes a redacted digest: a PR comment on pull requests, a commit status on `main`, and a full bundle in the generic package `<repo>-ci-failures` |
 | `scripts/check-ci-digest-coverage.mjs` | A gate: every job must end with the digest step |
-| `scripts/secret-scan.mjs` | Secret-scan rules, with a selftest in `scripts:lint` |
+| `scripts/secret-scan.mjs` | Secret-scan rules. Its selftest runs in `scripts:lint`; the tree scan joins in step 13 |
 | `scripts/__tests__/guardrails-workflow.test.mjs` | Pins the workflow's shape, including `runs-on` |
 
 Keep `uses:` to actions the Forgejo instance mirrors (`actions/checkout`, `actions/setup-node`), and
@@ -313,6 +314,7 @@ scope is the only server-side limit.
 | the git credential for `origin` | the git credential helper | your push access | `forge-pr.mjs` (open, merge, dispatch) |
 | `CI_DIGEST_TOKEN` | repository Actions secret | `write:issue`, `write:package`, `read:repository` | the CI failure digest only |
 | `REGISTRY_TOKEN` | repository Actions secret | `write:package` | the dev-container image push only (step 12) |
+| `REGISTRY_CLEANUP_TOKEN` | repository Actions secret | `write:package` | the registry-retention report (step 13). Without it the job fails loudly |
 
 On Windows, set the user variables with `setx` or System Properties, then **restart the editor and
 terminal**. A running process keeps its old environment.
@@ -404,7 +406,7 @@ rewrite the content for the new repository:
   quarterly drift audit, a backlog item that files its own successor.
 
 **The same-PR rule:** a change to a file that an `openwiki/` page cites as its `resource` refreshes
-that page in the same PR. Find the pages with `git grep -n "^resource: <path>" openwiki/`.
+that page in the same PR. BELAY first kept this by review; step 13 adds the gate that enforces it.
 
 ---
 
@@ -454,7 +456,78 @@ environment with default-deny egress. Follow [the dev-container runbook](runbook
 
 ---
 
-## Step 13: Final checks
+## Step 13: The remaining guardrail gates, the wiki gates and registry retention (feature 005)
+
+Steps 6 and 11 left rules that were written down but kept only by review. This step ports the gates
+that enforce them, and the retention job the weekly image build needs. BELAY landed it as one feature
+(four backlog items, one spec, one PR), because every port has the same shape and touches the same
+files: `scripts/project.json`, the CI runbook and `AGENTS.md`. Each gate is still its own `scripts:lint`
+command, so a red build names the gate.
+
+**How to port a gate:** clone the source repository read-only, and port its script **and** its tests.
+Change only what ties them to the source repository. Write the test first and watch it fail, then port
+the script. Where the source has no test file, write one. Every gate follows one contract: `--selftest`,
+`--help`, `--dir <root>` for tests, exit 0 clean / 1 finding / 2 bad input, and findings printed as
+`<file>:<line>: <rule>: <message>`. A finding never prints a secret's value.
+
+| Gate or tool | What it enforces |
+| --- | --- |
+| `scripts/secret-scan.mjs` (tree scan) | No credential-shaped string in a tracked file |
+| `scripts/check-topology-scrub.mjs` | No real tailnet host (`*.ts.net`) in a tracked file. A host containing `tailnet` or `example` is a placeholder. Add this gate **before** a host can leak: BELAY needed a history rewrite to undo one |
+| `scripts/check-toolchain-consistency.mjs` | One Node major across every pin, each at or above `engines.node`; every Node-running workflow job pins Node with `setup-node`; pnpm named only by root `packageManager`; `nx`, `@nx/*` and `@playwright/test` exact |
+| `scripts/check-no-inline-secrets.mjs` | No literal credential, password-bearing URL or inline `${VAR:-default}` in a compose file |
+| `scripts/check-no-argv-secrets.mjs` | No secret-named `--env`/`-e` argument on a Maestro command line |
+| `scripts/check-override-consistency.mjs` | Each keyed `pnpm-workspace.yaml` override has its key bound equal to its value floor, and its cap does not widen past the declared major |
+| `scripts/check-resource-naming.mjs` | Compose volume, network and container names follow `<context>-<role>-<engine>`, and `container_name` equals the service key. A context is a project directory under `backend/`, `frontend/`, `agents/` or `mcp-servers/` |
+| `scripts/check-openwiki-okf.mjs` | The `openwiki/` bundle: front matter, links, an `index.md` per directory, no orphans, and **V17**: a derived page's `resource-sha256` matches its source |
+| `scripts/check-openwiki-governance.mjs` | `AGENTS.md` is an index within its size budget, `CLAUDE.md` is only the shim, and every concept is derived or listed in `protected.yaml` |
+| `scripts/wiki-refresh.mjs` + `.claude/skills/wiki-refresh/` | `--stale`, `--diff <page>`, `--record <page>`. The only way a fingerprint is written |
+| `scripts/registry-retention.mjs`, `.forgejo/workflows/registry-retention.yml`, `infrastructure-as-code/forgejo/registry-retention.yaml` | Weekly, **report-only**. Keeps the newest 4 dev-container images or any under 21 days, plus the digests under `protect:`. Deleting needs `mode: apply` in the config **and** a dispatch with `apply: true` |
+
+**Port gates ahead of the surfaces they guard.** The compose, Maestro, override and naming gates
+have nothing to scan in a new repository, but the constitution requires those surfaces. A gate that
+lands with the first compose file catches only what comes after it, so port them now. Each prints how
+many files it examined, so "0 files" shows instead of a silent pass. Keep the source's rules and
+replace its names: BELAY's naming gate takes its contexts from the project directories, and keeps its
+vendor-bundle, retired-key and approved-network lists empty until they are needed.
+
+**Defer what needs a structural decision.** SAST needs Semgrep, uv and Rust on the runner, which is
+the maintainer's call. BELAY filed it as a staged backlog item (item #37): Semgrep and `pnpm audit`
+first, then cargo-audit with the first Rust code, pip-audit with the first Python project, and a
+baked scanner image once installs dominate the run.
+
+**Then:**
+
+1. Run both wiki gates on the real bundle and fix every finding in the pages, never with an allowlist.
+2. Record every derived page with `node scripts/wiki-refresh.mjs --record <page>`.
+3. Say the rules are enforced, naming the gates, in `openwiki/INSTRUCTIONS.md`,
+   `openwiki/process/wiki-maintenance.md`, the `protected.yaml` header, `AGENTS.md` and `CLAUDE.md`.
+4. Add `REGISTRY_CLEANUP_TOKEN` (step 8), and record the sandbox's image pin under `protect:` after
+   every re-pin (see [the dev-container runbook](runbooks/devcontainer.md#re-pin-the-image)).
+
+**Traps:**
+
+- **A fixture whose line endings are the subject of a test needs `-text`.** `* text=auto eol=lf`
+  rewrites a CRLF fixture to LF on commit. The test still passes, but it no longer tests CRLF.
+- **A new gate flags your own docs.** The argv gate failed on the runbook line that described it,
+  because the example matched the rule. Reword the prose; don't exempt the file.
+- **Retention cannot read a pin that lives outside git.** The sandbox's pin is in the VM's env file,
+  so it must be recorded in `protect:`. The window covers a pin nobody recorded.
+- **Editing a file a wiki page cites turns V17 red.** Run `wiki-refresh.mjs --stale` after every docs
+  change, and record each page it lists.
+
+**Check:**
+
+- `pnpm nx run scripts:lint` runs every gate after its selftest, and they add about a second.
+- Plant one violation per gate (a real-shaped host built from fragments, a `^` on `nx`, an edited wiki
+  source, prose in `AGENTS.md`, a compose literal, a misnamed container, a Maestro `--env` secret, a
+  split override) and confirm each fails. Then revert.
+- `node scripts/registry-retention.mjs --package <repo>-devcontainer` with `FORGE_TOKEN` prints a
+  keep/delete row per version and deletes nothing. `--apply` exits 2.
+
+---
+
+## Step 14: Final checks
 
 Run all of these on the finished foundation:
 
@@ -469,6 +542,8 @@ Run all of these on the finished foundation:
 - [ ] `/speckit-specify` creates a numbered feature branch.
 - [ ] `ANTHROPIC_API_KEY` is unset everywhere (`echo $env:ANTHROPIC_API_KEY` on the host prints
   nothing).
+- [ ] `node scripts/wiki-refresh.mjs --stale` prints nothing.
+- [ ] The `registry-retention` workflow's first report lists every image version and deletes nothing.
 - [ ] `git grep -n -i belay` returns only places where the name is intended.
 
 ---
@@ -482,14 +557,16 @@ BELAY's name is built into these places. Rename each one, and the guard test tha
 | Workspace package name | `@belay/workspace` in `package.json` |
 | Runner label and runner name | `belay`, `ci-belay` (`guardrails.yml`, `guardrails-workflow.test.mjs`, the CI runbook) |
 | Failure-digest package | `belay-ci-failures` |
-| Dev-container image | `belay-devcontainer` (workflow, `scripts/build-devcontainer-image.mjs`, `devcontainer.json`) |
+| Dev-container image | `belay-devcontainer` (workflow, `scripts/build-devcontainer-image.mjs`, `devcontainer.json`, `registry-retention.yaml`) |
+| Retention config | `owner:` and the package names in `infrastructure-as-code/forgejo/registry-retention.yaml`. Start `protect:` empty and `mode: report` |
 | Sandbox name, checkout path and volumes | `belay`, `/workspaces/belay`, `belay-claude`, `belay-pnpm-store`, `belay-commandhistory` |
 | Environment-variable prefix | `BELAY_DEVCONTAINER*`, `~/.belay-sandbox-env`, `~/.belay-devcontainer-secrets.env` |
 | Status context for branch protection | `guardrails / guardrails (pull_request)`. Record it from the first green run; don't assume it |
 | The constitution's name and opening | `.specify/memory/constitution.md` |
 | The `AGENTS.md` description line and `openwiki/projects/repository.md` | the description of the repository |
 
-**Also start these fresh:** `specs/` (start feature numbering at 001), the backlog, the audit log in
+**Also start these fresh:** `specs/` (start feature numbering at 001), the backlog, the derived
+wiki pages' `resource-sha256` (re-record them, because the sources differ), the audit log in
 `doc-drift.md`, and dated measurements in the runbooks. Those measurements are history from BELAY and
 aren't true of the new repository until you measure them there.
 
@@ -500,7 +577,7 @@ aren't true of the new repository until you measure them there.
 - Each feature's spec, plan, research and tasks: [specs/001-guardrails-ci](../specs/001-guardrails-ci/spec.md),
   [002-pr-ci-tooling](../specs/002-pr-ci-tooling/spec.md),
   [003-backlog-taskstoissues](../specs/003-backlog-taskstoissues/spec.md),
-  [004-devcontainer-sandbox](../specs/004-devcontainer-sandbox/spec.md).
+  [004-devcontainer-sandbox](../specs/004-devcontainer-sandbox/spec.md),
+  [005-guardrail-gate-ports](../specs/005-guardrail-gate-ports/spec.md).
 - Gaps that are known and not built yet live in the backlog: `node scripts/backlog.mjs list`. For
-  example, issue #1 holds MCM's guardrail checks not yet ported (SAST, naming gates), and #28 holds
-  the wiki gates.
+  example, item #37 holds the staged SAST port.

@@ -306,6 +306,10 @@ file count.
 - [x] T050 Run quickstart.md steps 1–5 (step 6's live report needs the registry secret)
 - [x] T051 Final checks: `pnpm nx run scripts:lint`, `pnpm nx run scripts:test` (watch the skip
   count), and `node scripts/check-speckit-overrides.mjs`
+- [x] T053 `docs/repo-foundation-setup.md` (maintainer request, overriding T002's "no change: dated
+  playbook"): add step 13 for this feature, the fixture `-text` rule, `REGISTRY_CLEANUP_TOKEN`, the
+  retention renaming rows and final checks, and point the history at item #37
+  - **Done when**: the playbook names every gate this feature adds, and `scripts:lint` passes
 - [x] T052 **Open the PR** (branch `005-guardrail-gate-ports`, PR #38) from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
   1. `git push origin HEAD:005-guardrail-gate-ports`
   2. `node scripts/forge-pr.mjs open --head 005-guardrail-gate-ports --title "…" --body-file <file>`
