@@ -132,6 +132,8 @@ jobs:
         run: bash scripts/ci-log-step.sh sast-prepare-python node scripts/sast-prepare.mjs python
       - name: Gate selftest (prove the fail, suppress and expiry paths before the real scan)
         run: bash scripts/ci-log-step.sh sast-gate-selftest node scripts/check-sast-findings.mjs --selftest
+      - name: Orchestrator selftest (known scanner output must be reported, offline)
+        run: bash scripts/ci-log-step.sh sast-scan-selftest node scripts/sast-scan.mjs --selftest
       - name: Custom-rule fixtures (semgrep --test; a rule with no fixture fails)
         run: bash scripts/ci-log-step.sh sast-rule-fixtures node scripts/sast-scan.mjs --test-rules
       - name: Static scan (Semgrep changed-files on PRs, full on push; SCA always full)

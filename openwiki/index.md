@@ -8,6 +8,7 @@ okf_version: "0.2"
 
 # Directories
 
+- [decisions](decisions/)
 - [gotchas](gotchas/)
 - [invariants](invariants/)
 - [process](process/)

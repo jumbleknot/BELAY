@@ -1038,11 +1038,75 @@ export function summarize(report) {
   return lines.join('\n');
 }
 
+// ── --selftest (backlog item 57) ─────────────────────────────────────────────
+// Feeds known native scanner output through the real normalize → report → summary → scrub path,
+// offline and with no scanner installed. A scan that RUNS but parses nothing would otherwise read
+// as "0 findings" and pass the gate; every other scanner script already proves its detector this way.
+// `deps` exists so the tests can break one stage and watch the selftest name it.
+const SELFTEST_JWT = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJzZWxmdGVzdCJ9.c2VsZnRlc3Qtc2lnbmF0dXJl';
+const SELFTEST_SEMGREP_NATIVE = {
+  results: [{
+    check_id: 'selftest.no-token-logging', path: 'scripts\\selftest.mjs', start: { line: 7 },
+    extra: { severity: 'ERROR', message: `token logged: ${SELFTEST_JWT}` },
+  }],
+};
+const SELFTEST_PNPM_NATIVE = {
+  advisories: {
+    1001: { id: 1001, github_advisory_id: 'GHSA-self-test-0001', module_name: 'selftest-pkg', severity: 'high',
+      title: 'selftest advisory', patched_versions: '>=1.0.1', findings: [{ version: '1.0.0' }] },
+  },
+};
+
+export function sastSelftest(deps = {}) {
+  const d = { normalizeSemgrep, normalizePnpmAudit, deriveBlocking, summarize, scrubSecretsInText, ...deps };
+  const failures = [];
+  const map = loadSeverityMap();
+  let semgrep = [];
+  let pnpm = [];
+  try { semgrep = d.normalizeSemgrep(SELFTEST_SEMGREP_NATIVE, map); } catch (e) { failures.push(`semgrep normalizer threw: ${e.message}`); }
+  try { pnpm = d.normalizePnpmAudit(SELFTEST_PNPM_NATIVE, new Set(['1001']), map); } catch (e) { failures.push(`pnpm-audit normalizer threw: ${e.message}`); }
+
+  const sg = semgrep.find((f) => f.id === 'selftest.no-token-logging');
+  if (!sg) failures.push('semgrep: a known ERROR result produced no finding');
+  else {
+    if (sg.severity !== 'High') failures.push(`semgrep: ERROR normalized to ${sg.severity}, expected High`);
+    if (sg.location !== 'scripts/selftest.mjs:7') failures.push(`semgrep: location ${sg.location}, expected scripts/selftest.mjs:7`);
+  }
+  const pa = pnpm.find((f) => f.location === 'selftest-pkg@1.0.0');
+  if (!pa) failures.push('pnpm-audit: a known high advisory produced no finding');
+  else if (pa.scope !== 'runtime' || pa.severity !== 'High') failures.push(`pnpm-audit: got ${pa.severity}/${pa.scope}, expected High/runtime`);
+
+  // Blocking is re-derived through d.deriveBlocking, so a broken rule cannot hide behind the
+  // normalizers' own (real) call.
+  for (const f of [sg, pa].filter(Boolean)) {
+    if (!d.deriveBlocking({ kind: f.kind, severity: f.severity, scope: f.scope })) failures.push(`${f.scanner}: a High ${f.kind === 'sast' ? 'SAST' : 'runtime SCA'} finding is not blocking`);
+  }
+
+  const report = buildFindingsReport({
+    scope: 'full',
+    scanners: [
+      scannerRecord('semgrep', 'ran', { findingCount: semgrep.length }),
+      scannerRecord('pnpm-audit', 'ran', { findingCount: pnpm.length }),
+      scannerRecord('cargo-audit', 'failed', { error: 'selftest: simulated scanner failure' }),
+    ],
+    findings: [...semgrep, ...pnpm],
+  });
+  const summary = String(d.summarize(report));
+  for (const want of ['selftest.no-token-logging', 'selftest-pkg@1.0.0']) {
+    if (!summary.includes(want)) failures.push(`summary: does not list ${want}`);
+  }
+  if (!/cargo-audit: FAILED/.test(summary)) failures.push('summary: a failed scanner does not read as FAILED (a blind spot would look like a clean scan)');
+
+  const scrubbed = String(d.scrubSecretsInText(JSON.stringify(report)));
+  if (scrubbed.includes(SELFTEST_JWT) || !scrubbed.includes('<redacted-jwt>')) failures.push('scrub: a JWT in a finding reached the written report unredacted');
+  return { failures };
+}
+
 // ── CLI ──────────────────────────────────────────────────────────────────────
-const USAGE = 'Usage: sast-scan.mjs [--scope full|changed] [--base <ref>] [--only <scanner,...>] [--emit-allowlist] [--out <dir>] | --test-rules';
+const USAGE = 'Usage: sast-scan.mjs [--scope full|changed] [--base <ref>] [--only <scanner,...>] [--emit-allowlist] [--out <dir>] | --test-rules | --selftest';
 
 function parseArgs(argv) {
-  const args = { scope: 'full', base: 'origin/main', only: null, out: 'security/sast/reports', emitAllowlist: false, testRules: false };
+  const args = { scope: 'full', base: 'origin/main', only: null, out: 'security/sast/reports', emitAllowlist: false, testRules: false, selftest: false };
   const value = (i, flag) => {
     const v = argv[i];
     if (v === undefined || v.startsWith('--')) throw new SastUsageError(`${flag} needs a value. ${USAGE}`);
@@ -1056,6 +1120,7 @@ function parseArgs(argv) {
     else if (a === '--out') args.out = value(++i, a);
     else if (a === '--emit-allowlist') args.emitAllowlist = true;
     else if (a === '--test-rules') args.testRules = true;
+    else if (a === '--selftest') args.selftest = true;
     else throw new SastUsageError(`Unknown argument: ${a}. ${USAGE}`);
   }
   if (!['full', 'changed'].includes(args.scope)) throw new SastUsageError(`--scope must be full|changed (got "${args.scope}")`);
@@ -1086,6 +1151,15 @@ function main(argv) {
     args = parseArgs(argv);
     // Prove the custom rules still match what they claim BEFORE spending minutes on a real scan.
     if (args.testRules) return testRules();
+    if (args.selftest) {
+      const { failures } = sastSelftest();
+      if (failures.length) {
+        for (const f of failures) console.error(`✗ sast-scan --selftest: ${f}`);
+        return 1;
+      }
+      console.log('✓ sast-scan --selftest passed (Semgrep and pnpm-audit normalization, blocking, summary incl. a FAILED scanner, report scrubbing)');
+      return 0;
+    }
     // The enabled list is validated before anything is scanned or written.
     enabled = loadEnabledScanners();
     selected = selectScanners({ enabled, only: args.only });

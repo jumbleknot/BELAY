@@ -17,7 +17,8 @@ where practical.
 The repository is in early setup. The JavaScript toolchain is chosen (pnpm and Nx; see
 [Nx as the task runner](../invariants/nx-task-runner.md)). **No other language toolchain has been
 chosen yet, so don't assume one.** A task that needs a structural decision, such as a new language,
-a new build plugin or a new top-level folder, stops and asks before introducing it.
+a new build plugin or a new top-level folder, stops and asks before introducing it. The answer is
+recorded as an ADR under `docs/decisions/` (see [decision records](../process/decision-records.md)).
 
 ## Layout
 

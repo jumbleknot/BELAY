@@ -54,10 +54,12 @@ with none is *authoritative*: canonical in its own right, and listed under `auth
 | file or work a backlog item | [the backlog](./runbooks/backlog.md) |
 | handle a token or a `.env` | [secrets](./invariants/secrets-management.md), [the .env trap](./gotchas/env-file-inline-comments.md) |
 | trust a surprising tool result | [instrument traps](./gotchas/instrument-traps.md), [RTK](./invariants/rtk-token-compression.md) |
+| introduce a toolchain, build plugin, top-level folder, bot or long-lived credential | [decision records](./process/decision-records.md), [the decisions](./decisions/index.md) |
+| state a rule without writing its gate | [unenforced rules](./invariants/unenforced-rules.md) |
 | rename or remove something documented | [doc drift](./runbooks/doc-drift.md), [wiki maintenance](./process/wiki-maintenance.md) |
 
 ## Coverage
 
-Every document under `docs/runbooks/` has a concept that cites it. A runbook without one is a gap to
-fix, not a sign that the subject is undocumented. `docs/proposals/`, `docs/superpowers/` and `specs/`
-are deliberately not covered (see [the brief](./INSTRUCTIONS.md), §2).
+Every document under `docs/runbooks/` and `docs/decisions/` has a concept that cites it. A runbook or
+decision record without one is a gap to fix, not a sign that the subject is undocumented.
+`docs/proposals/`, `docs/superpowers/` and `specs/` are deliberately not covered (see [the brief](./INSTRUCTIONS.md), §2).
