@@ -4,7 +4,8 @@ title: OpenWiki quickstart — BELAY
 description: The root entry point to BELAY's OpenWiki bundle — what the bundle is and is not, how to query it by type, tag, resource or directory, a task-routing map to the concept areas, and how the derived-versus-authoritative split decides where a new learning belongs.
 tags: [openwiki, navigation, quickstart]
 resource: openwiki/INSTRUCTIONS.md
-timestamp: 2026-11-22
+resource-sha256: 0a3419d0375100f174edfcae3a04ff230b346ee99663cd8a396600b00406d5f6
+timestamp: 2026-11-23T13:26:41.476Z
 ---
 
 # OpenWiki quickstart — BELAY

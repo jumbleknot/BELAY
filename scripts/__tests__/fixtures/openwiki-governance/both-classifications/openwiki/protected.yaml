@@ -1,0 +1,12 @@
+version: 1
+
+authoritative:
+  - "gotchas/instrument-traps.md"
+  - "runbooks/devcontainer.md"
+
+passages:
+  - concept: "gotchas/instrument-traps.md"
+    anchor: "A skipped test reads as a pass"
+    fingerprint: "sha256:d72d16fb1c1b6f3c4b487f4a70a783af980286a8a66e34749e1d3c11fdffbd54"
+    origin: "AGENTS.md"
+    relocatedAt: "2026-11-22"

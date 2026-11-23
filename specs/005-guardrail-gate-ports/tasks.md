@@ -81,7 +81,7 @@ files (`scripts/project.json`, the runbooks, `AGENTS.md`) are integrated in the 
 
 ### Tests for User Story 1 ⚠️
 
-- [ ] T010 [P] [US1] Port MCM's topology tests to `scripts/__tests__/check-topology-scrub.test.mjs`,
+- [x] T010 [P] [US1] Port MCM's topology tests to `scripts/__tests__/check-topology-scrub.test.mjs`,
   or write them where MCM has none. They cover: a placeholder passes, a real-shaped host fails and is
   named, `--selftest` exits 0, and an unknown flag exits 2. Build real-shaped hosts from fragments
   - **Scenarios covered**: US1-AC1, US1-AC2, US1-AC3
@@ -90,7 +90,7 @@ files (`scripts/project.json`, the runbooks, `AGENTS.md`) are integrated in the 
 
 ### Implementation for User Story 1
 
-- [ ] T011 [US1] Port `scripts/check-topology-scrub.mjs` (research R3). Update the two test comments
+- [x] T011 [US1] Port `scripts/check-topology-scrub.mjs` (research R3). Update the two test comments
   that say "a topology-scrub gate, issue #1" to name `scripts/check-topology-scrub.mjs`
   - **Verify GREEN**: the T010 command → 0 failures; `node scripts/check-topology-scrub.mjs` exits 0
     on the tree
@@ -105,13 +105,13 @@ files (`scripts/project.json`, the runbooks, `AGENTS.md`) are integrated in the 
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T012 [P] [US2] Add `scripts/__tests__/secret-scan.test.mjs`. It covers: a tree-scan of a
+- [x] T012 [P] [US2] Add `scripts/__tests__/secret-scan.test.mjs`. It covers: a tree-scan of a
   fixture git repository holding a fragment-built key exits 1 and names the file but not the value,
   and a clean fixture exits 0. It needs a `--dir`/cwd seam if the script lacks one
   - **Scenarios covered**: US2-AC1
   - **Verify RED**: `node --test scripts/__tests__/secret-scan.test.mjs` → expected: ≥1 failing (no
     seam yet)
-- [ ] T013 [P] [US2] Port `scripts/__tests__/check-toolchain-consistency.test.mjs`, trimmed to the
+- [x] T013 [P] [US2] Port `scripts/__tests__/check-toolchain-consistency.test.mjs`, trimmed to the
   kept rules (research R2). It covers: two Node majors, a job without a pinned setup-node, a pnpm
   version outside `packageManager`, a nested `packageManager`, a range on `nx`, `@nx/*` and
   `@playwright/test`, a floor violation, and the clean BELAY tree
@@ -121,10 +121,10 @@ files (`scripts/project.json`, the runbooks, `AGENTS.md`) are integrated in the 
 
 ### Implementation for User Story 2
 
-- [ ] T014 [US2] Give `scripts/secret-scan.mjs` the test seam T012 needs, and replace its header's
+- [x] T014 [US2] Give `scripts/secret-scan.mjs` the test seam T012 needs, and replace its header's
   "tracked separately (issue #1)" with the fact that the tree scan runs in `scripts:lint`
   - **Verify GREEN**: the T012 command → 0 failures; `node scripts/secret-scan.mjs` exits 0
-- [ ] T015 [US2] Port `scripts/check-toolchain-consistency.mjs` (research R2). It is trimmed to
+- [x] T015 [US2] Port `scripts/check-toolchain-consistency.mjs` (research R2). It is trimmed to
   BELAY's pin sites and adds the lockstep-exact rule for `nx`, `@nx/*` and `@playwright/test`. Fix
   any drift the first run finds in the files, never in the gate
   - **Verify GREEN**: the T013 command → 0 failures; `node scripts/check-toolchain-consistency.mjs`
@@ -141,48 +141,48 @@ files (`scripts/project.json`, the runbooks, `AGENTS.md`) are integrated in the 
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T020 [P] [US3] Port `scripts/__tests__/openwiki-fingerprint.test.mjs`,
+- [x] T020 [P] [US3] Port `scripts/__tests__/openwiki-fingerprint.test.mjs`,
   `openwiki-links.test.mjs` and `openwiki-stamp.test.mjs`
   - **Scenarios covered**: US3-AC1, US3-AC3 (links)
   - **Verify RED**: `node --test scripts/__tests__/openwiki-{fingerprint,links,stamp}.test.mjs` →
     expected: ≥1 failing, `Cannot find module`
-- [ ] T021 [P] [US3] Port `scripts/__tests__/check-openwiki-okf.test.mjs`, with its fixtures
+- [x] T021 [P] [US3] Port `scripts/__tests__/check-openwiki-okf.test.mjs`, with its fixtures
   re-pointed at BELAY-shaped bundles
   - **Scenarios covered**: US3-AC1, US3-AC3
   - **Verify RED**: `node --test scripts/__tests__/check-openwiki-okf.test.mjs` → expected: ≥1
     failing, `Cannot find module`
-- [ ] T022 [P] [US3] Port `scripts/__tests__/check-openwiki-governance.test.mjs`, with its
+- [x] T022 [P] [US3] Port `scripts/__tests__/check-openwiki-governance.test.mjs`, with its
   managed-region cases narrowed to BELAY's Spec Kit region and an absent-policy-file case added
   (research R4)
   - **Scenarios covered**: US3-AC4, US3-AC5
   - **Verify RED**: `node --test scripts/__tests__/check-openwiki-governance.test.mjs` → expected: ≥1
     failing, `Cannot find module`
-- [ ] T023 [P] [US3] Port `scripts/__tests__/wiki-refresh.test.mjs`
+- [x] T023 [P] [US3] Port `scripts/__tests__/wiki-refresh.test.mjs`
   - **Scenarios covered**: US3-AC2
   - **Verify RED**: `node --test scripts/__tests__/wiki-refresh.test.mjs` → expected: ≥1 failing,
     `Cannot find module`
 
 ### Implementation for User Story 3
 
-- [ ] T024 [US3] Port `scripts/openwiki-front-matter.mjs`, `openwiki-fingerprint.mjs`,
+- [x] T024 [US3] Port `scripts/openwiki-front-matter.mjs`, `openwiki-fingerprint.mjs`,
   `openwiki-links.mjs`, `openwiki-stamp.mjs` and `openwiki-policy.mjs` (data-model.md "Derived page")
   - **Verify GREEN**: the T020 command → 0 failures
-- [ ] T025 [US3] Port `scripts/check-openwiki-okf.mjs`
+- [x] T025 [US3] Port `scripts/check-openwiki-okf.mjs`
   - **Verify GREEN**: the T021 command → 0 failures; `--selftest` exits 0
-- [ ] T026 [US3] Port `scripts/check-openwiki-governance.mjs` (research R4: no policy file, BELAY's
+- [x] T026 [US3] Port `scripts/check-openwiki-governance.mjs` (research R4: no policy file, BELAY's
   managed regions, MCM's budgets)
   - **Verify GREEN**: the T022 command → 0 failures; `--selftest` exits 0
-- [ ] T027 [US3] Port `scripts/wiki-refresh.mjs` and `.claude/skills/wiki-refresh/SKILL.md`. The
+- [x] T027 [US3] Port `scripts/wiki-refresh.mjs` and `.claude/skills/wiki-refresh/SKILL.md`. The
   skill's examples name BELAY pages, not MCM's
   - **Verify GREEN**: the T023 command → 0 failures
-- [ ] T028 [US3] Run both gates on the real bundle, and fix every finding in the pages or the brief,
+- [x] T028 [US3] Run both gates on the real bundle, and fix every finding in the pages or the brief,
   never with an allowlist (FR-003)
   - **Done when**: both gates' scan modes exit 0 on the tree
-- [ ] T029 [US3] Record a `resource-sha256` on every derived page with `wiki-refresh.mjs --record`,
+- [x] T029 [US3] Record a `resource-sha256` on every derived page with `wiki-refresh.mjs --record`,
   and compute any `protected.yaml` passage fingerprints with governance's `--fingerprint` mode
   (data-model.md "Derived page", "Authoritative page")
   - **Done when**: `node scripts/wiki-refresh.mjs --stale` prints nothing and exits 0
-- [ ] T032 [US3] State enforcement in `openwiki/INSTRUCTIONS.md` (intro and §9),
+- [x] T032 [US3] State enforcement in `openwiki/INSTRUCTIONS.md` (intro and §9),
   `openwiki/process/wiki-maintenance.md`, the `openwiki/protected.yaml` header and
   `openwiki/invariants/feature-validation-checklist.md`, naming the gates (FR-034)
   - **Done when**: the sweep terms `NOT YET ENFORCED`, `item #28` and `by review` have no
@@ -198,7 +198,7 @@ files (`scripts/project.json`, the runbooks, `AGENTS.md`) are integrated in the 
 
 ### Tests for User Story 4 ⚠️
 
-- [ ] T035 [P] [US4] Port `scripts/__tests__/registry-retention.test.mjs`, replacing MCM's
+- [x] T035 [P] [US4] Port `scripts/__tests__/registry-retention.test.mjs`, replacing MCM's
   git-history protection cases with `protect:` list cases (research R5). Cases: a protected digest
   is kept, a missing protected digest gives exit 5 and no deletes, `--apply` against `mode: report`
   gives exit 2, a referenced child is kept, an unlisted package is never deleted, the workflow passes
@@ -209,16 +209,16 @@ files (`scripts/project.json`, the runbooks, `AGENTS.md`) are integrated in the 
 
 ### Implementation for User Story 4
 
-- [ ] T036 [US4] Port `scripts/registry-retention.mjs` (contracts/registry-retention.md;
+- [x] T036 [US4] Port `scripts/registry-retention.mjs` (contracts/registry-retention.md;
   data-model.md "Retention configuration", "Retention row")
   - **Verify GREEN**: the T035 command → 0 failures
-- [ ] T037 [P] [US4] Add `infrastructure-as-code/forgejo/registry-retention.yaml` (`mode: report`,
+- [x] T037 [P] [US4] Add `infrastructure-as-code/forgejo/registry-retention.yaml` (`mode: report`,
   `belay-devcontainer` 4/21, and `belay-ci-failures` at the durations floor) and
   `.forgejo/workflows/registry-retention.yml` (weekly, runner `belay`, setup-node pinned, report
   before delete, failure digest)
   - **Verify GREEN**: the T035 command → 0 failures; `node scripts/check-ci-digest-coverage.mjs` and
     `node scripts/check-toolchain-consistency.mjs` exit 0
-- [ ] T042 [US4] `docs/runbooks/devcontainer.md`: state the retention window, the `protect:` re-pin
+- [x] T042 [US4] `docs/runbooks/devcontainer.md`: state the retention window, the `protect:` re-pin
   step and the report→apply switch, replacing "Nothing deletes old images yet (backlog item #32)";
   `docs/runbooks/ci.md`: the `registry-retention` workflow and its `REGISTRY_CLEANUP_TOKEN` secret
   - **Done when**: the sweep term `Nothing deletes` has no hit
@@ -227,28 +227,28 @@ files (`scripts/project.json`, the runbooks, `AGENTS.md`) are integrated in the 
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T044 Wire every new gate into `scripts/project.json` `lint`, each as its own selftest + scan
+- [x] T044 Wire every new gate into `scripts/project.json` `lint`, each as its own selftest + scan
   command: topology, the secret-scan tree scan, toolchain, okf, governance. Add `wiki-refresh.mjs
   --stale`
   - **Done when**: `pnpm nx run scripts:lint` runs and passes every line
-- [ ] T045 `AGENTS.md`: replace "not yet gated (no V17 here; item #28)" with the gate's name, and add
+- [x] T045 `AGENTS.md`: replace "not yet gated (no V17 here; item #28)" with the gate's name, and add
   the gate line "never commit a tailnet host" naming `check-topology-scrub.mjs` (FR-012), within the
   governance size budget
   - **Done when**: `node scripts/check-openwiki-governance.mjs` exits 0
-- [ ] T046 [P] `docs/runbooks/ci.md`: the lint list names every new gate, and a short section per gate
+- [x] T046 [P] `docs/runbooks/ci.md`: the lint list names every new gate, and a short section per gate
   covers what it checks, how to fix a hit, and its exit codes
   - **Done when**: every new script name appears in `docs/runbooks/ci.md`
-- [ ] T047 [P] `openwiki/invariants/nx-task-runner.md`, `testing-tiers.md`, `secrets-management.md`,
+- [x] T047 [P] `openwiki/invariants/nx-task-runner.md`, `testing-tiers.md`, `secrets-management.md`,
   `openwiki/runbooks/ci.md`: gate lists updated; derived pages refreshed with `wiki-refresh.mjs
   --record` after their sources change
   - **Done when**: `node scripts/wiki-refresh.mjs --stale` exits 0
 - [ ] T048 File the SAST backlog item (research R6), and comment the outcome on items #1, #2, #28 and
   #32: the per-candidate disposition table from plan.md, and how each criterion was verified
   - **Done when**: the new item exists, and each of the four items has a comment
-- [ ] T049 **Close-out re-search**: re-run T002's searches. Every remaining hit in a doc that states
+- [x] T049 **Close-out re-search**: re-run T002's searches. Every remaining hit in a doc that states
   current procedure is fixed, or justified here
-- [ ] T050 Run quickstart.md steps 1–5 (step 6's live report needs the registry secret)
-- [ ] T051 Final checks: `pnpm nx run scripts:lint`, `pnpm nx run scripts:test` (watch the skip
+- [x] T050 Run quickstart.md steps 1–5 (step 6's live report needs the registry secret)
+- [x] T051 Final checks: `pnpm nx run scripts:lint`, `pnpm nx run scripts:test` (watch the skip
   count), and `node scripts/check-speckit-overrides.mjs`
 - [ ] T052 **Open the PR** from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
   1. `git push origin HEAD:005-guardrail-gate-ports`

@@ -42,10 +42,13 @@ Full detail is in the [CI runbook](../../docs/runbooks/ci.md#secrets) and the
 - **Everything CI publishes goes through the fail-closed redactor** (`scripts/ci-digest-redact.mjs`).
   It rewrites credentials and the forge host, and withholds an excerpt entirely if anything
   credential-shaped survives. "Excerpt withheld" in a digest means exactly that.
-- **`scripts/secret-scan.mjs` exists, and its selftest runs in `scripts:lint`.** Keep test fixtures
+- **`scripts/secret-scan.mjs` scans every tracked file in `scripts:lint`, after its selftest.** A
+  finding names the file, line and rule, never the value. Keep test fixtures
   that look like credentials obviously fake, so they never train anyone to ignore a real hit.
 - **Wiki pages and docs never name the forge host, a tailnet address or a host-and-port pair** (see
-  [the brief](../INSTRUCTIONS.md), §3). Refer to them abstractly.
+  [the brief](../INSTRUCTIONS.md), §3). Refer to them abstractly. `scripts/check-topology-scrub.mjs`
+  fails any real `*.ts.net` host in a tracked file; a host containing `tailnet` or `example` is a
+  placeholder, and `<tailnet-host>` is the one to use in prose.
 - **A running process keeps its old environment.** A token set after the editor or terminal started
   is invisible to it, and a tool reports the variable as missing. Restart the process before
   concluding the token is wrong.

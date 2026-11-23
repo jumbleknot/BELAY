@@ -4,7 +4,8 @@ title: The agent-driven backlog (Forgejo Issues)
 description: How the BELAY backlog lives in the repository's own Forgejo tracker and is worked by the assistant through scripts/backlog.mjs and the tasks-to-issues fan-out — the write credential bounded server-side by its scope and client-side by a same-repository guard, the label and milestone conventions, why closure is an explicit act, and the API traps that make a filter fail open.
 tags: [backlog, forgejo, issues, runbook]
 resource: docs/runbooks/backlog.md
-timestamp: 2026-11-22
+resource-sha256: 83b9425d0aff9204f66bda273ad37030deee056e34215a413fcf19596125bca1
+timestamp: 2026-11-23T13:26:41.479Z
 ---
 
 # The agent-driven backlog (Forgejo Issues)

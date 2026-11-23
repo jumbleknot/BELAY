@@ -17,9 +17,9 @@ BELAY is a polyglot monorepo of tooling that other repositories share, so every 
 - **Run the checks your DIFF touches — and CI's two targets before every push** — `pnpm nx run scripts:lint` and `pnpm nx run scripts:test` are exactly what CI runs; a change under `.specify/` or `.claude/skills/speckit-*` also needs `node scripts/check-speckit-overrides.mjs` first — [validation checklist](openwiki/invariants/feature-validation-checklist.md)
 - **A guard that fails because you changed what it protects gets UPDATED at the cause, never deleted** — make it assert the new premise so it still fails if that regresses — [testing tiers](openwiki/invariants/testing-tiers.md)
 - **Never edit a Spec Kit-owned file without registering it; never edit a core template** — `specify integration upgrade --force` overwrites them; use an override, or register the local edit in `scripts/check-speckit-overrides.mjs` and the runbook in the same change — [Spec Kit](openwiki/runbooks/spec-kit.md)
-- **Changing a file that an `openwiki/` page cites as its `resource` means refreshing that page IN THE SAME PR** — not yet gated (no V17 here; item #28), so it is on you and on review: `git grep -n "^resource: <path>" openwiki/` — [wiki maintenance](openwiki/process/wiki-maintenance.md)
+- **Changing a file that an `openwiki/` page cites as its `resource` means refreshing that page IN THE SAME PR** — the OKF gate's V17 fails it otherwise: `node scripts/wiki-refresh.mjs --stale`, then `--diff`/`--record <page>`, never a hand-typed hash — [wiki maintenance](openwiki/process/wiki-maintenance.md)
 - **pnpm only, through Nx** — `pnpm install --frozen-lockfile`; npm and yarn are refused by `preinstall`; every package with an install script needs an `allowBuilds` entry — [pnpm](openwiki/invariants/package-manager-enforcement.md), [Nx](openwiki/invariants/nx-task-runner.md)
-- **Never commit secrets, `.env` files, keys or Terraform state; never print a credential** — templates are `*.example`; docs and wiki pages never name the forge host or a tailnet address — [secrets posture](openwiki/invariants/secrets-management.md)
+- **Never commit secrets, `.env` files, keys or Terraform state; never print a credential** — templates are `*.example`; docs and wiki pages never name the forge host or a tailnet address, and `check-topology-scrub.mjs` fails any real `*.ts.net` host in a tracked file (a placeholder contains `tailnet` or `example`) — [secrets posture](openwiki/invariants/secrets-management.md)
 
 ## Start here
 
@@ -34,7 +34,7 @@ BELAY is a polyglot monorepo of tooling that other repositories share, so every 
 - A concept citing a `resource` is a **derived summary** → write the learning into the cited source **and refresh the concept in the same PR** — [the rule](openwiki/INSTRUCTIONS.md)
 - A concept marked **[canonical]** below has no upstream document → write the learning **into the concept** — [the canonical list](openwiki/protected.yaml)
 - No concept covers the subject → **add one**, writing detail into the subject's canonical document where it has one — [how to](openwiki/INSTRUCTIONS.md)
-- **Never** into this file: it is an index — an entry keeps its rule, its trap and a link; the story goes in the linked page
+- **Never** into this file: it is an index — an entry keeps its rule, its trap and a link; the story goes in the linked page — [the rule](openwiki/INSTRUCTIONS.md)
 - **Never** into [CLAUDE.md](CLAUDE.md) either: it is a shim, so content there reaches Claude alone
 
 ## Knowledge index

@@ -55,3 +55,10 @@ pnpm-lock.yaml    -diff linguist-generated
 *.woff2 binary
 *.ttf   binary
 *.otf   binary
+
+# Test fixtures keep their EXACT bytes (ported from MovieCollectionManager). `* text=auto eol=lf`
+# above normalizes on add. That is right for real documents and WRONG for a fixture whose CRLF IS the
+# subject under test: scripts/__tests__/fixtures/openwiki-governance/whitespace-drift/ proves that
+# check-openwiki-governance normalizes line endings, and its test asserts a passing exit. Strip the
+# CRLF and that test still PASSES while no longer testing CRLF at all: a silently weakened gate.
+scripts/__tests__/fixtures/** -text

@@ -4,8 +4,9 @@ This file sets the scope and rules for the `openwiki/` knowledge bundle. It is *
 Anything that writes the bundle, whether a coding session or a generator run, reads this file and
 never rewrites it.
 
-The layout follows MovieCollectionManager's bundle, where it is enforced by gates. BELAY has not
-ported those gates yet (see §9), so for now every rule here is kept by review.
+The layout follows MovieCollectionManager's bundle, and so do its gates. Most rules here are
+enforced by two gates in `scripts:lint`, inside the required `guardrails` check (see §9). The rest
+are kept by review.
 
 ---
 
@@ -142,8 +143,8 @@ Use only these `type` values, so filtering stays predictable:
 - **`resource` is what classifies a page.** A page that has one is a *derived summary* of that file.
   A page without one is *authoritative* and must be listed in `protected.yaml`. Leaving out a
   citation you should have made turns a summary into false canon.
-- **Do not write `resource-sha256` by hand.** When the refresh tool is ported (§9), it records the
-  fingerprint from the file's actual bytes. Until then, derived pages carry no fingerprint.
+- **Do not write `resource-sha256` by hand.** `node scripts/wiki-refresh.mjs --record <page>` records
+  the fingerprint from the file's actual bytes, and every derived page carries one (§9).
 - `timestamp` is ISO 8601. It records when the page was last brought up to date.
 
 ## 6. Links in the body: relative to the file, never to the site root
@@ -221,18 +222,26 @@ or a current CI verdict. A copied value is wrong by the next run, and a page tha
 authoritative while it is stale. A measured value that explains *why* a rule exists belongs in the
 source runbook, dated, and the page may cite it from there.
 
-## 9. What is not enforced yet
+## 9. What is enforced, and by what
 
-MovieCollectionManager enforces this brief mechanically. Its OKF conformance gate checks front
-matter, links and an `index.md` per directory, and its rule V17 fails a PR whose derived page no
-longer matches its source's fingerprint. Its governance gate keeps `AGENTS.md` an index and
-`CLAUDE.md` a shim, and keeps every page exactly one of derived or authoritative. Its
-`wiki-refresh.mjs` records fingerprints.
+Two gates enforce this brief. Both run in `pnpm nx run scripts:lint`, so the required `guardrails`
+check fails on any finding. Each finding names the page and the rule. Neither has an allowlist: fix
+the page, or the brief.
 
-BELAY has **none of these yet**. Porting them is backlog item 28. Until they land:
+- **`scripts/check-openwiki-okf.mjs`** (the OKF gate) checks every page: front matter that parses
+  and has a `type` (§5), ISO 8601 timestamps, a `resource` that resolves, an `index.md` in every
+  directory listing every page, no site-root body link and no relative link that fails to resolve
+  (§6). Its rule **V17** fails a derived page whose `resource-sha256` does not match its source.
+- **`scripts/check-openwiki-governance.mjs`** keeps `AGENTS.md` an index within its size budget
+  (§7), `CLAUDE.md` a shim that only imports it, and every page exactly one of derived or
+  authoritative (§1, §4c). A `resource` must be one file that no bot rewrites (§5). It also checks
+  the passage fingerprints in `protected.yaml`.
+- **`scripts/wiki-refresh.mjs`** is the refresh tool. `--stale` lists the pages V17 would fail,
+  `--diff <page>` shows the source's change since the page was recorded, and `--record <page>`
+  writes the fingerprint. The `wiki-refresh` skill walks through it.
 
-- the same-PR refresh duty in §7 is kept by the session and checked in review;
-- `protected.yaml` lists the authoritative pages but carries no passage fingerprints;
-- broken body links are not caught, so check a link you write by opening it.
+Still kept by review: whether a summary is *accurate* (V17 proves only that someone recorded it
+after the source last changed), the redaction rules in §3 beyond what the secret scan and the
+topology scrub catch, and the content rules in §1, §4 and §8.
 
-The [wiki maintenance page](process/wiki-maintenance.md) has the interim procedure.
+The [wiki maintenance page](process/wiki-maintenance.md) has the procedure.

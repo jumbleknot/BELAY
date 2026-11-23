@@ -1,10 +1,11 @@
 ---
 type: Runbook
 title: The dev container — Docker Sandbox, credentials, egress and the worktree rule
-description: BELAY's dev container in the dedicated belay Docker Sandbox microVM — the one-step launcher, what survives a recreate versus sbx rm, how forge tokens reach the container without entering an image, bring-up from nothing (including the kit's missing Node), recreate and re-pin from the CI-published digest, the default-deny egress allowlist and its approval-queue rule, the sbx upgrade ritual, the worktree rule, and the measured traps.
+description: BELAY's dev container in the dedicated belay Docker Sandbox microVM — the one-step launcher, what survives a recreate versus sbx rm, how forge tokens reach the container without entering an image, bring-up from nothing (including the kit's missing Node), recreate and re-pin from the CI-published digest and recording the pin so retention keeps it, the default-deny egress allowlist and its approval-queue rule, the sbx upgrade ritual, the worktree rule, and the measured traps.
 tags: [devcontainer, sandbox, egress, credentials, worktree, runbook]
 resource: docs/runbooks/devcontainer.md
-timestamp: 2026-11-23
+resource-sha256: c1dc351d2723008e473e023cce7a24635f2381ecb2b631b29a6f363f7bb70c16
+timestamp: 2026-11-23T13:26:41.480Z
 ---
 
 # The dev container — Docker Sandbox, credentials, egress and the worktree rule
@@ -31,6 +32,14 @@ from a stopped sandbox into VS Code in the container, measured at 9 s. Full proc
   local build needs open egress.
 - **The kit VM has no Node, and its package repository is blocked.** Install the official Node
   tarball from `nodejs.org`, which is allowlisted, then the devcontainer CLI.
+- **Record every re-pin, or retention can delete it.** Retention keeps the newest 4
+  `belay-devcontainer` versions or anything younger than 21 days. An older pin survives only if its
+  digest is under `protect:` in `infrastructure-as-code/forgejo/registry-retention.yaml`, so each
+  re-pin is followed by a PR that adds the new digest there and drops the old one. A digest is not a
+  secret; the registry host stays in the VM's env file.
+- **Configure the VM from the host, over stdin.** Bring-up's engine, git and env-file steps run from
+  Git Bash through `sbx exec -i`, with every value piped on stdin, so no token appears in any
+  process's argv.
 - **Source the env file with `set -a`.** Otherwise the pin is not exported, and the build silently
   uses a stale local tag. `check-image-pin.sh` warns when that happens.
 - **The first `git pull` after the lock file is committed upstream fails** on the VM's untracked

@@ -23,8 +23,9 @@ whenever its trigger is in the diff, even outside a Spec Kit feature.
       `node scripts/check-speckit-overrides.mjs` passes. It also runs inside `scripts:lint`. Run it
       on its own first, because its failure codes name the fix.
 - [ ] **Wiki refresh.** For every file this PR changed that an `openwiki/` page cites as its
-      `resource`, that page is brought up to date in this PR (see
-      [wiki maintenance](../process/wiki-maintenance.md)). An empty list is valid.
+      `resource`, that page is brought up to date in this PR and its fingerprint recorded with
+      `node scripts/wiki-refresh.mjs --record` (see [wiki maintenance](../process/wiki-maintenance.md)).
+      `node scripts/wiki-refresh.mjs --stale` prints nothing.
 - [ ] **New repository-wide convention?** It has a canonical page and a one-line `AGENTS.md` index
       entry.
 - [ ] `rtk gain`: compression is active. Run it last, because it measures the commands above.
@@ -40,8 +41,10 @@ whenever its trigger is in the diff, even outside a Spec Kit feature.
 - **`tasks.md` is ticked before CI runs, and CI evidence goes in the PR, never in `tasks.md`.** The
   tasks template's **Open the PR** task runs the PR tools. Recording a CI result in `tasks.md` would
   need another commit and another CI run (see [Spec Kit](../runbooks/spec-kit.md), row 1).
-- **Until the wiki gates are ported, the wiki-refresh item is checked by review only.** Nothing fails
-  the build when a summary goes stale, so this item is what keeps it fresh.
+- **The wiki-refresh item is enforced, but only as far as a fingerprint can prove.** The OKF gate's
+  V17, in `scripts:lint`, fails a derived page whose source changed since its fingerprint was
+  recorded (`node scripts/wiki-refresh.mjs --stale` lists them). It cannot tell whether the summary
+  was actually brought up to date, so read the `--diff` before you `--record`.
 
 See [testing tiers](./testing-tiers.md) for what each target contains, and
 [RTK token compression](./rtk-token-compression.md) for why `rtk gain` runs last.

@@ -4,7 +4,8 @@ title: "Doc drift: the doc-impact sweep and the quarterly audit"
 description: How BELAY keeps its procedure documents in step with the code — the doc-impact sweep every SDD feature runs at task generation and close-out, carried by a Spec Kit tasks-template override and required by the constitution; the three layers and which are live; and the quarterly drift audit that measures the result and files its own successor.
 tags: [documentation, drift, spec-kit, sdd, audit, runbook]
 resource: docs/runbooks/doc-drift.md
-timestamp: 2026-11-22
+resource-sha256: 139a10b5f52c42a3435157109f7ed3272eede3b5a64b1f876748488926219ac0
+timestamp: 2026-11-23T13:26:41.478Z
 ---
 
 # Doc drift: the doc-impact sweep and the quarterly audit
@@ -37,7 +38,8 @@ source document. This runbook covers the other direction: keeping a source docum
 - **The sweep is required even without the template.** The constitution's **Documentation**
   principle requires it on its own, so a change made without `/speckit-tasks` still runs the search
   before its PR.
-- **Include the bundle.** The sweep's search covers `openwiki/` and `AGENTS.md`. With no link gate
-  yet, it is the only thing that catches a page still naming a renamed path.
+- **Include the bundle.** The sweep's search covers `openwiki/` and `AGENTS.md`. The OKF gate (V15)
+  fails a dead relative *link*, but a renamed path named in prose or in a code span is caught only by
+  the sweep.
 - **History is never rewritten.** Decision records, specs, proposals, design records and dated
   measurements describe the past and stay as written, even when the audit finds them out of date.

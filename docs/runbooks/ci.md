@@ -27,6 +27,14 @@ A push to a branch with an open PR runs once, through the `pull_request` event. 
    - the digest-coverage gate, with its selftest;
    - the secret-scan, redactor, digest and `ci-status` selftests;
    - the egress allowlist check (`node scripts/gen-egress-policy.mjs --check`), which validates `.devcontainer/egress-allowlist.json`.
+   - the tree scans, each run as its own command after its selftest, so a failure names its gate:
+     - `secret-scan.mjs`: no credential-shaped string in any tracked file. A finding names the file, line and rule, never the value.
+     - `check-topology-scrub.mjs`: no real tailnet host (`*.ts.net`) in any tracked file. A host containing `tailnet` or `example` is a placeholder; use `<tailnet-host>` in prose.
+     - `check-toolchain-consistency.mjs`: every Node pin is the same major and meets `engines.node`, every Node-running workflow job pins Node with `setup-node`, pnpm is named only by root `packageManager`, and `nx`, `@nx/*` and `@playwright/test` are exact versions.
+     - `check-openwiki-okf.mjs`: the `openwiki/` bundle's front matter, links and `index.md` files, and V17, which fails a derived page whose source changed after its recorded `resource-sha256`. Fix with `node scripts/wiki-refresh.mjs --stale`, then `--diff` and `--record <page>`.
+     - `check-openwiki-governance.mjs`: `AGENTS.md` stays an index within its size budget, `CLAUDE.md` stays the shim, and every concept is either derived or listed in `openwiki/protected.yaml`.
+
+   Every gate exits 0 when clean, 1 on a finding or a broken selftest, and 2 on bad arguments or unreadable input. Fix a finding in the file it names; never weaken the gate to pass.
 6. `pnpm nx run scripts:test`, which runs every `scripts/__tests__/*.test.mjs`.
 7. The failure digest. It always runs and never changes the job's result.
 
