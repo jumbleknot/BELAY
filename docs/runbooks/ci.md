@@ -1,7 +1,7 @@
 # CI runbook: guardrails
 
-BELAY's CI is one Forgejo Actions workflow, [`.forgejo/workflows/guardrails.yml`](../../.forgejo/workflows/guardrails.yml). Branch protection on `main` requires it to pass. This runbook covers:
-- what the workflow runs;
+BELAY's required CI is one Forgejo Actions workflow, [`.forgejo/workflows/guardrails.yml`](../../.forgejo/workflows/guardrails.yml). Branch protection on `main` requires it to pass. A second workflow, [`devcontainer-image.yml`](../../.forgejo/workflows/devcontainer-image.yml), publishes the dev-container toolchain image; it is not a merge check (see [below](#the-devcontainer-image-workflow)). This runbook covers:
+- what the workflows run;
 - how to run the same checks locally;
 - how to read a failure;
 - the runner and secret it needs;
@@ -25,7 +25,8 @@ A push to a branch with an open PR runs once, through the `pull_request` event. 
 5. `pnpm nx run scripts:lint`:
    - the Spec Kit override gate, with its selftest;
    - the digest-coverage gate, with its selftest;
-   - the secret-scan, redactor and digest selftests.
+   - the secret-scan, redactor, digest and `ci-status` selftests;
+   - the egress allowlist check (`node scripts/gen-egress-policy.mjs --check`), which validates `.devcontainer/egress-allowlist.json`.
 6. `pnpm nx run scripts:test`, which runs every `scripts/__tests__/*.test.mjs`.
 7. The failure digest. It always runs and never changes the job's result.
 
@@ -72,6 +73,7 @@ If the digest notes the **degraded channel**, `CI_DIGEST_TOKEN` was unavailable 
 
 - **Runner:** `ci-belay`, a **repository** runner registered for BELAY only, under **Settings → Actions → Runners**. It runs on the homelab host as the `ci` user's systemd-user service `forgejo-runner-belay`, from `~/runner-belay`.
 - **Label:** jobs use `runs-on: belay`. The runner maps it to `docker://node:26-bookworm`, so a job starts in a Node 26 container. `setup-node` still pins the exact 26.13.1 in the workflow.
+- **The one exception:** the `devcontainer-image` job runs on the shared host runner (`runs-on: kvm`), because building an image needs a Docker daemon and `ci-belay` deliberately has no host Docker access. That runner has the host's Docker, so **the job must never run pull-request code**: its triggers are push to `main`, manual dispatch and the weekly schedule only. `scripts/__tests__/devcontainer-image-workflow.guard.test.mjs` fails if a `pull_request` or `pull_request_target` trigger is added. It also means an image build can queue behind MovieCollectionManager's jobs on that runner.
 - **Why its own runner:** the global `ci-homelab` runner (labels `ubuntu-latest`, `kvm`) is shared with MovieCollectionManager and runs one job at a time. BELAY's first run waited about 36 minutes behind it. The unique `belay` label keeps the two repositories from queuing behind each other.
 - **A run stays "Waiting for a runner with the following label: belay":** `ci-belay` is offline. On the host, run `systemctl --user status forgejo-runner-belay` and `journalctl --user -u forgejo-runner-belay -f`. `scripts/__tests__/guardrails-workflow.test.mjs` pins the label, so change it in the same commit as `runs-on`.
 
@@ -89,13 +91,27 @@ The one way out of that container is host Docker access. Pin it off explicitly r
 
 The repository is private, and Forgejo gives no secrets (`CI_DIGEST_TOKEN`) to fork PRs. If collaborators or fork PRs are ever allowed, require approval before a fork's workflows run.
 
+## The devcontainer-image workflow
+
+[`.forgejo/workflows/devcontainer-image.yml`](../../.forgejo/workflows/devcontainer-image.yml) builds `.devcontainer/toolchain.Dockerfile` and pushes it to the forge's container registry as `belay-devcontainer:<commit sha>`. The dev container then uses it by digest (see [devcontainer.md](devcontainer.md)).
+
+- **Triggers:** a push to `main` that touches an image input (`.devcontainer/toolchain.Dockerfile`, `.devcontainer/Dockerfile`, the workflow itself, `scripts/install-pnpm.sh`, `scripts/devcontainer-image-gate.mjs`) or `package.json`; manual dispatch; and Fridays at 06:00 UTC. Never pull requests (see [Runner](#runner)).
+- **The gate:** `scripts/devcontainer-image-gate.mjs` decides `build=true|false`. A `package.json` change builds only when its `packageManager` value moved, because the image installs pnpm at that pin. Anything it cannot establish (no `before` sha, an unreadable diff) builds. Dispatch and the schedule always build.
+- **Configuration:** the repository variables `REGISTRY` (the registry host and port), `NS` (the owner) and `REGISTRY_USER`, and the secret `REGISTRY_TOKEN` (`write:package`). A missing one fails the build step with a message naming it.
+- **Dispatch on a branch:** `node scripts/forge-pr.mjs dispatch devcontainer-image.yml --ref <branch>`. A dispatched run posts no commit status, so follow it in the Actions tab.
+- **The result:** the job writes the digest-pinned reference to the step summary, which this forge cannot read back. Resolve the digest from the registry instead (the recipe is in [devcontainer.md](devcontainer.md)).
+- **Failure digest:** the job ends with the standard failure-digest step, like every job here.
+
 ## Secrets
 
 | Name | Where | Scopes | Used by |
 | --- | --- | --- | --- |
 | `CI_DIGEST_TOKEN` | Repository **Settings → Actions → Secrets** | `write:issue`, `write:package`, `read:repository` | The failure-digest step only |
+| `REGISTRY_TOKEN` | Repository **Settings → Actions → Secrets** | `write:package` | The `devcontainer-image` push step only |
 
-No repository variables are needed. If `CI_DIGEST_TOKEN` is missing or empty, the digest falls back to the run token, then to the job log. CI never fails because of it.
+Guardrails needs no repository variables. If `CI_DIGEST_TOKEN` is missing or empty, the digest falls back to the run token, then to the job log. CI never fails because of it.
+
+The `devcontainer-image` workflow also needs the repository **variables** `REGISTRY`, `NS` and `REGISTRY_USER` (see [above](#the-devcontainer-image-workflow)). They are topology, not secrets, so they live in variables rather than in git.
 
 On your machine, CI doesn't need any of these:
 - `scripts/ci-status.mjs` reads with `FORGE_TOKEN`, a read-only token with `read:repository`, `read:issue` and `read:package`.

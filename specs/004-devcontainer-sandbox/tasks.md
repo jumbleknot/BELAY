@@ -366,9 +366,9 @@ Documentation, config and operator tasks use the "Done when" form instead.
 - [x] T033 [US3] Implement `.devcontainer/ensure-rtk-hook.sh`, ported from MCM with BELAY's install message. This needs T030 verified RED.
   - **Verify GREEN:** `node --test scripts/__tests__/ensure-rtk-hook.test.mjs` → 0 failures.
 
-- [ ] T034 [US3] **External, needs the maintainer's approval:** generalise the guard in `jumbleknot/mcm-dotfiles` `install.sh` so it proceeds when `MCM_DEVCONTAINER=1` **or** `DEVCONTAINER_PERSONAL_LAYER=1` is set ([data-model.md, Markers](data-model.md)), and still logs and exits 0 otherwise. Update the README to match. Prepare the change in a scratch clone and show the diff to the maintainer. Push only after they approve it.
+- [x] T034 [US3] **External, needs the maintainer's approval:** generalise the guard in `jumbleknot/mcm-dotfiles` `install.sh` so it proceeds when `MCM_DEVCONTAINER=1` **or** `DEVCONTAINER_PERSONAL_LAYER=1` is set ([data-model.md, Markers](data-model.md)), and still logs and exits 0 otherwise. Update the README to match. Prepare the change in a scratch clone and show the diff to the maintainer. Push only after they approve it.
   - **Done when:**
-    - the pushed commit is on `main` of `mcm-dotfiles`;
+    - the pushed commit is on `master` (the default branch) of `mcm-dotfiles`: `4d0e130`;
     - `bash install.sh` with neither variable set prints the skip line and exits 0, observed in a scratch `HOME`;
     - MCM's next recreate is unaffected, because its marker still works.
 
@@ -411,19 +411,19 @@ Documentation, config and operator tasks use the "Done when" form instead.
 
 ## Phase 8: Polish & cross-cutting concerns
 
-- [ ] T038 [P] Update `docs/runbooks/ci.md`:
+- [x] T038 [P] Update `docs/runbooks/ci.md`:
   - add the allowlist check to the `scripts:lint` list (line 25);
   - add a "devcontainer-image" section covering triggers, the gate, the variables and secret, the digest recipe and the failure digest;
   - amend "Runner" (lines 74–75) with the `kvm` exception and its no-pull-request rule.
   - **Done when:** these three changes are made.
 
-- [ ] T039 [P] Refresh `openwiki/runbooks/ci.md` against the changed `docs/runbooks/ci.md`: the runner gotcha now names the image-job exception.
+- [x] T039 [P] Refresh `openwiki/runbooks/ci.md` against the changed `docs/runbooks/ci.md`: the runner gotcha now names the image-job exception.
   - **Done when:** the summary matches the runbook.
 
-- [ ] T040 [P] Update `openwiki/invariants/nx-task-runner.md` (the `scripts:lint` row and the new `scripts:build-devcontainer-image` target, noting its open-egress requirement) and `openwiki/invariants/testing-tiers.md` (the Gates row now includes the allowlist check).
+- [x] T040 [P] Update `openwiki/invariants/nx-task-runner.md` (the `scripts:lint` row and the new `scripts:build-devcontainer-image` target, noting its open-egress requirement) and `openwiki/invariants/testing-tiers.md` (the Gates row now includes the allowlist check).
   - **Done when:** both tables match `scripts/project.json`.
 
-- [ ] T041 [P] Add `.devcontainer/` to the layout table in `openwiki/projects/repository.md`, and a dev-container pointer to `README.md` (Development).
+- [x] T041 [P] Add `.devcontainer/` to the layout table in `openwiki/projects/repository.md`, and a dev-container pointer to `README.md` (Development).
   - **Done when:** both name `docs/runbooks/devcontainer.md`.
 
 - [ ] T042 **Close-out re-search:** re-run T001's searches for the old identifiers (`planned, not built`, `To write`, and the runner rule's old wording). Every remaining hit in a document that states current procedure is fixed or justified here.

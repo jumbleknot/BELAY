@@ -1,7 +1,7 @@
 ---
 type: Runbook
 title: CI guardrails, the failure digest, and the PR loop
-description: The single guardrails Forgejo Actions workflow required on main — what it runs and how to reproduce it locally, how a failure is read back from the redacted digest and its package bundle with ci-status.mjs, the dedicated repository runner and its one secret, branch protection, the terminal PR loop through forge-pr.mjs, and the rule every new job must follow.
+description: The single guardrails Forgejo Actions workflow required on main — what it runs and how to reproduce it locally, how a failure is read back from the redacted digest and its package bundle with ci-status.mjs, the dedicated repository runner and the one exception to it (the dev-container image job, which never runs pull-request code), branch protection, the terminal PR loop through forge-pr.mjs, and the rule every new job must follow.
 tags: [ci, forgejo, pull-requests, runbook]
 resource: docs/runbooks/ci.md
 timestamp: 2026-11-22
@@ -44,11 +44,18 @@ node scripts/forge-pr.mjs merge <n> --expect-head "$(git rev-parse HEAD)"
   available to that run.
 - **A dispatched run posts no commit status.** Follow a `forge-pr.mjs dispatch` run in the Actions
   tab, because `ci-status` cannot see it.
-- **The runner is BELAY's own.** Jobs use `runs-on: belay`, served by a repository runner that maps
-  it to a Node 26 container. The global runner is shared with MovieCollectionManager and runs one job
-  at a time, and BELAY's first run waited about 36 minutes behind it. A run stuck on "Waiting for a
-  runner with the following label: belay" means that runner is offline. The label is pinned by
-  `guardrails-workflow.test.mjs`, so change both together.
+- **The runner is BELAY's own, with one exception.** Jobs use `runs-on: belay`, served by a
+  repository runner that maps it to a Node 26 container with no host Docker access. The global
+  runner is shared with MovieCollectionManager and runs one job at a time, and BELAY's first run
+  waited about 36 minutes behind it. A run stuck on "Waiting for a runner with the following label:
+  belay" means that runner is offline. The label is pinned by `guardrails-workflow.test.mjs`, so
+  change both together.
+  - **The exception is `devcontainer-image`**, which builds the dev-container toolchain image and so
+    needs a Docker daemon. It runs on the shared host runner (`runs-on: kvm`), which has the host's
+    Docker, so it **must never run pull-request code**. Its triggers are push to `main`, dispatch and
+    the weekly schedule, and a guard test fails on any `pull_request` trigger.
+  - **Its result is not readable from the run.** The forge cannot read back the step summary, so the
+    published digest is resolved from the registry (see the [dev container](./devcontainer.md)).
 - **Every job ends with the failure-digest step, and every other `run:` step goes through
   `scripts/ci-log-step.sh`.** `check-ci-digest-coverage.mjs` fails `scripts:lint` otherwise. An
   opt-out needs a marker with a written reason. A blank reason is rejected.
