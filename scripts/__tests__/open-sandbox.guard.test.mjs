@@ -44,6 +44,16 @@ test('restarts with sbx run --name, reads sbx ls as JSON, and never calls sbx st
   assert.doesNotMatch(c, /sbx start/);
 });
 
+test('the sbx ls JSON array is unrolled before filtering by name', () => {
+  // Windows PowerShell 5.1's ConvertFrom-Json emits a JSON array as ONE pipeline object. Filtering
+  // that by name then matches the whole array, `.status` becomes every sandbox's status, and
+  // `-eq 'running'` is true when ANY sandbox runs. Measured 2026-11-23 with two sandboxes: the
+  // launcher reported a stopped `belay` as "already running" because `mcm` was up.
+  const c = code();
+  assert.match(c, /ConvertFrom-Json\)\s*\|\s*ForEach-Object\s*\{\s*\$_\s*\}/, 'unroll the parsed array with ForEach-Object { $_ }');
+  assert.match(c, /\$entry\.status -eq 'running'/);
+});
+
 test('every native call goes through Invoke-Native', () => {
   const lines = code().split('\n');
   const bare = lines.filter((l) => /(^|[\s;(])&\s*(sbx|ssh)\b/.test(l) || /^\s*(sbx|ssh)\s/.test(l));

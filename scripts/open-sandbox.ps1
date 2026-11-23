@@ -104,7 +104,11 @@ if ($ls.ExitCode -ne 0) {
   throw "'sbx ls' failed (exit $($ls.ExitCode)): $(($ls.Output | Out-String).Trim())"
 }
 $json = ($ls.Output | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }) -join "`n"
-try { $sandboxes = @($json | ConvertFrom-Json) } catch {
+# UNROLL the array. Windows PowerShell 5.1's ConvertFrom-Json emits a JSON array as ONE pipeline
+# object, so filtering it by name matched the whole array, `.status` became every sandbox's
+# status, and `-eq 'running'` was true whenever ANY sandbox ran. Measured 2026-11-23 with two
+# sandboxes on one host: a stopped `belay` was reported "already running" because `mcm` was up.
+try { $sandboxes = @(($json | ConvertFrom-Json) | ForEach-Object { $_ }) } catch {
   throw "could not parse 'sbx ls --format json' (exit $($ls.ExitCode)): $json"
 }
 $entry = $sandboxes | Where-Object { $_.name -eq $Sandbox } | Select-Object -First 1

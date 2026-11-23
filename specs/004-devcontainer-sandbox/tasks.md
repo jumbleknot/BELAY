@@ -240,7 +240,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
 - [x] T020 [US4] Implement `.devcontainer/check-image-pin.sh` per contracts/cli.md. This needs T016 verified RED. It follows [data-model.md, Sandbox environment file](data-model.md), `BELAY_DEVCONTAINER_IMAGE`.
   - **Verify GREEN:** `node --test scripts/__tests__/check-image-pin.test.mjs` → 0 failures, with a skip count of 0. Then T003's guard still passes.
 
-- [ ] T021 [US4] **Operator:**
+- [x] T021 [US4] **Operator:**
   1. Set the BELAY repository variables `REGISTRY`, `NS` and `REGISTRY_USER`, and the secret `REGISTRY_TOKEN` (`write:package`).
   2. Push the branch, and dispatch the workflow on it with `node scripts/forge-pr.mjs dispatch devcontainer-image.yml --ref 004-devcontainer-sandbox`.
   3. Resolve the digest from the registry's `manifests/<sha>` endpoint (research R7), and record the pinned reference for T026.
@@ -290,7 +290,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
 - [x] T025 [US1] Create `scripts/open-sandbox.ps1`, ported from MCM with BELAY defaults and saved with CRLF line endings. This needs T023 verified RED.
   - **Verify GREEN:** `node --test scripts/__tests__/open-sandbox.guard.test.mjs` → 0 failures.
 
-- [ ] T026 [US1] **Operator:** bring the sandbox up from nothing (quickstart steps 2, 3, 5 and 6, without the dotfiles yet).
+- [x] T026 [US1] **Operator:** bring the sandbox up from nothing (quickstart steps 2, 3, 5 and 6, without the dotfiles yet).
   1. **Create the sandbox:** `sbx create --name belay -m 8g --skills=off shell <empty dir>`.
   2. **Apply the policy immediately**, from T009 and T010: `node scripts/gen-egress-policy.mjs --format sbx-policy --forge-host <forge host>`, then `sbx policy allow network <d> --sandbox belay` for each line. Run `sbx policy ls belay`; the count must be 103. Dismiss anything in `sbx policy approval ls`; never approve it.
   3. **Provision the VM:** install the devcontainer CLI, add the forge registry as an insecure registry and restart with `sbx stop belay`, run `ldconfig`, and set the git identity and the credential store.
@@ -306,7 +306,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
     - `stat -c %a ~/.belay-sandbox-env` prints `600`, and `grep -c ANTHROPIC_API_KEY ~/.belay-sandbox-env` prints `0`;
     - the lock file is committed.
 
-- [ ] T027 [US1] **Operator:** check the launcher (quickstart step 4).
+- [x] T027 [US1] **Operator:** check the launcher (quickstart step 4).
   - **Done when:**
     - after `sbx stop belay`, `.\scripts\open-sandbox.ps1` lands VS Code in `/workspaces/belay` inside the container within 3 minutes (SC-001);
     - `-PrintOnly` prints the `vscode-remote://dev-container%2B…@ssh-remote%2Bbelay.sbx/workspaces/belay` URI;
