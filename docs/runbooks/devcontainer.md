@@ -1,22 +1,207 @@
 # Runbook: the dev container
 
-> **Status: planned, not built yet.** BELAY has no `.devcontainer/` today. This runbook is created
-> ahead of the container, so the rules that apply to it have one home from the start. Its paths
-> (`/workspaces/belay` for the shared checkout, `/home/coder/worktrees/` for worktrees) are the
-> intended layout. **When the container lands, confirm every path and command here against it**,
-> and fill in the sections marked *To write*.
+BELAY's development environment is a dev container inside a dedicated Docker Sandbox microVM,
+`belay`, on the Windows host. The VM holds the checkout at `/workspaces/belay`, its own container
+engine and the persistent volumes. All its outbound traffic is default-deny, governed host-side by
+one committed allowlist. The container is built from a digest-pinned toolchain image that CI
+publishes. Design and decisions: [specs/004-devcontainer-sandbox/](../../specs/004-devcontainer-sandbox/plan.md).
+
+Where each command runs:
+- **[host]**: Windows PowerShell 5.1 on the workstation;
+- **[VM]**: the sandbox shell (`sbx exec -i belay sh -s`, or `ssh belay.sbx`);
+- **[dc]**: the dev container, which is a VS Code terminal or `docker exec -u coder <dc>` from the VM.
+
+## Daily use
+
+**[host]** `.\scripts\open-sandbox.ps1`. It starts the sandbox if it has idle-stopped, waits for SSH,
+and opens VS Code directly in the container at `/workspaces/belay`. From stopped to VS Code was
+measured at 9 s. `-PrintOnly` prints the URI instead, which is useful for a shortcut. If script
+execution is blocked: `powershell -ExecutionPolicy Bypass -File .\scripts\open-sandbox.ps1`.
+
+**The VM idle-stops about 30 s after the last session**, with no setting to change that. The container
+comes back on its own (`--restart=always`). To keep it up for a long job, hold a session open, for
+example `ssh belay.sbx 'sleep 5400'`.
+
+## What is where
+
+| Thing | Where | Survives a container recreate? | Survives `sbx rm`? |
+| --- | --- | --- | --- |
+| The checkout | `/workspaces/belay` on the VM root volume (a clone, not a host mount) | yes | **no** |
+| Claude Code login, settings, plugins, RTK, the `gh` login | volume `belay-claude` → `/home/coder/.claude` (`CLAUDE_CONFIG_DIR`, `GH_CONFIG_DIR`) | yes | **no** |
+| pnpm store / shell history | volumes `belay-pnpm-store` / `belay-commandhistory` | yes | **no** |
+| Image pin, forge tokens | `~/.belay-sandbox-env` on the VM (mode 600) | yes | **no** |
+| Egress policy | host-side, per sandbox (`sbx policy ls belay`) | yes | **no** |
+| Worktrees | `/home/coder/worktrees/` in the container | **no** | no |
 
 ## Credentials
 
 AI-assisted coding runs on the **subscription**. **`ANTHROPIC_API_KEY` must never be set** on the
-host, in the dev container or in any sandbox, because Claude Code silently prefers it over a
-subscription login and bills per token. A tool that needs a model key takes it under another name,
-mapped to `ANTHROPIC_API_KEY` only in the process that uses it. The forge tokens (`FORGE_TOKEN`,
-`FORGE_ISSUE_TOKEN`) are forwarded from the host's user environment. Never write them into a
-committed file. See [the secrets posture](../../openwiki/invariants/secrets-management.md).
+host, in the VM or in the container, because Claude Code silently prefers it over a subscription
+login and bills per token. The VM itself carries `ANTHROPIC_API_KEY=proxy-managed`, which is sbx's
+marker and not a key. It never reaches the container, which receives only the two forge tokens.
 
-*To write:* how the container receives these variables (`localEnv` forwarding), and which ones it
-needs.
+How the forge tokens reach the container, and why each other route is wrong:
+- They live in `~/.belay-sandbox-env` on the VM, as `KEY='value'` lines with no `export`, mode 600.
+- At every `devcontainer up`, `initializeCommand` runs `.devcontainer/gen-container-secrets-env.sh`,
+  which re-emits them as bare `KEY=value` lines into `~/.belay-devcontainer-secrets.env`. That file
+  is passed by `docker run --env-file`, which does no quote processing.
+- **Never** in `containerEnv`: the devcontainer CLI compiles it into image `ENV` layers.
+- **Never** `docker run -e NAME=value`: argv is visible to every user through `ps`.
+- **Never paste `docker inspect <container>` output.** An `--env-file` value is, by design, in the
+  running container's environment, and `docker inspect` prints it. Measured: 0 occurrences in the
+  image history, the image config, the process list and the `devcontainer up` log, and 1 in the
+  container's runtime config.
+
+**Git credentials.** The VM keeps the forge credential in git's `store` helper (`~/.git-credentials`,
+mode 600). The container has no credential file of its own: git there uses the helper VS Code
+forwards. So `git push` and `node scripts/forge-pr.mjs` work in a **VS Code terminal**, and not in a
+bare `docker exec` shell. The read-only `FORGE_TOKEN` and `FORGE_ISSUE_TOKEN` work everywhere.
+
+## Bring-up from nothing
+
+Prerequisites **[host]**:
+- `sbx version` reports **v0.53.0** (see [Upgrading sbx](#upgrading-sbx)).
+- `DOCKER_SANDBOXES_DOCKER_SIZE=150GB` and `DOCKER_SANDBOXES_ROOT_SIZE=40GB` at User scope. They are
+  read at creation only; after setting them, run `sbx daemon stop; sbx ls`.
+- Windows OpenSSH (`C:\Windows\System32\OpenSSH\ssh.exe`). Git Bash's ssh cannot resolve `<name>.sbx`.
+- VS Code with Remote-SSH and Dev Containers, Node 24 or later, and `FORGE_TOKEN` and
+  `FORGE_ISSUE_TOKEN` as user environment variables.
+- A published image pin (see [Re-pin the image](#re-pin-the-image)).
+
+1. **Create the sandbox [host]**, with an EMPTY scratch directory as its workspace. `sbx` mounts its
+   workspace read-write, so never pass the repository.
+   ```powershell
+   New-Item -ItemType Directory -Force "$env:USERPROFILE\sbx-workspaces\belay-vm" | Out-Null
+   sbx create --name belay -m 8g --skills=off shell "$env:USERPROFILE\sbx-workspaces\belay-vm"
+   ```
+2. **Apply the egress policy before anything pulls [host].** A global `default-deny-all` policy
+   already refuses everything; this adds the allow rules for `belay` only.
+   ```powershell
+   $forge = ([Uri](git remote get-url origin)).Host
+   node scripts/gen-egress-policy.mjs --format sbx-policy --forge-host $forge |
+     ForEach-Object { sbx policy allow network ($_ -split ' ')[2] --sandbox belay }
+   sbx policy ls belay      # "allow 103 hosts", fallback "deny when no rule decides"
+   ```
+3. **Provision the VM [VM].** The shell kit has git, docker and curl, but **no Node**, and its own
+   package repository (`dhi.io`) is not on the allowlist. Debian's `npm` package cannot install either,
+   because it conflicts with the kit's patched system libraries. So install the official Node tarball
+   (on the allowlist as `nodejs.org`), verify it, and install the devcontainer CLI with it:
+   ```bash
+   V=v24.14.1; F=node-$V-linux-x64.tar.gz; cd /tmp      # .tar.gz: the kit has no xz
+   curl -fsSLO "https://nodejs.org/dist/$V/$F"
+   curl -fsSL "https://nodejs.org/dist/$V/SHASUMS256.txt" | grep " $F\$" | sha256sum -c -
+   sudo tar -xzf "$F" -C /usr/local --strip-components=1 --no-same-owner && rm -f "$F"
+   sudo /usr/local/bin/npm install -g @devcontainers/cli
+   sudo mkdir -p /workspaces && sudo chown agent:agent /workspaces
+   ```
+4. **Configure the VM's engine and git [VM].**
+   - The forge registry is plain HTTP, so list it in `/etc/docker/daemon.json` as
+     `{"insecure-registries": ["<forge-host>:3000"]}`, mode 644, then restart with **[host]**
+     `sbx stop belay` and `sbx run --name belay -d`. `/etc/init.d/docker restart` fails, because
+     PID 1 is not an init system. Check with `docker info | grep -A2 'Insecure Registries'`.
+   - Set `git config --global user.name/user.email`, and `git config --global credential.helper store`
+     with the forge credential approved into it (`git credential approve`, fed on stdin).
+5. **Write `~/.belay-sandbox-env` [VM]**, mode 600, `KEY='value'` lines, no `export`, and never an
+   `ANTHROPIC_API_KEY` line:
+   ```bash
+   BELAY_DEVCONTAINER_IMAGE='<forge-host>:3000/<owner>/belay-devcontainer@sha256:<digest>'
+   FORGE_REGISTRY_HOST='<forge-host>'
+   FORGE_TOKEN='…'
+   FORGE_ISSUE_TOKEN='…'
+   ```
+   Feed the token values on stdin from the host's environment, so they never appear on a command
+   line or in a transcript.
+6. **Log the VM's engine in to the registry [VM].** The image package is private:
+   `set -a; . ~/.belay-sandbox-env; set +a; printf %s "$FORGE_TOKEN" | docker login <forge-host>:3000 -u <owner> --password-stdin`,
+   then `docker pull "$BELAY_DEVCONTAINER_IMAGE"`. The image is about 4.2 GB.
+7. **Clone and bring the container up [VM].**
+   ```bash
+   git clone <origin url> /workspaces/belay          # as `agent`, uid 1000 like `coder`
+   set -a; . ~/.belay-sandbox-env; set +a
+   devcontainer up --workspace-folder /workspaces/belay \
+     --config /workspaces/belay/.devcontainer/devcontainer.json \
+     --dotfiles-repository https://github.com/jumbleknot/mcm-dotfiles 2>&1 | tee ~/devcontainer-up.log
+   ```
+   **Expect:**
+   - `[check-image-pin] ✓ pinned: sha256:…`;
+   - `✓ FORGE_TOKEN (N chars)` and `✓ FORGE_ISSUE_TOKEN (N chars)`;
+   - the RTK build and 14 plugins from the personal layer. This took about 6 minutes the first time,
+     and it is skipped once installed;
+   - `[assert-egress-governed] PASS`;
+   - `"outcome":"success"`.
+8. **Log in once [dc]**, in a VS Code terminal (open it with `.\scripts\open-sandbox.ps1`):
+   - Claude Code: `claude`, then `/login` and choose the **subscription**;
+   - GitHub: `gh auth login`, choosing GitHub.com, HTTPS and the browser.
+
+   Both logins persist on the `belay-claude` volume.
+9. **Check it [dc]:** `pnpm nx run scripts:lint && pnpm nx run scripts:test` pass. All 667 tests pass
+   with 0 skips in the container, because Linux runs the bash tests the Windows host skips.
+
+## Recreate the dev container
+
+A change to `containerEnv`, `mounts` or a lifecycle command applies only to a **new** container. A
+plain `devcontainer up` re-attaches to the existing one and reports success.
+
+```bash
+# [VM]
+cd /workspaces/belay && git pull --ff-only
+set -a; . ~/.belay-sandbox-env; set +a
+echo "$BELAY_DEVCONTAINER_IMAGE"     # must end in @sha256:<digest>
+devcontainer up --workspace-folder /workspaces/belay \
+  --config /workspaces/belay/.devcontainer/devcontainer.json \
+  --remove-existing-container --dotfiles-repository https://github.com/jumbleknot/mcm-dotfiles
+```
+
+This was measured at 31–41 s with 0 toolchain layers rebuilt, and no re-login. Traps:
+- **Without `set -a`**, the pin is sourced but not exported, and the build silently uses the local
+  `belay-devcontainer` tag. `check-image-pin.sh` now prints a `⚠` warning when that happens. Never
+  ignore it.
+- **`devcontainer-lock.json` blocks the first `git pull`.** The first `devcontainer up` writes it into
+  the VM's clone. Once it is committed upstream, `git pull` refuses ("untracked working tree files
+  would be overwritten"). Compare it with the committed copy, delete the untracked one, then pull.
+- **`--config` must be absolute.** It resolves against the current directory otherwise.
+
+## Re-pin the image
+
+`.forgejo/workflows/devcontainer-image.yml` publishes `belay-devcontainer:<commit sha>`. It runs on
+a push to `main` that touches an image input, on dispatch, and on Fridays (see
+[ci.md](ci.md#the-devcontainer-image-workflow)). The forge cannot read back the step summary, so
+resolve the digest from the registry:
+
+```bash
+# from any machine with FORGE_TOKEN (read:package)
+curl -sS -I -u "<owner>:$FORGE_TOKEN" \
+  -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" \
+  "http://<forge-host>:3000/v2/<owner>/belay-devcontainer/manifests/<commit sha>" | grep -i docker-content-digest
+```
+
+Update `BELAY_DEVCONTAINER_IMAGE` in `~/.belay-sandbox-env` with that digest. Then
+`docker pull "$BELAY_DEVCONTAINER_IMAGE"` and recreate. The packages API's first row is an
+attestation, not the image, so never take the digest from there.
+
+**Re-pin before recreating the sandbox, too.** Nothing deletes old images yet (backlog item #32). Once
+a retention rule exists, a recorded pin can disappear.
+
+**A local build** (`pnpm nx run scripts:build-devcontainer-image`, tag `belay-devcontainer`) needs an
+engine with **open egress**, such as CI or Docker Desktop. **It never works inside the sandbox**,
+because rustup fetches from hosts the allowlist deliberately does not carry.
+
+## Egress
+
+- **Change a destination** in `.devcontainer/egress-allowlist.json`, with a group and a reason, and
+  check it with `node scripts/gen-egress-policy.mjs --check` (also run by `scripts:lint`). Then apply
+  it to the running sandbox: `sbx policy allow network <domain> --sandbox belay`. A committed entry
+  does nothing until it is applied, and templates do not carry the policy.
+- **The approval queue.** Every refusal queues an entry in `sbx policy approval ls`. **Dismiss**
+  entries; never approve one, because that bypasses the committed list.
+- **Matching is per FQDN.** A front door and its download host are separate entries, for example
+  `github.com` and `release-assets.githubusercontent.com`. Follow a redirect chain with
+  `curl -sSL -o /dev/null -w '%{url_effective}\n' <url>`.
+- **Judge a probe by curl's exit code.** `nc -z` reports blocked hosts as open, and curl's `000` status
+  is a placeholder.
+- **The self-check** (`assert-egress-governed.sh`) runs at every real container start, and fails if
+  `example.com` is reachable or `registry.npmjs.org` is not. It does not run on a Docker-level restart
+  after an idle-stop. The host-side policy enforces either way.
 
 ## Shared dev container: commit from a worktree
 
@@ -101,10 +286,53 @@ git worktree remove /home/coder/worktrees/<slug>
 git worktree prune
 ```
 
-## To write when the container lands
+## Recreate or resize the sandbox
 
-- What the container is (image, base, how it is opened) and how to rebuild it.
-- The toolchain it bakes in: Node, pnpm through `packageManager`, `pwsh` for the Spec Kit scripts, and
-  RTK.
-- Network egress, if it is restricted.
-- Running the checks inside it: `pnpm nx run scripts:lint` and `pnpm nx run scripts:test`.
+`sbx rm belay --force` removes **everything listed in "What is where"** except the host's scratch
+directory. Before it:
+1. Push every branch, and back up anything not in git. Worktrees under `/home/coder/worktrees/` go
+   with the container in any case.
+2. Back up the VM home: `tar czf belay-vm-home.tgz .git-credentials .gitconfig .belay-sandbox-env`,
+   then check the archive is not empty with `tar tzf belay-vm-home.tgz | wc -l`. A `tar` given an empty
+   list writes a 45-byte archive without complaint.
+3. Then follow [Bring-up from nothing](#bring-up-from-nothing). Expect to log in to Claude Code and
+   `gh` again, because the `belay-claude` volume goes with the sandbox.
+
+**To resize**, change the User-scope size variables, run `sbx daemon stop; sbx ls`, then do a full
+recreate. Sizes are read at creation only. Check them in the VM with `lsblk | grep ^vd; df -h / /var/lib/docker`.
+
+## Upgrading sbx
+
+`sbx` is pre-1.0, and it is the layer that enforces isolation and egress, so treat an upgrade as a
+security change:
+1. Read the release notes for changes to policy semantics, `--network=host`, ports, idle-stop,
+   secrets and templates.
+2. **[host]** `sbx daemon stop`, then `winget upgrade --id Docker.sbx --version <X>`.
+3. Re-run the checks: `sbx policy ls belay` (count and fallback), a container start
+   (`[assert-egress-governed] PASS`), and quickstart step 6 in
+   `specs/004-devcontainer-sandbox/quickstart.md`.
+4. Record the new version here and in the prerequisites above.
+
+## Traps
+
+- **`sbx start` does not exist** and prints help without complaint. Use `sbx run --name belay -d`.
+  Without `--name`, `sbx run`'s positional argument is an agent, so it creates a second sandbox.
+- **`sbx run` can report "docker daemon failed to start" while the engine is starting normally.** Its
+  readiness budget is shorter than the engine's restore time. Trust SSH answering, as the launcher
+  does, not the exit code.
+- **Reading `sbx ls --format json` from Windows PowerShell 5.1:** `ConvertFrom-Json` emits a JSON
+  array as one object. Unroll it before filtering by name, or `.status` becomes every sandbox's status.
+  Measured 2026-11-23: the launcher reported a stopped `belay` as running because `mcm` was up. It is
+  fixed in `scripts/open-sandbox.ps1` and guarded.
+- **Git Bash rewrites `/workspaces/...` arguments** passed to `sbx.exe`. Prefix the command with
+  `MSYS_NO_PATHCONV=1`, or feed a script on stdin (`sbx exec -i belay sh -s < script.sh`).
+- **Run git inside the container, not as `ssh belay.sbx 'git …'`.** Both users are uid 1000 now, but
+  `fix-workspace-ownership.sh` repairs a mismatch at every start if one appears.
+- **`gh` logins:** without `GH_CONFIG_DIR` on the volume, every recreate logged `gh` out. That was
+  measured and fixed on 2026-11-23.
+- **The socat relay.** `DOCKER_HOST=unix:///var/run/docker-host.sock` bypasses the feature's relay,
+  which returns empty output with exit 0 for any `docker exec` slower than 0.5 s. Check with
+  `docker run --rm busybox sh -c "sleep 3; echo ok"`, which must print `ok`.
+- **The memory cap** is 5 GiB in an 8 GiB VM (`--memory=5g`). An out-of-memory kill lands in the
+  container rather than on the VM's engine.
+- **Token usage capture is not wired** in this container (backlog item #33).

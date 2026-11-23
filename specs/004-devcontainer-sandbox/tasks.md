@@ -372,7 +372,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
     - `bash install.sh` with neither variable set prints the skip line and exits 0, observed in a scratch `HOME`;
     - MCM's next recreate is unaffected, because its marker still works.
 
-- [ ] T035 [US3] **Operator:** recreate the `belay` container, with `--dotfiles-repository https://github.com/jumbleknot/mcm-dotfiles` and the output captured to `~/devcontainer-up.log`. Then log in to Claude Code and `gh` once.
+- [x] T035 [US3] **Operator:** recreate the `belay` container, with `--dotfiles-repository https://github.com/jumbleknot/mcm-dotfiles` and the output captured to `~/devcontainer-up.log`. Then log in to Claude Code and `gh` once.
   - **Done when:**
     - quickstart step 7 finds 0 occurrences of each token value in the image history, the image config, the container's process list **and** `~/devcontainer-up.log` (SC-004);
     - `ANTHROPIC_API_KEY` is absent in the container, and `ci-status.mjs status --branch main` works;
@@ -387,7 +387,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
 
 **Goal:** the runbook replaces the "planned" note, and the wiki and index follow it.
 
-- [ ] T036 [US5] Rewrite `docs/runbooks/devcontainer.md` from "planned" to the procedure measured in T021, T026, T027 and T035, covering FR-022:
+- [x] T036 [US5] Rewrite `docs/runbooks/devcontainer.md` from "planned" to the procedure measured in T021, T026, T027 and T035, covering FR-022:
   - prerequisites;
   - bring-up from nothing (create, policy, VM provisioning, the env file, clone, up, dotfiles);
   - the one-step launcher;
@@ -404,7 +404,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
   Remove the *To write* sections.
   - **Done when:** the status note is gone, every FR-022 topic has a section, and `git grep -n "To write" docs/runbooks/devcontainer.md` is empty.
 
-- [ ] T037 [US5] Refresh `openwiki/runbooks/devcontainer.md` against the rewritten runbook: the title, description, summary and gotchas, and the `timestamp`. Update its description in `openwiki/runbooks/index.md`, and the `AGENTS.md` knowledge-index entry for it (drop "planned").
+- [x] T037 [US5] Refresh `openwiki/runbooks/devcontainer.md` against the rewritten runbook: the title, description, summary and gotchas, and the `timestamp`. Update its description in `openwiki/runbooks/index.md`, and the `AGENTS.md` knowledge-index entry for it (drop "planned").
   - **Done when:** no "planned" wording remains in the three files, and the ad-hoc wiki checker (or the OKF gate, once item #28 lands) reports no dead links or mismatched descriptions.
 
 ---
@@ -426,7 +426,8 @@ Documentation, config and operator tasks use the "Done when" form instead.
 - [x] T041 [P] Add `.devcontainer/` to the layout table in `openwiki/projects/repository.md`, and a dev-container pointer to `README.md` (Development).
   - **Done when:** both name `docs/runbooks/devcontainer.md`.
 
-- [ ] T042 **Close-out re-search:** re-run T001's searches for the old identifiers (`planned, not built`, `To write`, and the runner rule's old wording). Every remaining hit in a document that states current procedure is fixed or justified here.
+- [x] T042 **Close-out re-search:** re-run T001's searches for the old identifiers (`planned, not built`, `To write`, and the runner rule's old wording). Every remaining hit in a document that states current procedure is fixed or justified here.
+  - Run 2026-11-23 over `*.md` outside `specs/`, `docs/proposals/` and `docs/decisions/`, for `planned, not built`, `To write`, `planned; the worktree rule`, `The planned shared dev container`, `BELAY's CI is one`, `The runner is BELAY's own.`, `is planned`, `not built yet`. One hit: `openwiki/runbooks/ci.md:12` ("BELAY's CI is one workflow") → fixed to name the image workflow. No other hits.
 
 - [ ] T043 **SC-007, from nothing, by the runbook alone.**
   1. Back up per the runbook.

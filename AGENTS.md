@@ -61,7 +61,7 @@ BELAY is a polyglot monorepo of tooling that other repositories share, so every 
 
 - [The agent-driven backlog (Forgejo Issues)](openwiki/runbooks/backlog.md) — `scripts/backlog.mjs`, `/speckit-taskstoissues`
 - [CI guardrails, the failure digest, and the PR loop](openwiki/runbooks/ci.md) — `guardrails.yml`, `ci-status.mjs`, `forge-pr.mjs`
-- [The dev container — credentials and the worktree rule](openwiki/runbooks/devcontainer.md) — planned; the worktree rule
+- [The dev container — Docker Sandbox, credentials, egress and the worktree rule](openwiki/runbooks/devcontainer.md) — `open-sandbox.ps1`, recreate, re-pin, the worktree rule
 - [Doc drift: the doc-impact sweep and the quarterly audit](openwiki/runbooks/doc-drift.md)
 - [Spec Kit: this repository's customisations, and upgrading it](openwiki/runbooks/spec-kit.md) — the override gate and its failure codes
 

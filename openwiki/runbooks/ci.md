@@ -9,7 +9,8 @@ timestamp: 2026-11-22
 
 # CI guardrails, the failure digest, and the PR loop
 
-BELAY's CI is one workflow, `.forgejo/workflows/guardrails.yml`. It runs on every pull request,
+BELAY's required CI is one workflow, `.forgejo/workflows/guardrails.yml` (a second,
+`devcontainer-image.yml`, publishes the dev-container image and is not a merge check). Guardrails runs on every pull request,
 every push to `main` and manual dispatch, and branch protection on `main` requires its
 `guardrails / guardrails (pull_request)` context. Its one job installs Node and the pinned pnpm, then
 runs `pnpm nx run scripts:lint` and `pnpm nx run scripts:test`. So **those two commands, run locally,
