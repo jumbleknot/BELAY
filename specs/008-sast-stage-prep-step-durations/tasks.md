@@ -66,7 +66,7 @@ description: "Task list for feature 008: SAST stage prep and step durations"
 
 - [x] T011 [US3] Add the two steps to the `sast` job (research R4)
   - **Verify GREEN**: the T010 commands → 0 failures; `check-ci-digest-coverage.mjs` exits 0
-- [ ] T012 [US3] Local check: in a scratch clone, a tiny locked Rust crate and Python project with both
+- [x] T012 [US3] Local check: in a scratch clone, a tiny locked Rust crate and Python project with both
   scanners enabled: `sast-prepare.mjs python` syncs, and the scan reports `cargo-audit` and `pip-audit`
   as run (dev container's baked Rust)
 - [x] T013 [P] Comments: the curl-pipe rule's stage-2 note; `scan.yaml`, `allowlist.yaml` and the job
@@ -95,9 +95,9 @@ description: "Task list for feature 008: SAST stage prep and step durations"
 - [x] T030 [P] `docs/runbooks/sast.md`: job steps, stage table ("prepared; enable the scanner"), pins
 - [x] T031 [P] `docs/runbooks/ci.md`, `docs/repo-foundation-setup.md`: durations publish on every
   green run; refresh `openwiki/runbooks/sast.md` and `ci.md` (`wiki-refresh.mjs --stale`, `--record`)
-- [ ] T032 SC-002 on the runner (research R7); delete the throwaway branch
-- [ ] T033 Close-out re-search: re-run T002's searches
-- [ ] T034 Final `scripts:lint`, `scripts:test` (skip count), `scripts:sast`, `check-speckit-overrides.mjs`
+- [x] T032 SC-002 on the runner (research R7); delete the throwaway branch
+- [x] T033 Close-out re-search: re-run T002's searches
+- [x] T034 Final `scripts:lint`, `scripts:test` (skip count), `scripts:sast`, `check-speckit-overrides.mjs`
 - [ ] T035 **Open the PR** (branch `008-sast-stage-prep-step-durations`):
   `git push origin HEAD:008-sast-stage-prep-step-durations`; `node scripts/forge-pr.mjs open …`;
   `node scripts/ci-status.mjs watch --pr <n>`; merge only on the maintainer's approval.

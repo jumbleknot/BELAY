@@ -80,3 +80,17 @@
   one `serde` dependency) and Python project (`tools/sast-probe-py`, one `requests` dependency), both
   locked, and enables both scanners. Dispatch `guardrails.yml` on it with `forge-pr.mjs dispatch`, read
   the result from `/actions/tasks`, and delete the branch. It is never opened as a PR.
+- **Result** (2026-11-23):
+  - **Local (T012)**, dev container, baked cargo 1.100.0 plus the downloaded cargo-audit: `sast-prepare
+    python` synced the probe project. The full scan ran `cargo-audit` (1 finding, `time@0.3.20`
+    correctly scoped `dev`, the probe's dev-dependency) and `pip-audit` (with `requests==2.31.0`, its
+    advisories blocked as runtime; with `requests>=2.32.5`, 0 findings, gate passed). `sast-prepare rust`
+    failed closed naming `static.rust-lang.org … ENOTFOUND`, as expected behind the egress policy.
+  - **Runner (SC-002)**: `guardrails.yml` dispatched on throwaway branch `008-probe` (`3abd7c8`), run
+    8262. `sast` succeeded. Its published durations: `sast-prepare-rust` 9 s exit 0 (so the derived
+    `rustup-init` sha256 matched what the runner downloaded, and Rust 1.100.0 and cargo-audit installed),
+    `sast-prepare-python` 0 s, `sast-static-scan` 14 s exit 0 with both scanners enabled. `guardrails`
+    failed on one test only: `sast-scan.guard.test.mjs`'s "--only naming a scanner the committed config
+    does not enable" instrument check, which needs one scanner left disabled. A probe artifact (it
+    enabled all four); the stage that enables the fourth scanner must rework that test. Branch deleted.
+  - The same run proved US4 on a real green job: `ci-status durations --job sast` sampled run 8262.

@@ -498,7 +498,8 @@ runner, which is the maintainer's call. BELAY filed it as a staged backlog item 
 landed as feature 006, after the maintainer approved uv: a separate `sast` job in `guardrails.yml`
 runs Semgrep and `pnpm audit`, ported from MCM's feature 033. The enabled scanners are a list in
 `security/sast/scan.yaml`, so cargo-audit (the first Rust code) and pip-audit (the first Python
-project) are a list entry plus a toolchain step. Copy `scripts/sast-scan.mjs`,
+project) are a list entry: their toolchain steps are already in the job, dormant until a lockfile is
+tracked (`scripts/sast-prepare.mjs`, feature 008). Copy `scripts/sast-scan.mjs`, `scripts/sast-prepare.mjs`,
 `scripts/check-sast-findings.mjs`, `scripts/allowlist-expiry.mjs`, `scripts/lib/scanner-retry.mjs`,
 `scripts/check-dependency-downgrade.mjs` (feature 007: the PR-only step that blocks a package moved
 into an advisory in any scope)
