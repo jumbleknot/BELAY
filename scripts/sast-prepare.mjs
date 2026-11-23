@@ -131,7 +131,11 @@ function realEffects() {
     home: homedir(),
     tmp: mkdtempSync(join(tmpdir(), 'sast-prepare-')),
     fetchBytes: async (url) => {
-      const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(300_000) });
+      // Name the URL and the transport cause: a bare "fetch failed" (measured in the dev container,
+      // where static.rust-lang.org is not on the egress list) says neither what nor why.
+      const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(300_000) }).catch((e) => {
+        throw new PrepareError(`GET ${url} failed: ${e.cause?.code ?? e.cause?.message ?? e.message}`);
+      });
       if (!res.ok) throw new PrepareError(`GET ${url} returned ${res.status}`);
       return Buffer.from(await res.arrayBuffer());
     },
