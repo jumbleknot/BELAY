@@ -101,6 +101,27 @@ test('sast proves its instruments before the scan, then gates on the report', ()
   assert.match(runs[scan], /--scope full/);
 });
 
+// Feature 007 (item #43): a PR must not move a package INTO a known advisory, in any scope. The check
+// reads the pnpm-audit native report the scan writes, so it must run after the scan; it runs after the
+// gate so a plain blocking finding is reported first. PR-only: a push has no base to regress from.
+// A gate that is never invoked is indistinguishable from no gate.
+test('the dependency-downgrade check runs on PRs only, after the gate, against the PR base', () => {
+  const steps = sastJob().steps;
+  const runs = steps.map((st) => (st.run ?? '').trim());
+  const scan = runs.findIndex((r) => r.includes('node scripts/sast-scan.mjs --scope'));
+  const gate = runs.findIndex((r) => /check-sast-findings\.mjs\s*$/.test(r));
+  const at = runs.findIndex((r) => r.includes('node scripts/check-dependency-downgrade.mjs'));
+  assert.ok(at > 0, 'the downgrade step is gone — update this guard rather than deleting it');
+  assert.ok(scan > 0 && gate > scan && at === gate + 1, `order: scan ${scan}, gate ${gate}, downgrade ${at} (must follow the gate directly)`);
+  const step = steps[at];
+  assert.equal(step.if, "${{ github.event_name == 'pull_request' }}", 'the check needs a PR base, so it must be PR-scoped');
+  assert.equal(step.env?.BASE_REF, '${{ github.base_ref }}');
+  assert.equal(
+    runs[at],
+    'bash scripts/ci-log-step.sh sast-downgrade-gate node scripts/check-dependency-downgrade.mjs --base "origin/$BASE_REF"',
+  );
+});
+
 test('the reports are uploaded whatever the outcome, and the digest is the last step', () => {
   const steps = sastJob().steps;
   const upload = steps.find((st) => st.uses?.startsWith('actions/upload-artifact@'));

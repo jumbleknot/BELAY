@@ -82,7 +82,9 @@ jobs:
   # lockfile, normalized to one Critical/High/Medium/Low scale and gated against
   # security/sast/allowlist.yaml (the allowlist IS the baseline). Fails on an un-allowlisted
   # High/Critical blocking finding (SAST, or runtime-scope SCA); Medium/Low and dev-scope findings are
-  # warnings. SCA runs FULL every time: a newly published advisory can hit an unchanged dependency.
+  # warnings, with one exception: on a PR, a package the change moves INTO an advisory's vulnerable
+  # range blocks in any scope (the dependency-downgrade step, feature 007).
+  # SCA runs FULL every time: a newly published advisory can hit an unchanged dependency.
   # Semgrep is changed-files on PRs and full on push. The enabled scanners are a list in
   # security/sast/scan.yaml: cargo-audit (stage 2) and pip-audit (stage 3) add a list entry and a
   # toolchain step here, nothing else. A separate job, so `guardrails / guardrails` keeps its time.
@@ -134,6 +136,16 @@ jobs:
           CI_LOG_STEP
       - name: Gate (fail on any un-allowlisted High/Critical blocking finding)
         run: bash scripts/ci-log-step.sh sast-gate node scripts/check-sast-findings.mjs
+      # Feature 007 (item #43): a PR must not move a package INTO a known advisory, in ANY scope. The
+      # gate above never blocks a dev-scope finding, so a bump that re-resolves some other package down
+      # into an advisory stays green there. This compares the base and head lockfiles against the
+      # advisory ranges the scan above already fetched. PR-only: a push has no base to have regressed
+      # from. The base ref was fetched by the "Ensure the PR base ref" step.
+      - name: Gate (no package resolution moves INTO a known advisory, any scope)
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/ci-log-step.sh sast-downgrade-gate node scripts/check-dependency-downgrade.mjs --base "origin/$BASE_REF"
       - name: Upload scan reports (findings.json, SARIF, summary, native output)
         if: ${{ always() }}
         uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3
