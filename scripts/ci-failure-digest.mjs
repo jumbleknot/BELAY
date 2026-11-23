@@ -271,6 +271,22 @@ export function shouldPublish({ runStatus, jobStatus }) {
  * `e2e-turn-tally` is listed here before the step exists (054 adds it). An absent source is
  * simply not collected, so naming it early costs nothing and cannot be forgotten later.
  */
+/**
+ * What a PASSING job publishes (feature 008).
+ *
+ *   bundle          — it has e2e counts sources: the counts bundle, with the durations file beside it
+ *   durations-only  — no counts sources, but ci-log-step.sh recorded step durations: that file ALONE
+ *   nothing         — neither
+ *
+ * `durations-only` exists because the durations file reached the forge only inside a FAILURE bundle,
+ * so a job that had never failed (`sast`, measured 2026-11-23) had no sample at all, and "how long
+ * does this step normally take" was again unanswerable from the API for exactly the healthy jobs.
+ */
+export function countsPublication({ sources = [], durations = null } = {}) {
+  if (sources.length) return 'bundle';
+  return durations ? 'durations-only' : 'nothing';
+}
+
 /** The web-E2E step log — carried only as its `[global-setup]` lines. See selectCountsSources. */
 export const WEB_E2E_SOURCE = 'step:e2e-run';
 
@@ -1608,11 +1624,15 @@ async function publishCounts({ context, evidence, gate, emitOutcome }) {
   // copy, applied to the case that previously produced no output at all.
   for (const s of sources) console.log(`[ci-failure-digest] ${s.source}\n${s.text.trim()}`);
 
-  if (!sources.length) {
+  const durations = readStepDurations();
+  const plan = countsPublication({ sources, durations });
+  if (plan === 'nothing') {
     emitOutcome(describeOutcome({ gate: { publish: false, reason: 'the job passed and produced no counts sources' } }));
-    console.log('[ci-failure-digest] counts mode — this job runs no e2e counts steps; nothing to publish.');
+    console.log('[ci-failure-digest] counts mode — this job runs no e2e counts steps and recorded no step durations; nothing to publish.');
     return;
   }
+  // Durations-only: in the job log first, for the same reason the counts are (above).
+  if (plan === 'durations-only') console.log(`[ci-failure-digest] step durations\n${durations}`);
 
   const credential = selectCredential();
   if (credential.source !== 'purpose-scoped') {
@@ -1631,6 +1651,28 @@ async function publishCounts({ context, evidence, gate, emitOutcome }) {
   const api = httpApi({ ...forgeEndpoint(), token: credential.token });
   const version = bundleVersion(context.runId, context.job);
   let result;
+  if (plan === 'durations-only') {
+    // The durations file ALONE, as its own file in this run's version — no bundle.json.gz, no
+    // comment, no status. `ci-status durations` reads exactly this file; `ci-status failure` fetches a
+    // bundle only for a FAILED job, so it never mistakes this version for one. Redacted like
+    // everything else that leaves the runner, though it holds only step names and integers.
+    try {
+      const body = Buffer.from(`${redactForPublication(durations)}\n`, 'utf8');
+      await api.uploadBundle(version, DURATIONS_FILE, body);
+      result = { published: true, channel: 'durations' };
+      console.log(`[ci-failure-digest] step durations published: ${version}/${DURATIONS_FILE} (${body.length} bytes)`);
+    } catch (err) {
+      result = { published: false, reason: redactForPublication(String(err?.message ?? err)) };
+      console.log(`[ci-failure-digest] step durations NOT published — ${result.reason}`);
+    }
+    emitOutcome(describeOutcome({ gate, tokenPresent: true, publishResult: result }));
+    // A version per green job per run is what makes growth reachable, so the prune follows it here
+    // exactly as it follows the counts bundle below.
+    await pruneExpiredBundles(api).catch((err) =>
+      console.error(`[ci-failure-digest] prune suppressed: ${redactForPublication(String(err?.message ?? err))}`),
+    );
+    return;
+  }
   try {
     await publishBundle(api, version, { excerpts: sources, health: [], absent: evidence.absent }, context);
     result = { published: true, channel: 'counts-bundle' };

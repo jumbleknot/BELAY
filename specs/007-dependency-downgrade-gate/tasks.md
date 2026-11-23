@@ -89,7 +89,7 @@ missing module, then GREEN.
   `node scripts/ci-status.mjs watch --pr <n>`; merge with
   `node scripts/forge-pr.mjs merge <n> --expect-head <sha>` only on the maintainer's approval.
   **CI evidence is never recorded here.**
-- [ ] T026 After the merge: close item #43 with a comment saying how each acceptance criterion was
+- [x] T026 After the merge: close item #43 with a comment saying how each acceptance criterion was
   verified
 
 ## Dependencies

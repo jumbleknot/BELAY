@@ -130,7 +130,8 @@ registry. It is not a merge check.
   [`infrastructure-as-code/forgejo/registry-retention.yaml`](../../infrastructure-as-code/forgejo/registry-retention.yaml).
   - `belay-devcontainer`: the newest 4, or anything younger than 21 days, plus every digest under
     `protect:`.
-  - `belay-ci-failures`: at least 100 versions and 45 days, the floor `ci-status durations` needs. The
+  - `belay-ci-failures`: failure bundles, plus a durations-only version for every green job (feature 008).
+    At least 100 versions and 45 days, the floor `ci-status durations` needs. The
     floor is 25 runs × 4 bundle-publishing jobs (guardrails, sast, devcontainer-image,
     registry-retention), so a new job that publishes a bundle makes the config fail until the number
     is raised.
@@ -183,7 +184,7 @@ node scripts/forge-pr.mjs merge <n> --expect-head "$(git rev-parse HEAD)"       
 | `status --sha <sha> \| --pr <n> \| --branch <name> \| --run <id>` | Gives the merge verdict for that commit, against the checks branch protection on `main` requires. `--event push\|pull_request` narrows only what is displayed. |
 | `watch <target> [--timeout <s>] [--required-only]` | Polls until the verdict is known. By default it also waits for non-required checks. |
 | `failure <target> [--job <name>] [--full]` | Prints the failure digest from `belay-ci-failures`. `--full` prints every file in the bundle. |
-| `durations [--job guardrails] [--runs <n>] [--propose]` | Lists per-step timings from recent bundles. |
+| `durations [--job guardrails] [--runs <n>] [--propose]` | Lists per-step timings from recent runs. Every green job publishes its `step-durations.tsv` alone (feature 008), and every failure bundle carries one. |
 
 | Exit | `status` / `watch` | `failure` |
 | --- | --- | --- |

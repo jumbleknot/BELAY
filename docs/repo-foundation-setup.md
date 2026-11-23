@@ -256,7 +256,7 @@ Copy and adapt:
 | `.forgejo/workflows/guardrails.yml` | One job: checkout, `setup-node` (exact version), install pnpm, frozen install, `scripts:lint`, `scripts:test`, then the failure digest. Triggers are `pull_request`, `push` to `main` only, and `workflow_dispatch`. Concurrency is keyed on the ref |
 | `scripts/install-pnpm.sh` | Installs pnpm at exactly `packageManager` (Node 26 has no corepack) |
 | `scripts/ci-log-step.sh` | Wraps every `run:` step: keeps its exit code and mirrors its output for the digest |
-| `scripts/ci-failure-digest.mjs`, `scripts/ci-digest-redact.mjs` | On failure, publishes a redacted digest: a PR comment on pull requests, a commit status on `main`, and a full bundle in the generic package `<repo>-ci-failures` |
+| `scripts/ci-failure-digest.mjs`, `scripts/ci-digest-redact.mjs` | On failure, publishes a redacted digest: a PR comment on pull requests, a commit status on `main`, and a full bundle in the generic package `<repo>-ci-failures`. On success, publishes only the job's step durations there, for `ci-status durations` |
 | `scripts/check-ci-digest-coverage.mjs` | A gate: every job must end with the digest step |
 | `scripts/secret-scan.mjs` | Secret-scan rules. Its selftest runs in `scripts:lint`; the tree scan joins in step 13 |
 | `scripts/__tests__/guardrails-workflow.test.mjs` | Pins the workflow's shape, including `runs-on` |
@@ -498,7 +498,8 @@ runner, which is the maintainer's call. BELAY filed it as a staged backlog item 
 landed as feature 006, after the maintainer approved uv: a separate `sast` job in `guardrails.yml`
 runs Semgrep and `pnpm audit`, ported from MCM's feature 033. The enabled scanners are a list in
 `security/sast/scan.yaml`, so cargo-audit (the first Rust code) and pip-audit (the first Python
-project) are a list entry plus a toolchain step. Copy `scripts/sast-scan.mjs`,
+project) are a list entry: their toolchain steps are already in the job, dormant until a lockfile is
+tracked (`scripts/sast-prepare.mjs`, feature 008). Copy `scripts/sast-scan.mjs`, `scripts/sast-prepare.mjs`,
 `scripts/check-sast-findings.mjs`, `scripts/allowlist-expiry.mjs`, `scripts/lib/scanner-retry.mjs`,
 `scripts/check-dependency-downgrade.mjs` (feature 007: the PR-only step that blocks a package moved
 into an advisory in any scope)

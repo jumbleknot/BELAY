@@ -4,8 +4,8 @@ title: CI guardrails, the failure digest, and the PR loop
 description: The single guardrails Forgejo Actions workflow required on main — what it runs and how to reproduce it locally, how a failure is read back from the redacted digest and its package bundle with ci-status.mjs, the dedicated repository runner and the one exception to it (the dev-container image job, which never runs pull-request code), the sast job beside guardrails, the report-only registry-retention job, branch protection, the terminal PR loop through forge-pr.mjs, and the rule every new job must follow.
 tags: [ci, forgejo, pull-requests, runbook]
 resource: docs/runbooks/ci.md
-resource-sha256: 608b2295d31d46e2e898e30488c9b7fe0ee760add05da188778f996b64f92f3b
-timestamp: 2026-11-23T19:33:32.338Z
+resource-sha256: d94f2e966236bca78b2d0440fd231d8c9871493d152a6f33c9c6bf36475c2805
+timestamp: 2026-11-23T22:33:27.481Z
 ---
 
 # CI guardrails, the failure digest, and the PR loop
@@ -47,6 +47,9 @@ node scripts/forge-pr.mjs merge <n> --expect-head "$(git rev-parse HEAD)"
   `node scripts/ci-status.mjs failure --run <id> [--full]`. "Excerpt withheld" means the redactor
   found something credential-shaped. A "degraded channel" note means `CI_DIGEST_TOKEN` was not
   available to that run.
+- **Step timings come from every run, green ones included.** A passing job publishes its
+  `step-durations.tsv` alone into the same package, so `node scripts/ci-status.mjs durations --job
+  <name>` has a sample even for a job that has never failed.
 - **A dispatched run posts no commit status.** Follow a `forge-pr.mjs dispatch` run in the Actions
   tab, because `ci-status` cannot see it.
 - **The runner is BELAY's own, with one exception.** Jobs use `runs-on: belay`, served by a

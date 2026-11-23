@@ -22,8 +22,8 @@ A scanner that `scan.yaml` does not list never runs. It appears in `findings.jso
 `status: not-enabled` and in the summary as **not enabled — NOT scanned**, never as clean. `--only`
 can narrow the list for a local run, but can never add a scanner the file does not list (exit 2,
 naming the file). An unknown name, a repeated name, or an empty list is refused (exit 2): a scan of
-nothing must not read as clean. Stages 2 and 3 are a list entry plus a toolchain step in the `sast`
-job.
+nothing must not read as clean. Stages 2 and 3 are a list entry here and nothing else: their toolchain
+steps are already in the `sast` job, dormant until a lockfile is tracked (`scripts/sast-prepare.mjs`).
 
 `p/secrets` is **never** enabled. The secret-scan gate (`scripts/secret-scan.mjs`) stays the single
 owner of credential detection (FR-006).

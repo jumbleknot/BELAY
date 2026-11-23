@@ -38,14 +38,17 @@ The `sast` job in [`guardrails.yml`](../../.forgejo/workflows/guardrails.yml) ru
 request and every push to `main`, next to `guardrails`, on the `belay` runner. Its steps, in order:
 1. install uv from its **pinned** installer;
 2. install the workspace dependencies;
-3. the gate's `--selftest`;
-4. `--test-rules`;
-5. the scan: changed files on a PR, full on push. **SCA always runs in full**, because a new advisory
+3. prepare the Rust toolchain and cargo-audit, and sync each Python project: **dormant** until a
+   lockfile is tracked (see [Stages 2 to 4](#stages-2-to-4));
+4. the gate's `--selftest`;
+5. `--test-rules`;
+6. the scan: changed files on a PR, full on push. **SCA always runs in full**, because a new advisory
    can hit an unchanged dependency;
-6. the gate;
-7. on a PR only, the dependency-downgrade check against the PR base (feature 007);
-8. upload the `sast-report` artifact (always, kept 14 days);
-9. the failure digest.
+7. the gate;
+8. on a PR only, the dependency-downgrade check against the PR base (feature 007);
+9. upload the `sast-report` artifact (always, kept 14 days);
+10. the failure digest. On a green run it publishes the job's step durations instead, so
+    `node scripts/ci-status.mjs durations --job sast` reads how long each step takes (feature 008).
 
 Read a failure with `node scripts/ci-status.mjs failure --pr <n> --job sast`. Every step runs
 through `ci-log-step.sh`, so the digest names the failing step and carries its output.
@@ -106,18 +109,27 @@ console in the BFF; authentication before authorization) wait until BELAY has th
   The custom curl rule accepts only that pinned form. The dev container's toolchain image pins uv
   separately; keep the two equal.
 - **Semgrep:** `SEMGREP_PIN` in `scripts/sast-scan.mjs`.
+- **Rust and cargo-audit (stage 2):** the constants at the top of `scripts/sast-prepare.mjs`: the
+  Rust toolchain (equal to `.devcontainer/toolchain.Dockerfile`'s `--default-toolchain`, enforced by
+  a test), the `rustup-init` version and sha256, and the cargo-audit release and sha256. Bump a
+  version and its digest together; a mismatch fails the step before anything runs. The
+  `rustup-init` digest was derived from the dev container's baked `rustup` and confirmed on the
+  runner, because `static.rust-lang.org` is deliberately not on the dev container's egress list.
 - **Rule packs:** `security/sast/semgrep.yaml`. `p/secrets` is never enabled, because
   `secret-scan.mjs` owns credential detection.
 
 ## Stages 2 to 4
 
-The enabled scanners are a list in `security/sast/scan.yaml`. Each later stage adds a list entry and
-a toolchain step to the `sast` job, and nothing else:
+The enabled scanners are a list in `security/sast/scan.yaml`. Stages 2 and 3 are **prepared**
+(feature 008): their toolchain steps are already in the `sast` job and do nothing until their
+lockfile is tracked. So each is now a list entry and nothing else. `scripts/__tests__/sast-prepare.test.mjs`
+fails while a tracked lockfile's scanner is missing from the list, so the first crate's or
+project's PR cannot go green unaudited:
 
 | Stage | Trigger | Change |
 |---|---|---|
-| 2 | the first Rust crate | enable `cargo-audit`; install a **prebuilt, pinned** cargo-audit binary rather than compiling it in every run |
-| 3 | the first Python project | enable `pip-audit`; `uv sync` each project before the scan. Projects are found from tracked `uv.lock` files, and a `pyproject.toml` without one fails the scan |
+| 2 | the first Rust crate (a tracked `Cargo.lock`) | add `cargo-audit` to `scan.yaml`. `sast-prepare.mjs rust` then installs a minimal Rust toolchain from a sha256-verified `rustup-init` (the scanner needs `cargo` for `cargo audit` and for its runtime-vs-dev scope) and the **prebuilt, pinned** cargo-audit binary, never compiled in the job |
+| 3 | the first Python project (a tracked `uv.lock` under a project directory) | add `pip-audit` to `scan.yaml`. `sast-prepare.mjs python` runs `uv sync --frozen` in each project before the scan; one failing sync fails the step. A `pyproject.toml` without a `uv.lock` fails the scan |
 | 4 | installs dominate the job's time | bake uv, Semgrep and cargo-audit into a digest-pinned `belay-sast` image (like `devcontainer-image.yml`), and add it to `registry-retention.yaml` |
 
 ## Gotchas
