@@ -324,7 +324,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
 
 ### Tests (written first)
 
-- [ ] T028 [P] [US3] Write `scripts/__tests__/gen-container-secrets-env.test.mjs`, using bash through `shell-probe.mjs`
+- [x] T028 [P] [US3] Write `scripts/__tests__/gen-container-secrets-env.test.mjs`, using bash through `shell-probe.mjs`
   - **Scenarios covered:** US3-AC1, US3-AC2, US3-AC5, FR-011, FR-012, FR-013. Contract: [contracts/cli.md, gen-container-secrets-env](contracts/cli.md).
   - **Asserts, using a temp source file holding `FORGE_TOKEN='a b'`, `FORGE_ISSUE_TOKEN` with an embedded newline, and `ANTHROPIC_API_KEY='x'`:**
     - The output contains `FORGE_TOKEN=a b`, with no quotes.
@@ -336,7 +336,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
     - The exit code is always 0.
   - **Verify RED:** `node --test scripts/__tests__/gen-container-secrets-env.test.mjs` → expected: failing (`missing FORGE_TOKEN=a b`).
 
-- [ ] T029 [P] [US3] Write `scripts/__tests__/persist-claude-config.test.mjs`, using bash through `shell-probe.mjs`
+- [x] T029 [P] [US3] Write `scripts/__tests__/persist-claude-config.test.mjs`, using bash through `shell-probe.mjs`
   - **Scenarios covered:** US3-AC3, FR-014.
   - **Asserts, in a temp `HOME` with `CLAUDE_CONFIG_DIR` set:**
     - With no `$CLAUDE_CONFIG_DIR` directory → exit 0 and no file is created.
@@ -346,7 +346,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
     - No symlink is ever created.
   - **Verify RED:** `node --test scripts/__tests__/persist-claude-config.test.mjs` → expected: failing (`target not created`).
 
-- [ ] T030 [P] [US3] Write `scripts/__tests__/ensure-rtk-hook.test.mjs`, using bash and node
+- [x] T030 [P] [US3] Write `scripts/__tests__/ensure-rtk-hook.test.mjs`, using bash and node
   - **Scenarios covered:** US3-AC4, FR-016.
   - **Asserts:**
     - With no `~/.claude/tools/bin/rtk` → exit 0 and `settings.json` is untouched. The message names the BELAY `devcontainer up` command with `--dotfiles-repository`.
@@ -357,13 +357,13 @@ Documentation, config and operator tasks use the "Done when" form instead.
 
 ### Implementation
 
-- [ ] T031 [US3] Implement `.devcontainer/gen-container-secrets-env.sh`, ported from MCM, per [data-model.md, Container secrets file](data-model.md): bare `KEY=value` lines, only `FORGE_TOKEN` and `FORGE_ISSUE_TOKEN`, a newline-bearing value skipped, mode 600, rewritten from empty. It reads its source per [data-model.md, Sandbox environment file](data-model.md), uses the `BELAY_*` path variables and prints names and lengths only. This needs T028 verified RED.
+- [x] T031 [US3] Implement `.devcontainer/gen-container-secrets-env.sh`, ported from MCM, per [data-model.md, Container secrets file](data-model.md): bare `KEY=value` lines, only `FORGE_TOKEN` and `FORGE_ISSUE_TOKEN`, a newline-bearing value skipped, mode 600, rewritten from empty. It reads its source per [data-model.md, Sandbox environment file](data-model.md), uses the `BELAY_*` path variables and prints names and lengths only. This needs T028 verified RED.
   - **Verify GREEN:** `node --test scripts/__tests__/gen-container-secrets-env.test.mjs` → 0 failures, with a skip count of 0.
 
-- [ ] T032 [US3] Implement `.devcontainer/persist-claude-config.sh`, ported from MCM with the volume named `belay-claude` in its messages ([data-model.md, Persistent volumes](data-model.md)). This needs T029 verified RED.
+- [x] T032 [US3] Implement `.devcontainer/persist-claude-config.sh`, ported from MCM with the volume named `belay-claude` in its messages ([data-model.md, Persistent volumes](data-model.md)). This needs T029 verified RED.
   - **Verify GREEN:** `node --test scripts/__tests__/persist-claude-config.test.mjs` → 0 failures.
 
-- [ ] T033 [US3] Implement `.devcontainer/ensure-rtk-hook.sh`, ported from MCM with BELAY's install message. This needs T030 verified RED.
+- [x] T033 [US3] Implement `.devcontainer/ensure-rtk-hook.sh`, ported from MCM with BELAY's install message. This needs T030 verified RED.
   - **Verify GREEN:** `node --test scripts/__tests__/ensure-rtk-hook.test.mjs` → 0 failures.
 
 - [ ] T034 [US3] **External, needs the maintainer's approval:** generalise the guard in `jumbleknot/mcm-dotfiles` `install.sh` so it proceeds when `MCM_DEVCONTAINER=1` **or** `DEVCONTAINER_PERSONAL_LAYER=1` is set ([data-model.md, Markers](data-model.md)), and still logs and exits 0 otherwise. Update the README to match. Prepare the change in a scratch clone and show the diff to the maintainer. Push only after they approve it.
