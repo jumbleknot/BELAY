@@ -90,6 +90,30 @@ and `.devcontainer/toolchain.Dockerfile` (`FROM node:`).
   BELAY also has no Python, Rust or application JS yet, so the scan would protect almost nothing today.
   `pnpm audit` alone could run now, but a partial SAST port would read as coverage it is not.
 
+## R8 — Port the mandated-surface gates ahead of their surfaces {#r8}
+
+- **Decision** (maintainer, 2026-11-23): port the argv-secret, inline-secret, override-floor and
+  naming gates now, and replace MCM's names with BELAY's. This reverses the first draft, which
+  dropped them as having nothing to guard.
+- **Rationale**: the constitution already requires a root `compose.yaml` with per-file secrets,
+  Maestro for mobile tests, and dependency-security overrides. A gate added after the surface lands
+  catches only later violations; a gate already in place catches the first one.
+- **Generic naming grammar**: MCM hard-codes its services (`keycloak`, `mc-service`, `mcm-bff`…),
+  its retired keys, its approved networks and an `mcm-` qualifier rule. In BELAY:
+  - naming **contexts** are the project directory names under `backend/`, `frontend/`, `agents/`
+    and `mcp-servers/` (kebab-case per the constitution), plus an explicit, initially empty list for
+    infrastructure contexts (an identity provider, an observability stack) added with the first
+    compose file that needs one;
+  - **vendor bundles**, **retired keys** and **approved networks** become explicit, initially empty
+    lists, each with a comment saying when to add an entry;
+  - the grammar itself is kept: `<context>-<role>-<engine>-data` volumes (and MCM's `-logs` and
+    `-snapshots` forms), `-network` networks with no compose-project underscore, and
+    `container_name` equal to the service key;
+  - dropped: the `mcm-` qualifier rule and the `ollama` removed-object section (MCM's history).
+- **Vacuity**: each gate prints the number of files it scanned. With zero, it still exits 0, because
+  "no compose file yet" is the correct state, but the count makes it visible. Each selftest proves
+  detection on planted input.
+
 ## R7 — Secret scan as a tree gate {#r7}
 
 - **Decision**: add `node scripts/secret-scan.mjs` (scan mode) to `scripts:lint` after its existing

@@ -21,10 +21,10 @@ Then add one scheduled workflow for registry retention. Every port comes from MC
 | OpenWiki governance | `check-openwiki-governance.mjs` (+ `openwiki-policy.mjs`) | **port**; the policy module runs with no policy file ([R4](research.md#r4)) | item #28 |
 | wiki refresh | `scripts/wiki-refresh.mjs` + `.claude/skills/wiki-refresh` | **port** | item #28 |
 | registry retention | `registry-retention.mjs` + workflow + config | **port, trimmed** ([R5](research.md#r5)) | item #32 |
-| argv secrets | `check-no-argv-secrets.mjs` | **drop**: it guards Maestro command lines, and BELAY has no Maestro | item #1 |
-| inline secrets | `check-no-inline-secrets.mjs` | **drop**: it guards Docker Compose files, and BELAY tracks none | item #1 |
-| resource naming | `check-resource-naming.mjs` | **drop**: it enforces MCM's volume/container grammar, and BELAY deploys nothing | item #1 |
-| override floor | `check-override-consistency.mjs` | **drop**: it guards keyed `pnpm-workspace.yaml` overrides, and BELAY has none. Port it with the first override | item #1 |
+| argv secrets | `check-no-argv-secrets.mjs` | **port ahead of the surface** ([R8](research.md#r8)): the constitution requires Maestro | item #1 |
+| inline secrets | `check-no-inline-secrets.mjs` | **port ahead of the surface** ([R8](research.md#r8)): the constitution requires `compose.yaml` with file secrets | item #1 |
+| resource naming | `check-resource-naming.mjs` | **port, genericised** ([R8](research.md#r8)): contexts come from BELAY's project directories, not MCM's services | item #1 |
+| override floor | `check-override-consistency.mjs` | **port ahead of the surface** ([R8](research.md#r8)): `pnpm-workspace.yaml` anticipates security overrides | item #1 |
 | SAST | `sast-scan.mjs`, `check-sast-findings.mjs` | **defer** ([R6](research.md#r6)): re-filed as its own item | item #1 |
 | Komodo, port-collision, restart-policy, server-import, realm, DAST | various | **drop**: MCM-specific, per item #1 itself | item #1 |
 
@@ -106,6 +106,10 @@ scripts/
 ├── openwiki-stamp.mjs                  # new (shared)
 ├── wiki-refresh.mjs                    # new
 ├── registry-retention.mjs              # new (trimmed port)
+├── check-no-inline-secrets.mjs         # new (ported ahead of compose)
+├── check-no-argv-secrets.mjs           # new (ported ahead of Maestro)
+├── check-override-consistency.mjs      # new (ported ahead of the first override)
+├── check-resource-naming.mjs           # new (genericised)
 ├── secret-scan.mjs                     # existing; its scan mode is now wired into lint
 ├── project.json                        # the lint target gains the new commands
 └── __tests__/                          # one test file per new module

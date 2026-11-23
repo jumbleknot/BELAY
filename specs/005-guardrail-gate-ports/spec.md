@@ -145,6 +145,35 @@ report: it refuses.
 5. **Given** the schedule, **When** the workflow runs, **Then** its log shows the report before any
    deletion.
 
+### User Story 5 - Gates are in place before the surfaces they guard arrive (Priority: P2)
+
+BELAY's constitution already requires a root `compose.yaml` with secrets read from files, Maestro for
+mobile tests, and security overrides in `pnpm-workspace.yaml`. None exists yet. The first change
+that adds one must meet the rules on its first commit, not after a later gate lands. A gate that has
+nothing to scan says so, rather than passing silently.
+
+**Why this priority**: a gate added after the surface arrives catches only what comes later. The
+first compose file, the first Maestro invocation and the first override are each the moment a leaked
+literal or a half-bump is most likely.
+
+**Independent Test**: each gate's selftest plants a violation and proves it is caught. Each scan on
+today's tree exits 0 and prints how many files it examined, including 0.
+
+**Acceptance Scenarios**:
+
+1. **Given** a compose file holding a literal credential (or an inline `${VAR:-default}`), **When**
+   the inline-secret gate runs, **Then** it fails naming the file and key, never the value.
+2. **Given** a secret-named `--env KEY=` argument passed to a Maestro invocation, **When** the
+   argv-secret gate runs, **Then** it fails naming the file and line.
+3. **Given** a keyed `pnpm-workspace.yaml` override whose key bound and value floor disagree, or whose
+   cap widens past the declared major, **When** the override-floor gate runs, **Then** it fails naming
+   the entry.
+4. **Given** a compose container, volume or network whose name breaks the naming grammar, or a
+   `container_name` that differs from its service key, **When** the naming gate runs, **Then** it fails
+   naming the file and token.
+5. **Given** the naming grammar, **When** a new project directory is added under the monorepo's project
+   folders, **Then** its name is accepted as a naming context without editing the gate.
+
 ---
 
 ### Edge Cases
@@ -228,6 +257,20 @@ report: it refuses.
 - **FR-043**: `docs/runbooks/devcontainer.md` MUST state the retention window and how to switch from
   report to apply.
 
+**Gates for mandated surfaces (item #1, revised)**
+
+- **FR-050**: The repository MUST fail its required check when a tracked compose file holds a literal
+  credential, a password-bearing URL, or an inline default for a secret-shaped key.
+- **FR-051**: The repository MUST fail its required check when a secret-named argument is passed on a
+  Maestro command line.
+- **FR-052**: The repository MUST fail its required check when a keyed `pnpm-workspace.yaml` override's
+  key and value disagree on the patched floor, or its value widens past the declared major.
+- **FR-053**: The repository MUST fail its required check when a compose resource name breaks BELAY's
+  naming grammar. The grammar's contexts MUST be derived from the monorepo's project directories, not
+  from a list of another repository's services.
+- **FR-054**: Each of these gates MUST report how many files it scanned, so a scan of nothing is
+  visible.
+
 ### Key Entities
 
 - **Gate**: a repository check with a selftest, a scan, an exit-code contract and a digest entry.
@@ -253,6 +296,8 @@ report: it refuses.
   without refreshing its page fails the required check.
 - **SC-005**: A retention report run lists every `belay-devcontainer` version with a keep/delete
   decision, and a protected digest is never marked delete.
+- **SC-007**: Each mandated-surface gate catches its planted violation in its selftest, and reports a
+  scanned-file count on every run.
 - **SC-006**: Items #1, #2, #28 and #32 can each be closed with their acceptance criteria verified, or
   carry a comment stating what remains and why.
 
@@ -265,11 +310,11 @@ report: it refuses.
 
 ## Assumptions
 
-- **Dropped candidates.** The MCM gates for Maestro argv secrets, Docker Compose inline secrets and
-  resource naming, and the Komodo, port-collision, restart-policy, server-import, realm and DAST
-  gates, guard surfaces BELAY does not have (no compose files, no Maestro, no deployed services).
-  The override-floor gate guards `pnpm-workspace.yaml` overrides, and BELAY has none. These are dropped
-  with that reason, and can be ported when the surface appears.
+- **Ported ahead of their surfaces.** The argv-secret, inline-secret, naming and override-floor gates
+  guard surfaces the constitution requires but BELAY does not have yet. They are ported now so the
+  first such change is gated (User Story 5); MCM-specific names are replaced by BELAY's.
+- **Dropped candidates.** MCM's Komodo, port-collision, restart-policy, server-import, realm and DAST
+  gates guard MCM's own deployment, per item #1 itself.
 - **SAST is deferred, not ported.** It needs Semgrep and other scanner toolchains on the CI runner,
   which is a structural decision the maintainer takes, and BELAY has no application code yet. It is
   re-filed as its own backlog item.
