@@ -102,7 +102,7 @@ description: "Task list for feature 008: SAST stage prep and step durations"
   `git push origin HEAD:008-sast-stage-prep-step-durations`; `node scripts/forge-pr.mjs open …`;
   `node scripts/ci-status.mjs watch --pr <n>`; merge only on the maintainer's approval.
   **CI evidence is never recorded here.**
-- [ ] T036 After the merge: comment on items #39, #40 and #41 with what is now prepared and measured
+- [x] T036 After the merge: comment on items #39, #40 and #41 with what is now prepared and measured
 
 ## Dependencies
 

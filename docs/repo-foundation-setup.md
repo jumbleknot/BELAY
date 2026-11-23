@@ -502,10 +502,30 @@ project) are a list entry: their toolchain steps are already in the job, dormant
 tracked (`scripts/sast-prepare.mjs`, feature 008). Copy `scripts/sast-scan.mjs`, `scripts/sast-prepare.mjs`,
 `scripts/check-sast-findings.mjs`, `scripts/allowlist-expiry.mjs`, `scripts/lib/scanner-retry.mjs`,
 `scripts/check-dependency-downgrade.mjs` (feature 007: the PR-only step that blocks a package moved
-into an advisory in any scope)
-and `security/sast/`, seed the allowlist from a full scan (BELAY's was empty), and add
-`guardrails / sast (pull_request)` to branch protection after its first green run. See
-[the SAST runbook](runbooks/sast.md).
+into an advisory in any scope) and `security/sast/`, seed the allowlist from a full scan (BELAY's was
+empty), and add `guardrails / sast (pull_request)` to branch protection after its first green run.
+See [the SAST runbook](runbooks/sast.md).
+
+**Prepare a later stage's toolchain dormant, and guard its trigger.** An enabled scanner with nothing
+to audit fails the job by design, so it cannot be switched on early. Its install can be. BELAY's
+stage-2 and stage-3 steps decide from the **tracked** lockfiles, using the scanners' own discovery, and
+do nothing until one exists. Pair that with a test that fails while a tracked lockfile's scanner is
+not enabled. Then the first Rust crate's or Python project's PR cannot go green unaudited, and
+enabling the stage is one list entry. Expect a knock-on when the last scanner is enabled: a test that
+needs one scanner left disabled must move to a fixture config (feature 008, research R7).
+
+**Install from a pinned file, never a piped script.** MCM pipes `sh.rustup.rs` into `sh` and compiles
+cargo-audit on every run. BELAY downloads a version-pinned `rustup-init` and the prebuilt cargo-audit
+release, and checks each sha256 before writing or running it. A piped installer cannot be pinned by
+digest, and the compile costs minutes per run on a one-runner queue. If a vendor's published checksum
+is out of reach from the dev container, as `static.rust-lang.org` is for BELAY by design, derive the
+digest from a known install, and confirm it on the runner with a dispatched run before merging
+(`forge-pr.mjs dispatch` on a throwaway branch).
+
+**Publish step durations on green runs too.** `ci-log-step.sh` records every step's duration, but the
+digest used to publish the file only in a failure bundle. So `ci-status durations` had no sample for
+a job that had never failed, and "do installs dominate?" could not be measured. A green job now
+publishes `step-durations.tsv` alone (feature 008). Port the publication with the recorder.
 
 **Then:**
 
@@ -590,6 +610,8 @@ aren't true of the new repository until you measure them there.
   [003-backlog-taskstoissues](../specs/003-backlog-taskstoissues/spec.md),
   [004-devcontainer-sandbox](../specs/004-devcontainer-sandbox/spec.md),
   [005-guardrail-gate-ports](../specs/005-guardrail-gate-ports/spec.md),
-  [006-sast-stage1](../specs/006-sast-stage1/spec.md).
+  [006-sast-stage1](../specs/006-sast-stage1/spec.md),
+  [007-dependency-downgrade-gate](../specs/007-dependency-downgrade-gate/spec.md),
+  [008-sast-stage-prep-step-durations](../specs/008-sast-stage-prep-step-durations/spec.md).
 - Gaps that are known and not built yet live in the backlog: `node scripts/backlog.mjs list`. For
-  example, item #37 holds SAST stages 2 to 4.
+  example, items #39, #40 and #41 hold SAST stages 2 to 4.
