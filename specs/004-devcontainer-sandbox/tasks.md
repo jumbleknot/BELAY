@@ -130,7 +130,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
   - **Scenarios covered:** US2-AC2, US2-AC4, FR-007, FR-008, FR-009. Contract: [contracts/cli.md, gen-egress-policy](contracts/cli.md).
   - **Asserts, with `--file` fixtures in temp directories:**
     - `--check` exits 0 on a valid list.
-    - `--check` exits 1 and names the index and domain for each of: an IP, a `host:port`, a URL, a `.ts.net` host, a duplicate domain, an unknown group and an empty reason.
+    - `--check` exits 1 and names the index and domain for each of: an IP, a `host:port`, a URL, a `.ts.net` host, a duplicate domain, an unknown group, an empty reason and a non-boolean `cdnRotating`.
     - `--format sbx-policy` is ordered by group, then domain.
     - `--forge-host h.example.test` appends `allow network h.example.test`. No flag means no extra line. A quoted host exits 2.
     - The tool never writes a file: the directory listing is the same before and after.
@@ -153,7 +153,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
 ### Implementation
 
 - [ ] T009 [US2] Create `scripts/gen-egress-policy.mjs`, ported from MCM's: the names, help text and default path are BELAY's, and its behaviour is per contracts/cli.md. This needs T007 verified RED.
-  - Its `--check` enforces [data-model.md, Egress allowlist](data-model.md): the rules for `destinations[].domain`, `destinations[].group`, `destinations[].reason` and `destinations[]` (unique domains, at least one entry).
+  - Its `--check` enforces [data-model.md, Egress allowlist](data-model.md): the rules for `destinations[].domain`, `destinations[].group`, `destinations[].reason`, `destinations[].cdnRotating` (a boolean when present) and `destinations[]` (unique domains, at least one entry).
 
 - [ ] T010 [US2] Create `.devcontainer/egress-allowlist.json` from MCM's at `ab1f68ca`, per [research R8](research.md). This needs T007 verified RED.
   - Remove `api.themoviedb.org`, leaving 102 entries ([data-model.md](data-model.md), Egress allowlist, `destinations[]`).
@@ -202,6 +202,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
     - The schedule is `0 6 * * 5`.
     - There is one job, `build-publish`, with `runs-on: kvm` and a `timeout-minutes`.
     - The image name is `belay-devcontainer`.
+    - The push step writes a `…/belay-devcontainer@sha256` reference to `$GITHUB_STEP_SUMMARY` (FR-018, "report the published digest-pinned reference").
     - Every `run:` step goes through `scripts/ci-log-step.sh` except the failure digest.
     - The last step is the failure digest, with `if: always()` and `continue-on-error: true`.
     - The file contains no `mcm` substring.
@@ -277,6 +278,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
     - It reads `sbx ls --format json`.
     - Every `& sbx` or `& ssh` call goes through `Invoke-Native`, so there is no bare native call outside that helper.
     - A `-PrintOnly` path exists.
+    - The "sandbox does not exist" error names `docs/runbooks/devcontainer.md` (US1-AC4).
     - The file is saved with CRLF line endings.
   - **Verify RED:** `node --test scripts/__tests__/open-sandbox.guard.test.mjs` → expected: all failing, with `ENOENT … open-sandbox.ps1`.
 

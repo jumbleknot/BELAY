@@ -126,12 +126,19 @@ scripts/
 ├── open-sandbox.ps1             # CRLF per .gitattributes
 ├── project.json                 # + build-devcontainer-image target; lint gains --check
 └── __tests__/
-    ├── gen-egress-policy.test.mjs
-    ├── devcontainer-image-gate.test.mjs
-    ├── gen-container-secrets-env.test.mjs
     ├── devcontainer-config.guard.test.mjs
+    ├── toolchain-dockerfile.guard.test.mjs
+    ├── gen-egress-policy.test.mjs
+    ├── assert-egress-governed.test.mjs
+    ├── devcontainer-image-gate.test.mjs
     ├── devcontainer-image-workflow.guard.test.mjs
-    └── open-sandbox.guard.test.mjs
+    ├── build-devcontainer-image.test.mjs
+    ├── check-image-pin.test.mjs
+    ├── fix-workspace-ownership.test.mjs
+    ├── open-sandbox.guard.test.mjs
+    ├── gen-container-secrets-env.test.mjs
+    ├── persist-claude-config.test.mjs
+    └── ensure-rtk-hook.test.mjs
 .forgejo/workflows/devcontainer-image.yml
 docs/runbooks/devcontainer.md    # rewritten: bring-up, recreate, re-pin, upgrades, traps, worktrees
 openwiki/runbooks/devcontainer.md

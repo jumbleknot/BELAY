@@ -140,7 +140,7 @@ A runbook covers bringing the environment up from nothing on a Windows host, rec
 
 - **FR-017**: The toolchain MUST be a prebuilt image, built from a base image pinned by digest, and containing no credentials and no personal tools.
 - **FR-018**: CI MUST build and publish the image to the forge's container registry when an image input changes (including the `packageManager` pin), on manual dispatch, and on a weekly schedule. It MUST build nothing when no input changed, and MUST report the published digest-pinned reference.
-- **FR-019**: The dev container MUST be built from the image named by a digest pin provided in the sandbox, never committed. A local build path MUST exist for working offline.
+- **FR-019**: The dev container MUST be built from the image named by a digest pin provided in the sandbox, never committed. A local build path MUST exist that needs neither the registry nor CI. It still needs an engine with open egress.
 - **FR-020**: The image workflow MUST meet the repository's CI rules: every step logged through the step wrapper, and a failure-digest step on the job.
 
 **Operation**
