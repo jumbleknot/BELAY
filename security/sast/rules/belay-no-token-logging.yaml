@@ -1,0 +1,34 @@
+# belay-no-token-logging — ported from MCM's mcm-no-token-logging (MCM feature 033, FR-004).
+# Credential/PII-leak rule → ERROR (normalizes to High, blocking).
+#
+# The constitution (Observability, "Sensitive Data Prohibition"): logs must never contain passwords,
+# secrets, private keys, raw tokens, session IDs, or full PII (names, emails, …). Matches a
+# logger/console call whose argument is a member access or object property whose (final) name is a
+# sensitive field.
+#
+# Limitations (best-effort, documented): matches by IDENTIFIER/PROPERTY NAME, so it does not catch a
+# sensitive value aliased into an innocuously-named variable, and it may false-positive on a same-named
+# non-sensitive field. Triage false positives into security/sast/allowlist.yaml.
+rules:
+  - id: belay-no-token-logging
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >-
+      Possible logging of a raw token/JWT/authorization/session id/email/password. Logs never carry
+      secrets or PII (constitution, "Sensitive Data Prohibition") — redact or omit the field at the
+      point of logging, and pass an object with safe keys (e.g. userId) instead.
+    metadata:
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - pattern-either:
+          - pattern: $LOG.$M(..., $A.$SECRET, ...)
+          - pattern: $LOG.$M(..., $SECRET, ...)
+          - pattern: '$LOG.$M(..., { ..., $SECRET, ... }, ...)'
+          - pattern: '$LOG.$M(..., { ..., $SECRET: $V, ... }, ...)'
+      - metavariable-regex:
+          metavariable: $SECRET
+          regex: ^(token|jwt|accessToken|refreshToken|authorization|sessionId|password|email)$
+      - metavariable-regex:
+          metavariable: $M
+          regex: ^(log|info|warn|error|debug|trace|audit)$

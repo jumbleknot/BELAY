@@ -1,0 +1,39 @@
+# SAST/SCA finding allowlist — BELAY feature 006 (see specs/006-sast-stage1/data-model.md, which
+# carries MovieCollectionManager feature 033's Allowlist Entry unchanged).
+#
+# Consumed ONLY by the gate (scripts/check-sast-findings.mjs). Suppresses a matching finding from the
+# blocking gate while it stays VISIBLE in security/sast/reports/findings.json. The gate fails only on
+# `blocking` findings (High/Critical that are SAST, or runtime-scope SCA); Medium/Low and dev-scope
+# findings are warnings and need no entry here.
+#
+# The file is a YAML LIST. A file holding only comments is an empty list and suppresses nothing.
+#
+# Match key (all five string fields required; a blank justification/addedBy or invalid regex is a
+# GATE ERROR, exit 2):
+#   - scanner:         semgrep | cargo-audit | pnpm-audit | pip-audit
+#     id:              exact rule id (Semgrep check_id) or advisory id (RUSTSEC-*/GHSA-*/CVE-*/PYSEC-*)
+#     locationPattern: regex vs Finding.location ('path:line' with FORWARD slashes, or 'package@version')
+#     justification:   why accepted (false positive or accepted risk)
+#     addedBy:         who triaged
+#     expiry:          optional ISO YYYY-MM-DD — once past, the entry stops suppressing (finding re-blocks)
+#
+# Stage 1 enables semgrep and pnpm-audit only (security/sast/scan.yaml). cargo-audit and pip-audit
+# entries are valid, but suppress nothing until stages 2 and 3 enable those scanners.
+#
+# The gate reports, without changing its result:
+#   - EXPIRING SOON — an entry within 14 days of its expiry (still suppressing);
+#   - EXPIRED       — an entry past its expiry, beside the finding it no longer covers;
+#   - UNMATCHED     — an entry that matched nothing while its scanner did produce findings
+#                     (remediated, the scanner changed identifier namespace, or the rule could not run).
+#
+# ═════════════════════════════════════════════════════════════════════════════════════════════════
+# BASELINE (FR-012 / SC-006): every entry below suppresses a finding that was ALREADY PRESENT when
+# feature 006 landed, seeded from a full scan at landing (research R5), each with a justification
+# written after reading the finding. Seeding them makes the protected `main` green on day one, so the
+# gate blocks only findings introduced AFTER this baseline. None of them were introduced by this
+# feature.
+#
+# Seeded 2026-11-23: the full scan at landing found 0 blocking findings (4 Medium warnings, none
+# needing an entry), so the baseline is EMPTY. The one blocking hit seen during development was this
+# feature's own workflow comment quoting the curl-pipe pattern; the comment was reworded, not listed.
+# ═════════════════════════════════════════════════════════════════════════════════════════════════

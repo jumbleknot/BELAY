@@ -493,10 +493,16 @@ vendor-bundle, retired-key and approved-network lists empty until they are neede
 enforced even while it is empty: BELAY's approved-networks list makes the first named network fail
 until someone approves it, as MCM's did.
 
-**Defer what needs a structural decision.** SAST needs Semgrep, uv and Rust on the runner, which is
-the maintainer's call. BELAY filed it as a staged backlog item (item #37): Semgrep and `pnpm audit`
-first, then cargo-audit with the first Rust code, pip-audit with the first Python project, and a
-baked scanner image once installs dominate the run.
+**Defer what needs a structural decision, then stage it.** SAST needs Semgrep, uv and Rust on the
+runner, which is the maintainer's call. BELAY filed it as a staged backlog item (item #37). Stage 1
+landed as feature 006, after the maintainer approved uv: a separate `sast` job in `guardrails.yml`
+runs Semgrep and `pnpm audit`, ported from MCM's feature 033. The enabled scanners are a list in
+`security/sast/scan.yaml`, so cargo-audit (the first Rust code) and pip-audit (the first Python
+project) are a list entry plus a toolchain step. Copy `scripts/sast-scan.mjs`,
+`scripts/check-sast-findings.mjs`, `scripts/allowlist-expiry.mjs`, `scripts/lib/scanner-retry.mjs`
+and `security/sast/`, seed the allowlist from a full scan (BELAY's was empty), and add
+`guardrails / sast (pull_request)` to branch protection after its first green run. See
+[the SAST runbook](runbooks/sast.md).
 
 **Then:**
 
@@ -563,7 +569,7 @@ BELAY's name is built into these places. Rename each one, and the guard test tha
 | Retention config | `owner:` and the package names in `infrastructure-as-code/forgejo/registry-retention.yaml`. Start `protect:` empty and `mode: report` |
 | Sandbox name, checkout path and volumes | `belay`, `/workspaces/belay`, `belay-claude`, `belay-pnpm-store`, `belay-commandhistory` |
 | Environment-variable prefix | `BELAY_DEVCONTAINER*`, `~/.belay-sandbox-env`, `~/.belay-devcontainer-secrets.env` |
-| Status context for branch protection | `guardrails / guardrails (pull_request)`. Record it from the first green run; don't assume it |
+| Status context for branch protection | `guardrails / guardrails (pull_request)` and `guardrails / sast (pull_request)`. Record it from the first green run; don't assume it |
 | The constitution's name and opening | `.specify/memory/constitution.md` |
 | The `AGENTS.md` description line and `openwiki/projects/repository.md` | the description of the repository |
 
@@ -580,6 +586,7 @@ aren't true of the new repository until you measure them there.
   [002-pr-ci-tooling](../specs/002-pr-ci-tooling/spec.md),
   [003-backlog-taskstoissues](../specs/003-backlog-taskstoissues/spec.md),
   [004-devcontainer-sandbox](../specs/004-devcontainer-sandbox/spec.md),
-  [005-guardrail-gate-ports](../specs/005-guardrail-gate-ports/spec.md).
+  [005-guardrail-gate-ports](../specs/005-guardrail-gate-ports/spec.md),
+  [006-sast-stage1](../specs/006-sast-stage1/spec.md).
 - Gaps that are known and not built yet live in the backlog: `node scripts/backlog.mjs list`. For
-  example, item #37 holds the staged SAST port.
+  example, item #37 holds SAST stages 2 to 4.

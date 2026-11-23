@@ -1,0 +1,23 @@
+# Semgrep run config (ported from MCM feature 033; BELAY feature 006, research R4).
+#
+# Config-as-code list of the rulesets Semgrep runs. Consumed via:
+#   uvx semgrep@<pin> scan --config <each entry> --config security/sast/rules/ ...
+#
+# Community registry packs (served anonymously: no login, no SEMGREP_APP_TOKEN) cover the TS/JS
+# tree, Python, workflow YAML and Dockerfiles. MCM's five packs are kept as they are: a pack with no
+# matching files costs a registry fetch and nothing else, and it is in place before the surface it
+# covers arrives (React and Python have no BELAY surface yet).
+#
+# `p/secrets` is deliberately ABSENT (FR-006): the secret-scan gate (scripts/secret-scan.mjs) owns
+# credential detection; enabling it here would double-gate and split the allowlist.
+
+# NOTE: `configs:` is read by scripts/sast-scan.mjs, which expands each entry into a
+# `--config <value>` flag. Semgrep resolves `p/...` names from its public registry.
+configs:
+  - p/typescript      # TS/JS security + correctness
+  - p/react           # React / React Native frontend sinks
+  - p/nodejs          # Node/server-side sinks
+  - p/python          # Python security
+  - p/owasp-top-ten   # cross-language OWASP Top 10 coverage
+  # The custom BELAY invariant rules (rules/) are appended by the orchestrator as a separate
+  # --config, and the rules/ tree is excluded from the product scan so its fixtures are not scanned.

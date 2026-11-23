@@ -16,7 +16,9 @@ BELAY's required CI is one Forgejo Actions workflow, [`.forgejo/workflows/guardr
 
 A push to a branch with an open PR runs once, through the `pull_request` event. A newer run for the same ref cancels an older one.
 
-**Steps.** One job, `guardrails`, runs:
+**Jobs.** Two jobs run side by side: `guardrails`, below, and `sast`, the static security scan (see [the SAST runbook](sast.md)). `sast` installs uv, scans with Semgrep and `pnpm audit`, and gates the result against `security/sast/allowlist.yaml`.
+
+**Steps.** The `guardrails` job runs:
 
 1. Checkout.
 2. Node 26.13.1, through `actions/setup-node`.
@@ -128,9 +130,10 @@ registry. It is not a merge check.
   [`infrastructure-as-code/forgejo/registry-retention.yaml`](../../infrastructure-as-code/forgejo/registry-retention.yaml).
   - `belay-devcontainer`: the newest 4, or anything younger than 21 days, plus every digest under
     `protect:`.
-  - `belay-ci-failures`: at least 75 versions and 45 days, the floor `ci-status durations` needs. The
-    floor is 25 runs × 3 bundle-publishing jobs, so a new job that publishes a bundle makes the config
-    fail until the number is raised.
+  - `belay-ci-failures`: at least 100 versions and 45 days, the floor `ci-status durations` needs. The
+    floor is 25 runs × 4 bundle-publishing jobs (guardrails, sast, devcontainer-image,
+    registry-retention), so a new job that publishes a bundle makes the config fail until the number
+    is raised.
   - A package the file does not list (another repository's, under the same owner) is reported and
     never deleted.
 - **Deleting takes two keys.** `--apply` reaches the script only on a dispatch with `apply: true`, and
@@ -207,7 +210,7 @@ Do this once, after the first green guardrails run on a pull request. The status
 
 1. In BELAY, go to **Settings → Branches**, then **Add new rule**. Use rule name or pattern `main`.
 2. **Push:** choose **Disable push**, so nobody pushes directly to `main`. Changes go through PRs.
-3. **Status checks:** enable **Enable status check**, then add the guardrails context exactly as it appears on the PR's checks: `guardrails / guardrails (pull_request)`. This was recorded from the first green run, on PR #3, on 2026-11-22.
+3. **Status checks:** enable **Enable status check**, then add the guardrails context exactly as it appears on the PR's checks: `guardrails / guardrails (pull_request)`. This was recorded from the first green run, on PR #3, on 2026-11-22. Add `guardrails / sast (pull_request)` the same way once the `sast` job has reported green on a PR (feature 006); until then a red `sast` shows on the PR but does not block it.
 4. Optional: enable **Block merge on outdated branch**, so a PR must include the latest `main` before it merges.
 5. **Save rule**.
 

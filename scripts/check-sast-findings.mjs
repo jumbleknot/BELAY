@@ -1,0 +1,634 @@
+#!/usr/bin/env node
+// SAST/SCA merge gate — BELAY feature 006 (T016).
+// Contract: specs/006-sast-stage1/contracts/sast-cli.md.
+//
+// Ported from MovieCollectionManager (MCM) at fc2b953 (its features 033, 057 and 058). Changed only
+// where MCM was named: paths, rule ids, and item references in messages. One BELAY fix: a GateError
+// raised while EVALUATING a report (no usable `generatedAtScope`) exits 2 as the contract says, where
+// MCM let it escape as an uncaught throw (exit 1, which reads as a blocking finding).
+//
+// Consumes ONLY the normalized findings.json (from sast-scan.mjs) + security/sast/allowlist.yaml
+// (the allowlist IS the baseline — no stored diff). FAILS (exit 1) on any `blocking` finding not
+// suppressed by an allowlist entry. Non-blocking findings (Medium/Low, or dev-scope SCA) are printed
+// as warnings and never fail. Suppression is gate-only — allowlisted findings stay visible in the
+// report (FR-011). An allowlist entry with a past `expiry` stops suppressing (US3).
+//
+// Usage:
+//   node scripts/check-sast-findings.mjs [--report <findings.json>] [--allowlist <yaml>]
+//   node scripts/check-sast-findings.mjs --selftest
+//
+// Exit codes: 0 pass / selftest ok · 1 un-allowlisted blocking finding present · 2 bad args /
+//             unparseable report / invalid allowlist entry.
+//
+// MUST NOT print secrets — only finding metadata (scanner, id, location, severity), already scrubbed
+// by the orchestrator.
+
+import { readFileSync } from 'node:fs';
+import { parse as parseYaml } from 'yaml';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+import {
+  WARNING_WINDOW_DAYS, classifyExpiry, selectUnmatched, formatExpiring, formatExpired, formatUnmatched,
+} from './allowlist-expiry.mjs';
+import { selectAdvice, formatAdvice } from './override-lever.mjs';
+import { isScanTarget } from './sast-scan.mjs';
+
+const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const DEFAULT_REPORT = resolve(REPO_ROOT, 'security/sast/reports/findings.json');
+const DEFAULT_ALLOWLIST = resolve(REPO_ROOT, 'security/sast/allowlist.yaml');
+const SEV_ORDER = ['Critical', 'High', 'Medium', 'Low'];
+
+class GateError extends Error {}
+
+/** Today's date as YYYY-MM-DD (for expiry comparison; lexicographic compare is valid for ISO dates). */
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Validate + compile one allowlist entry. Missing/blank required field or bad regex → GateError. */
+function compileEntry(e, i) {
+  for (const field of ['scanner', 'id', 'locationPattern', 'justification', 'addedBy']) {
+    if (!e || typeof e[field] !== 'string' || e[field].trim() === '') {
+      throw new GateError(`allowlist entry #${i + 1} has a missing/blank "${field}" — every suppression needs scanner, id, locationPattern, justification, addedBy.`);
+    }
+  }
+  if (e.expiry !== undefined && (typeof e.expiry !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(e.expiry))) {
+    throw new GateError(`allowlist entry #${i + 1} has an invalid "expiry" (must be an ISO YYYY-MM-DD date).`);
+  }
+  let re;
+  try {
+    re = new RegExp(e.locationPattern);
+  } catch (err) {
+    throw new GateError(`allowlist entry #${i + 1} locationPattern is not a valid regex: ${err.message}`);
+  }
+  // `key` is a stable per-run identity for unmatched-entry detection. It is NOT the advisory id:
+  // one id can carry two entries (two locations), and two ids can share a location — keying on the
+  // id alone would let one entry's match silently cover another entry's staleness.
+  return { key: `${i}:${e.scanner}:${e.id}`, scanner: String(e.scanner), id: String(e.id), locationPattern: e.locationPattern, re, justification: e.justification, addedBy: e.addedBy, expiry: e.expiry };
+}
+
+export function loadAllowlist(path) {
+  let raw;
+  try {
+    raw = readFileSync(path, 'utf8');
+  } catch {
+    return []; // no allowlist file → nothing suppressed
+  }
+  return loadAllowlistFromString(raw);
+}
+
+function loadAllowlistFromString(yaml) {
+  const parsed = parseYaml(yaml) ?? [];
+  if (!Array.isArray(parsed)) throw new GateError('allowlist must be a YAML list');
+  return parsed.map(compileEntry);
+}
+
+/**
+ * An entry suppresses a finding iff scanner AND id match, the locationPattern matches the finding's
+ * location, and the entry has not expired (no expiry, or expiry >= today).
+ */
+function suppresses(entry, f, now) {
+  if (entry.scanner !== f.scanner || entry.id !== f.id) return false;
+  if (!entry.re.test(f.location)) return false;
+  if (entry.expiry && entry.expiry < now) return false; // expired → no longer suppresses
+  return true;
+}
+
+/**
+ * Does the entry's PATTERN describe this finding, ignoring expiry?
+ *
+ * Deliberately separate from `suppresses`: "matched nothing this run" is orthogonal to the expiry
+ * lifecycle (data-model.md), so an expired entry that still describes its finding is reported as
+ * EXPIRED rather than also as UNMATCHED. Reporting it twice for one fault would be noise.
+ */
+function matchesFinding(entry, f) {
+  return entry.scanner === f.scanner && entry.id === f.id && entry.re.test(f.location);
+}
+
+/** Partition findings into { failures, warnings, suppressed } plus the allowlist-hygiene review. */
+export function evaluate(report, allowlist, now = today()) {
+  const findings = report?.findings ?? [];
+  const failures = [];
+  const warnings = [];
+  const suppressed = [];
+  for (const f of findings) {
+    const hit = allowlist.find((e) => suppresses(e, f, now));
+    if (f.blocking && hit) suppressed.push({ ...f, allowlist: hit });
+    else if (f.blocking) failures.push(f);
+    else warnings.push(f);
+  }
+
+  const expiring = allowlist.filter((e) => classifyExpiry(e.expiry, now) === 'expiring');
+  const expired = allowlist.filter((e) => classifyExpiry(e.expiry, now) === 'expired');
+
+  // Unmatched is evaluated ONLY for scanners that produced at least one finding in this run. A
+  // skipped, failed or clean scanner must never flag its whole entry set — otherwise the weekly
+  // check goes red claiming stale allowlist hygiene when the real fault is a scan that never ran,
+  // which is the scanning job's failure to report, not this one's to misattribute.
+  const matchedKeys = new Set();
+  for (const f of findings) for (const e of allowlist) if (matchesFinding(e, f)) matchedKeys.add(e.key);
+  const scannersWithFindings = new Set(findings.map((f) => f.scanner));
+  const unmatched = selectUnmatched(allowlist, matchedKeys, scannersWithFindings);
+
+  return {
+    failures, warnings, suppressed, expiring, expired, unmatched,
+    blinded: collectBlinded(report),
+    asymmetric: selectAsymmetric(report, [...failures, ...suppressed]),
+  };
+}
+
+/**
+ * Blocking SAST findings sitting on a file class `--scope changed` never hands Semgrep — the
+ * STANDING form of an enumeration that MCM had twice kept only as a snapshot.
+ *
+ * MCM HIT THE SAME DEFECT TWICE, FOUND THE SAME WAY: a rule fired on the post-merge full scan against
+ * a file the pull request's changed-scope run never handed it, so the PR that introduced the problem
+ * was gated on nothing and `main` went red after the merge. Workflow YAML, then Dockerfiles, were each
+ * closed reactively, one class at a time. A comment is not an enumeration that runs.
+ *
+ * IT COUNTS SUPPRESSED FINDINGS, NOT JUST FAILURES, and that is the entire point. An un-allowlisted
+ * blocking finding already fails the gate loudly — nobody needs help noticing it. MCM's Dockerfile
+ * case was an ACCEPTED risk with an allowlist entry, so the gate was green and the asymmetry was
+ * invisible precisely because everything looked fine.
+ *
+ * TWO EXCLUSIONS, both because the check would otherwise be meaningless rather than merely noisy:
+ *
+ *   - `kind: 'sca'` — cargo-audit, pnpm-audit and pip-audit ignore `--scope` entirely and always run
+ *     over the whole lockfile set, so an SCA finding cannot be scope-asymmetric. Judging a lockfile by
+ *     a Semgrep target filter would report a defect that does not exist.
+ *   - `generatedAtScope === 'changed'` — every file in such a run was, by definition, a scan target.
+ *
+ * The scope field is REQUIRED. A missing field must not be able to switch this guard off silently, the
+ * way a missing file class switched off the thing it guards.
+ */
+function selectAsymmetric(report, blockingFindings) {
+  // THE ONE EXEMPTION, AND WHY IT IS NOT A HOLE. `--check-expiring` can run where no SAST report
+  // exists (MCM ran it in a weekly job that produces none); `main()` handles that ENOENT by
+  // ANNOUNCING it on stdout and synthesising `{ findings: [], reportAbsent: true }`. That object has no
+  // `generatedAtScope` because no scan ran to have one — so in MCM the throw below fired on it and
+  // aborted the whole weekly step, and the expiry tier was silently dead for two weeks.
+  //
+  // The exemption is keyed on the explicit marker, never on a missing field: a report that EXISTS and
+  // omits its scope still throws, which is the fault this guard was written for. There is also nothing
+  // to evaluate here by construction — an absent report carries zero findings, so there is no blocking
+  // finding that could be scope-asymmetric and be waved through.
+  if (report?.reportAbsent === true) return [];
+
+  const scope = report?.generatedAtScope;
+  if (scope !== 'full' && scope !== 'changed') {
+    throw new GateError(`report has no usable \`generatedAtScope\` (got ${JSON.stringify(scope)}) — regenerate it with scripts/sast-scan.mjs. The gate-scope symmetry check cannot be evaluated without knowing which scope produced this report, and silently skipping it is the failure mode it exists to prevent.`);
+  }
+  if (scope !== 'full') return [];
+  return blockingFindings.filter((f) => f.kind !== 'sca' && !isScanTarget(pathOf(f.location)));
+}
+
+/** `src/a.ts:12` → `src/a.ts`. Trailing `:<line>` only; a path may itself contain digits. */
+function pathOf(location) {
+  return String(location ?? '').replace(/:\d+$/, '');
+}
+
+/**
+ * Rules the scanner could not RUN, from the report's own per-scanner metadata.
+ *
+ * A blinded rule contributes zero findings, so from `findings` alone it is identical to a rule that
+ * found nothing because the code is clean — and the entry that covered it is then reported as
+ * suppressing nothing, which reads as "remediated already". That misreading is the defect: it is not
+ * specific to the one rule that prompted it, it is how EVERY future unmatched entry gets read.
+ *
+ * Absent (an older report, or a `--only` run of another scanner) is nothing to say, not zero.
+ */
+function collectBlinded(report) {
+  const out = [];
+  for (const s of report?.scanners ?? []) {
+    for (const b of s?.blindedRules ?? []) {
+      out.push({ scanner: s.scanner, ruleId: String(b.ruleId), errorCount: Number(b.errorCount) || 0, fileCount: Number(b.fileCount) || 0 });
+    }
+  }
+  return out;
+}
+
+function line(f) {
+  const tag = f.scope === 'dev' ? `${f.scanner}/dev` : f.scanner;
+  return `  [${tag}] ${f.severity} ${f.id} — ${f.location}`;
+}
+
+function printAllowlistReview({ expiring, expired, unmatched, blinded = [] }, now) {
+  if (expiring.length) {
+    console.log('EXPIRING SOON (suppressing for now)');
+    console.log(formatExpiring(expiring, now));
+  }
+  if (expired.length) {
+    console.log('EXPIRED (no longer suppressing)');
+    for (const e of expired) console.log(formatExpired(e));
+  }
+  if (blinded.length) {
+    // ADVISORY, never a failure. These rules error on every run against this codebase — a gate that
+    // went red on a standing condition is a gate nobody reads. What is printed is the count, which
+    // is the evidence: 0 findings beside 36 errors is not a clean scan.
+    console.log('RULES THAT COULD NOT RUN (advisory — does not affect this gate\'s result)');
+    for (const b of blinded) {
+      console.log(`  [${b.scanner}] ${b.ruleId} — ${b.errorCount} scanner error(s) across ${b.fileCount} file(s); it reported NO findings, which is not the same as finding none`);
+    }
+  }
+  if (unmatched.length) {
+    console.log('UNMATCHED ENTRIES (suppressed nothing this run)');
+    // Where a blinded rule EXPLAINS an unmatched entry, say so on that entry's own line. This is the
+    // whole point: the generic wording lists three possible causes, and this names which one it is.
+    const byRule = new Map(blinded.map((b) => [b.ruleId, b]));
+    console.log(formatUnmatched(unmatched, (e) => {
+      const b = byRule.get(e.id);
+      return b
+        ? `↳ this rule could not run: ${b.errorCount} scanner error(s) across ${b.fileCount} file(s). It is BLIND, not remediated — do not delete this entry as stale; restore coverage or record a decision.`
+        : null;
+    }));
+  }
+}
+
+/**
+ * Name WHICH LEVER clears each finding whose package already carries an override (scripts/override-lever.mjs).
+ *
+ * PURELY ADVISORY — this prints and returns nothing the exit code depends on. It exists because the
+ * gate (in MCM) said "fast-uri@3.1.4 is vulnerable, fix >=3.1.5" and left the reader to work out
+ * whether to raise the floor or refresh the lockfile. The range already permitted the fix, so only a
+ * refresh was needed; the gate stayed red for ten days and a four-week acceptance was written for
+ * something one command would have cleared.
+ *
+ * Printed for NON-BLOCKING findings too, deliberately. The whole value is the early signal: a
+ * finding in this state is cheap to clear before its severity promotes it into a merge blocker, and
+ * blocking-only advice would first appear once it was already reddening every branch.
+ */
+function printOverrideLevers(findings, overrides) {
+  const advice = selectAdvice(findings, overrides);
+  if (advice.length === 0) return;
+  console.log('OVERRIDE LEVERS (advisory — does not affect this gate\'s result)');
+  console.log(formatAdvice(advice));
+}
+
+function printSummary({ failures, warnings, suppressed }) {
+  console.log('── SAST/SCA gate summary ──────────────────────────────');
+  if (failures.length) {
+    console.log(`Blocking (un-allowlisted): ${failures.length}`);
+    for (const sev of SEV_ORDER) for (const f of failures.filter((x) => x.severity === sev)) console.log(line(f));
+  }
+  if (warnings.length) {
+    console.log(`Warnings (non-blocking — Medium/Low or dev-scope): ${warnings.length}`);
+    for (const f of warnings.slice(0, 30)) console.log(line(f));
+    if (warnings.length > 30) console.log(`  … and ${warnings.length - 30} more`);
+  }
+  if (suppressed.length) {
+    console.log(`Allowlisted (still visible in reports, not gated): ${suppressed.length}`);
+    for (const f of suppressed) console.log(`${line(f)} — allowlisted by ${f.allowlist.addedBy}`);
+  }
+  console.log('───────────────────────────────────────────────────────');
+}
+
+/**
+ * Run the gate. Returns exit code (0 pass / 1 fail).
+ *
+ * `checkExpiring` is REPORT-ONLY: it skips the blocking-finding gate entirely and fails on allowlist
+ * hygiene alone. Conflating the two would make the weekly signal ambiguous about which of them went
+ * wrong, so a repository with un-allowlisted blocking findings and a clean allowlist exits 0 here —
+ * the blocking gate is the normal run's job.
+ */
+export function gate(report, allowlist, now = today(), { checkExpiring = false, overrides = {} } = {}) {
+  const result = evaluate(report, allowlist, now);
+
+  if (checkExpiring) {
+    printAllowlistReview(result, now);
+    const total = result.expiring.length + result.expired.length + result.unmatched.length;
+    if (total) {
+      console.error(
+        `✗ allowlist expiry check FAILED: ${result.expiring.length} expiring within ${WARNING_WINDOW_DAYS} days, ` +
+        `${result.expired.length} expired, ${result.unmatched.length} matching nothing this run. ` +
+        'Remediate or re-justify before the expiry blocks every branch.',
+      );
+      return 1;
+    }
+    console.log(`✓ allowlist expiry check passed (no entry expiring within ${WARNING_WINDOW_DAYS} days, expired, or unmatched).`);
+    return 0;
+  }
+
+  printSummary(result);
+  // Advisory on a normal run — printing these MUST NOT move the exit code.
+  printAllowlistReview(result, now);
+  // Likewise advisory: it names the remedy, it does not decide the result.
+  printOverrideLevers(report?.findings ?? [], overrides);
+  printAsymmetry(result.asymmetric);
+  if (result.failures.length) {
+    console.error(`✗ SAST gate FAILED: ${result.failures.length} un-allowlisted blocking (High/Critical runtime) finding(s). Fix them or add a justified allowlist entry (security/sast/allowlist.yaml).`);
+    return 1;
+  }
+  if (result.asymmetric.length) {
+    console.error(`✗ SAST gate FAILED: ${result.asymmetric.length} blocking finding(s) on a file class a pull request cannot see. This gate blocks on push and proves nothing on a PR — see GATE-SCOPE ASYMMETRY above.`);
+    return 1;
+  }
+  console.log('✓ SAST gate passed (no un-allowlisted blocking findings).');
+  return 0;
+}
+
+/**
+ * `GATE-SCOPE ASYMMETRY` — a blocking finding on a file a pull request's scan never receives.
+ *
+ * Deliberately its own section and its own exit path rather than being folded into the ordinary
+ * failure: the two say different things and need different fixes. The ordinary failure says "this
+ * code is wrong". This says "this gate is lying about what it protects" — the finding may be entirely
+ * accepted and correctly allowlisted, and the defect is still real, because the NEXT one on the same
+ * class will merge unnoticed too.
+ *
+ * The remedy is named explicitly, because it is not the one a reader reaches for first: the fix is to
+ * widen the changed-scope target filter, NOT to add an allowlist entry (an allowlist entry is what
+ * concealed MCM's Dockerfile case for a merge cycle).
+ */
+function printAsymmetry(asymmetric) {
+  if (!asymmetric?.length) return;
+  console.log('GATE-SCOPE ASYMMETRY (blocking on push, invisible on a pull request)');
+  for (const f of asymmetric) {
+    console.log(`  [${f.scanner}] ${f.severity} ${f.id} — ${f.location}${f.allowlist ? `  (allowlisted by ${f.allowlist.addedBy})` : ''}`);
+  }
+  console.log('  These files are NOT handed to Semgrep by `--scope changed`, so the pull request that');
+  console.log('  introduces the next one of these is gated on nothing and `main` goes red after the merge.');
+  console.log('  This has been hit twice before (workflow YAML, then Dockerfiles); this guard');
+  console.log('  stops a third. FIX: add the file class to the changed-scope filter in');
+  console.log('  scripts/sast-scan.mjs (CODE_EXT_RE / WORKFLOW_PATH_RE / DOCKERFILE_PATH_RE) so a PR');
+  console.log('  is gated on it too. An allowlist entry does NOT fix this — that is what hid it before.');
+}
+
+// ── Self-test (repo `--selftest`-then-scan convention) ───────────────────────
+
+/** Run `fn`, returning its value plus everything it printed. The (g) cases assert on both. */
+function capture(fn) {
+  const chunks = [];
+  const realLog = console.log;
+  const realError = console.error;
+  console.log = (...a) => chunks.push(a.join(' '));
+  console.error = (...a) => chunks.push(a.join(' '));
+  try {
+    return { code: fn(), out: chunks.join('\n') };
+  } finally {
+    console.log = realLog;
+    console.error = realError;
+  }
+}
+
+function selftest() {
+  const failures = [];
+  const F = (over) => ({ scanner: 'semgrep', kind: 'sast', id: 'belay-no-token-logging', title: 't', location: 'scripts/forge-client.mjs:1', ecosystem: null, nativeSeverity: 'ERROR', severity: 'High', scope: null, blocking: true, fixAvailable: null, ...over });
+  const rep = (findings) => ({ schemaVersion: 1, generatedAtScope: 'full', scanners: [], findings });
+  const allow = (yaml) => loadAllowlistFromString(yaml);
+
+  // (a) un-allowlisted blocking → 1
+  if (gate(rep([F()]), []) !== 1) failures.push('(a) un-allowlisted blocking High should FAIL (exit 1)');
+  // (b) allowlisted → 0
+  const al = allow('- scanner: "semgrep"\n  id: "belay-no-token-logging"\n  locationPattern: "scripts/forge-client\\\\.mjs:.*"\n  justification: "selftest"\n  addedBy: "selftest"\n');
+  if (gate(rep([F()]), al) !== 0) failures.push('(b) allowlisted blocking High should PASS (exit 0)');
+  // (c) dev-scope non-blocking → 0
+  if (gate(rep([F({ kind: 'sca', scanner: 'pnpm-audit', scope: 'dev', blocking: false })]), []) !== 0) failures.push('(c) dev-scope non-blocking should PASS (exit 0)');
+  // (d) clean → 0
+  if (gate(rep([]), []) !== 0) failures.push('(d) clean report should PASS (exit 0)');
+  // (e) blank justification → GateError
+  try { allow('- scanner: "semgrep"\n  id: "x"\n  locationPattern: ".*"\n  justification: ""\n  addedBy: "y"\n'); failures.push('(e) blank justification should be rejected'); }
+  catch (e) { if (!(e instanceof GateError)) failures.push('(e) blank justification should throw GateError'); }
+  // (f) past expiry does not suppress → 1 ; future expiry suppresses → 0
+  const expired = allow('- scanner: "semgrep"\n  id: "belay-no-token-logging"\n  locationPattern: "scripts/forge-client\\\\.mjs:.*"\n  justification: "selftest"\n  addedBy: "selftest"\n  expiry: "2000-01-01"\n');
+  if (gate(rep([F()]), expired) !== 1) failures.push('(f) past-expiry entry should NOT suppress (exit 1)');
+  const future = allow('- scanner: "semgrep"\n  id: "belay-no-token-logging"\n  locationPattern: "scripts/forge-client\\\\.mjs:.*"\n  justification: "selftest"\n  addedBy: "selftest"\n  expiry: "2999-01-01"\n');
+  if (gate(rep([F()]), future) !== 0) failures.push('(f) future-expiry entry should suppress (exit 0)');
+
+  // ── (g) the warning tier ────────────────────────────────────────────────────
+  //
+  // These assert OUTPUT as well as exit codes, because the binding constraint of the whole story is
+  // that the exit code does NOT move — so an exit-code-only test would pass just as
+  // happily against a change that printed nothing at all.
+  const NOW = '2026-08-13';
+  const entry = (over = {}) => {
+    const fields = { scanner: 'semgrep', id: 'belay-no-token-logging', locationPattern: 'scripts/forge-client\\\\.mjs:.*', justification: 'selftest', addedBy: 'selftest', ...over };
+    return allow(Object.entries(fields).map(([k, v]) => `${k === 'scanner' ? '- ' : '  '}${k}: "${v}"`).join('\n') + '\n');
+  };
+
+  // (g1) an entry expiring inside the window still suppresses, exits 0, and IS reported.
+  const g1 = capture(() => gate(rep([F()]), entry({ expiry: '2026-08-23' }), NOW));
+  if (g1.code !== 0) failures.push('(g1) an entry inside the warning window must still suppress (exit 0)');
+  if (!/EXPIRING SOON/.test(g1.out)) failures.push('(g1) an expiring entry must be reported under EXPIRING SOON');
+  if (!/10 days/.test(g1.out)) failures.push('(g1) the EXPIRING SOON line must name the days remaining');
+
+  // (g2) the same entry under --check-expiring is a failure.
+  const g2 = capture(() => gate(rep([F()]), entry({ expiry: '2026-08-23' }), NOW, { checkExpiring: true }));
+  if (g2.code !== 1) failures.push('(g2) --check-expiring must exit 1 on an expiring entry');
+
+  // (g3) an expired entry re-blocks, and the failure EXPLAINS ITSELF.
+  const g3 = capture(() => gate(rep([F()]), entry({ expiry: '2026-08-01' }), NOW));
+  if (g3.code !== 1) failures.push('(g3) an expired entry must stop suppressing (exit 1)');
+  if (!/suppressed until 2026-08-01/.test(g3.out)) failures.push('(g3) the expired message must name the former expiry');
+  if (!/EXPIRED/.test(g3.out) || !/selftest/.test(g3.out)) failures.push('(g3) the expired message must name who added the entry');
+
+  // (g4) an entry matching nothing, whose scanner DID produce findings, is reported unmatched.
+  const g4allow = entry({ id: 'some-other-rule' });
+  const g4 = capture(() => gate(rep([F()]), g4allow, NOW));
+  if (!/UNMATCHED ENTRIES/.test(g4.out)) failures.push('(g4) an entry matching nothing must be reported as unmatched');
+  if (capture(() => gate(rep([F()]), g4allow, NOW, { checkExpiring: true })).code !== 1) failures.push('(g4) --check-expiring must exit 1 on an unmatched entry');
+
+  // (g5) THE CASE THAT KEEPS THE SIGNAL TRUSTWORTHY. Same unmatched entry, but its scanner produced
+  // no findings at all — skipped, failed, or genuinely clean. It must NOT be reported, or the weekly
+  // check goes red claiming stale allowlist hygiene when the real fault is a scan that never ran.
+  const g5allow = entry({ scanner: 'pip-audit', id: 'PYSEC-2026-0001', locationPattern: '.*' });
+  const g5 = capture(() => gate(rep([F()]), g5allow, NOW));
+  if (/UNMATCHED ENTRIES/.test(g5.out)) failures.push('(g5) an entry whose scanner produced NO findings must not be reported unmatched');
+  if (capture(() => gate(rep([F()]), g5allow, NOW, { checkExpiring: true })).code !== 0) failures.push('(g5) --check-expiring must exit 0 when the only unmatched entry belongs to a scanner with no findings');
+
+  // (g7) a project-qualified pip-audit suppression suppresses ONE surface only (stage 3 enables
+  // pip-audit; the gate already honours its locations). An unqualified pip-audit location was `pkg@version`, so `click@.*` covered every Python project at
+  // once. Now that locations carry their surface, an entry anchored to one must leave the others
+  // blocking — otherwise qualifying the location bought nothing.
+  const pipF = (location) => ({
+    scanner: 'pip-audit', kind: 'sca', id: 'PYSEC-2026-0002', title: 'CVE-2026-0002',
+    location, ecosystem: 'pypi', nativeSeverity: 'unscored', severity: 'High', scope: 'runtime',
+    blocking: true, fixAvailable: null,
+  });
+  const g7allow = entry({
+    scanner: 'pip-audit', id: 'PYSEC-2026-0002',
+    locationPattern: '^agents/assistant:click@.*',
+  });
+  const g7 = capture(() => gate(
+    rep([pipF('agents/assistant:click@8.5.0'), pipF('mcp-servers/tools-mcp:click@8.5.0')]),
+    g7allow, NOW,
+  ));
+  if (g7.code !== 1) failures.push('(g7) a suppression anchored to one surface must leave another surface BLOCKING');
+  if (!/mcp-servers\/tools-mcp:click/.test(g7.out)) failures.push('(g7) the still-blocking finding must name the surface it came from');
+  if (/agents\/assistant:click@8\.5\.0\s*$/m.test(g7.out.split('Blocking')[0] || '')) failures.push('(g7) the suppressed surface must not be reported blocking');
+
+  // (g6) everything active and matched — the quiet case the window was chosen to maximise.
+  if (capture(() => gate(rep([F()]), al, NOW, { checkExpiring: true })).code !== 0) failures.push('(g6) --check-expiring must exit 0 when every entry is active and matched');
+
+  // --check-expiring does NOT evaluate blocking findings: an un-allowlisted blocking finding with a
+  // clean allowlist is the normal run's business, and conflating them makes the weekly signal
+  // ambiguous about which of the two things went wrong.
+  if (capture(() => gate(rep([F()]), [], NOW, { checkExpiring: true })).code !== 0) failures.push('(g7) --check-expiring must ignore blocking findings');
+
+  // ── (g8) a rule the scanner could not RUN ───────────────────────────────────
+  //
+  // The case the two explanations above got wrong. A blinded rule reports zero findings, so its
+  // allowlist entry lands in (g4)'s UNMATCHED bucket and the reader is told "remediated already".
+  // Measured in MCM: gha-curl-pipe-shell produced 36 parse errors and 0 findings while
+  // the six `curl … | sh` lines it exists to find sat in the workflows. Asserting on OUTPUT, because
+  // the exit code deliberately does not move — an exit-code-only check passes against a gate that
+  // prints nothing.
+  const blindRep = (findings) => ({
+    schemaVersion: 1,
+    generatedAtScope: 'full',
+    scanners: [{ scanner: 'semgrep', ran: true, findingCount: findings.length, error: null, blindedRules: [{ ruleId: 'some-other-rule', errorCount: 36, fileCount: 7 }] }],
+    findings,
+  });
+  // A non-blocking finding: the scanner still produced one (so unmatched detection is live), but
+  // nothing blocks — which is what makes exit 0 evidence that the blinded-rule report is advisory
+  // rather than evidence that no finding happened to fail.
+  const g8 = capture(() => gate(blindRep([F({ severity: 'Medium', blocking: false })]), entry({ id: 'some-other-rule' }), NOW));
+  if (g8.code !== 0) failures.push('(g8) a blinded rule is advisory and must not move the exit code');
+  if (!/RULES THAT COULD NOT RUN/.test(g8.out)) failures.push('(g8) a rule the scanner could not run must be reported');
+  if (!/36 scanner error/.test(g8.out)) failures.push('(g8) the blinded-rule report must name the error count — that count is the evidence');
+  if (!/could not run: 36/.test(g8.out)) failures.push('(g8) the UNMATCHED entry its blindness explains must say so, not offer the generic causes alone');
+
+  // ── (g9) GATE-SCOPE SYMMETRY — the standing guard ─────────────────────────────────────────────
+  //
+  // MCM hit the same defect twice, found the same way: a blocking finding appeared on a
+  // file class `--scope changed` never hands Semgrep, so the PR that introduced it was gated on
+  // nothing and `main` went red after the merge. Each was closed reactively, one class at a time
+  // (workflow YAML, then Dockerfiles), and the enumeration that would have caught the next one was
+  // never standing — it was a snapshot in a comment.
+  //
+  // This is that enumeration made executable. On a FULL-scope report, a blocking SAST finding whose
+  // file a pull request cannot see is a gate-integrity defect, and it fails.
+  //
+  // IT MUST COUNT SUPPRESSED FINDINGS TOO. That is the whole point: an un-allowlisted one already
+  // fails the gate loudly. MCM's Dockerfile case was ACCEPTED and allowlisted, so the gate went
+  // green and the asymmetry stayed invisible — which is exactly when nobody looks.
+  const asym = (over = {}) => F({ kind: 'sast', scanner: 'semgrep', location: 'infrastructure-as-code/docker/x/Dockerfile:1', ...over });
+
+  // (g9a) un-allowlisted, on an invisible class → fails, and says WHY beyond the ordinary failure.
+  const g9a = capture(() => gate(rep([asym({ location: 'renovate.json:12' })]), [], NOW));
+  if (g9a.code !== 1) failures.push('(g9a) a blocking finding on a PR-invisible file class must fail the gate');
+  if (!/GATE-SCOPE ASYMMETRY/.test(g9a.out)) failures.push('(g9a) the asymmetry must be reported distinctly, not folded into the ordinary failure');
+
+  // (g9b) the case that matters: ALLOWLISTED, so the ordinary gate is green — and it must still fail.
+  const g9ballow = entry({ id: 'belay-no-token-logging', locationPattern: 'renovate\\\\.json:.*' });
+  const g9b = capture(() => gate(rep([asym({ location: 'renovate.json:12' })]), g9ballow, NOW));
+  if (g9b.code !== 1) failures.push('(g9b) an ALLOWLISTED blocking finding on a PR-invisible class must STILL fail — an allowlist entry is what hid the asymmetry in MCM');
+  if (!/GATE-SCOPE ASYMMETRY/.test(g9b.out)) failures.push('(g9b) the allowlisted asymmetry must be named');
+
+  // (g9c) a blocking finding on a VISIBLE class is untouched.
+  if (capture(() => gate(rep([asym({ location: 'frontend/app/src/a.ts:1' })]), [], NOW)).out.match(/GATE-SCOPE ASYMMETRY/)) failures.push('(g9c) a finding on a scanned class must not be reported as asymmetric');
+
+  // (g9d) Dockerfiles are in the changed-scope filter, so they must NOT trip this.
+  if (capture(() => gate(rep([asym()]), [], NOW)).out.match(/GATE-SCOPE ASYMMETRY/)) failures.push('(g9d) a Dockerfile is in the changed-scope filter and must not be reported asymmetric');
+
+  // (g9e) SCA is scope-INDEPENDENT — cargo/pnpm/pip audit run in full regardless of --scope, so their
+  // findings can never be asymmetric and must not be judged by a Semgrep target filter.
+  const g9e = capture(() => gate(rep([F({ kind: 'sca', scanner: 'pnpm-audit', location: 'pnpm-lock.yaml:0', scope: 'runtime' })]), [], NOW));
+  if (/GATE-SCOPE ASYMMETRY/.test(g9e.out)) failures.push('(g9e) an SCA finding must never be reported asymmetric — SCA ignores --scope entirely');
+
+  // (g9f) CHANGED-scope reports are vacuous here: every file scanned was, by definition, a target.
+  const changedRep = { schemaVersion: 1, generatedAtScope: 'changed', scanners: [], findings: [asym({ location: 'renovate.json:12' })] };
+  if (/GATE-SCOPE ASYMMETRY/.test(capture(() => gate(changedRep, [], NOW)).out)) failures.push('(g9f) the asymmetry check is meaningless under changed scope and must not run there');
+
+  // (g9g) a report with no/unknown generatedAtScope is a HARD ERROR, never a silent skip. A missing
+  // field must not be able to switch this guard off the way it switched off the thing it guards.
+  try {
+    evaluate({ schemaVersion: 1, scanners: [], findings: [asym()] }, [], NOW);
+    failures.push('(g9g) a report without generatedAtScope must be rejected, not silently unguarded');
+  } catch (e) { if (!(e instanceof GateError)) failures.push('(g9g) a report without generatedAtScope must throw GateError'); }
+
+  // (g9h) THE ABSENT-REPORT PATH MUST NOT CRASH — the regression MCM's weekly sweep caught.
+  // `--check-expiring` runs where no SAST report exists, and `main()` synthesises `reportAbsent: true`
+  // for it. In MCM, `selectAsymmetric` threw on that object and `bash -e` then skipped the
+  // next expiry check in the same step, so both were silently dead for two weeks.
+  // Asserted through `gate()` rather than `selectAsymmetric()` directly, because the crash reached the
+  // weekly step through the full call path and a unit-level assertion would not have caught it there.
+  const absentRep = { schemaVersion: 1, scanners: [], findings: [], reportAbsent: true };
+  const g9h = capture(() => gate(absentRep, [], NOW, { checkExpiring: true }));
+  if (g9h.code !== 0) failures.push(`(g9h) --check-expiring on an ABSENT report must exit 0, got ${g9h.code}`);
+  // And the exemption must be keyed on the marker, not on a missing scope: the same object WITHOUT
+  // the marker still throws. A test for the fix alone would pass against `return []` unconditionally.
+  try {
+    gate({ schemaVersion: 1, scanners: [], findings: [] }, [], NOW, { checkExpiring: true });
+    failures.push('(g9h) a report with no scope and no reportAbsent marker must still be rejected');
+  } catch (e) { if (!(e instanceof GateError)) failures.push('(g9h) the unmarked no-scope report must throw GateError'); }
+
+  if (failures.length) {
+    console.error('✗ check-sast-findings --selftest FAILED:\n  ' + failures.join('\n  '));
+    process.exit(1);
+  }
+  console.log('✓ check-sast-findings --selftest passed (fail, allowlist-suppress, dev-warn, clean, blank-justification reject, expiry, warning tier + unmatched + blinded-rule report + --check-expiring + per-surface pip-audit suppression + gate-scope asymmetry + the absent-report path).');
+  process.exit(0);
+}
+
+function main() {
+  const argv = process.argv.slice(2);
+  if (argv.includes('--selftest')) return selftest();
+
+  let reportPath = DEFAULT_REPORT;
+  let allowlistPath = DEFAULT_ALLOWLIST;
+  let checkExpiring = false;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--report') reportPath = argv[++i];
+    else if (argv[i] === '--allowlist') allowlistPath = argv[++i];
+    else if (argv[i] === '--check-expiring') checkExpiring = true;
+    else { console.error(`Unknown argument: ${argv[i]}`); process.exit(2); }
+  }
+
+  let report;
+  try {
+    report = JSON.parse(readFileSync(reportPath, 'utf8'));
+  } catch (e) {
+    // An ABSENT report in --check-expiring mode is not an error, and this distinction is
+    // load-bearing. That mode never evaluates blocking findings; it reads the allowlist, and uses the
+    // report only to decide which scanners produced findings. "No report" is exactly "no scanner
+    // produced findings", which the scanner-produced-findings guard already answers correctly with zero unmatched
+    // entries. A check run where no scan ran (MCM's weekly job) has no SAST report — so exiting 2
+    // here would make the signal permanently red for a reason unrelated to
+    // allowlist hygiene, the precise false-alarm class the warning tier exists to remove.
+    //
+    // It is announced rather than assumed, so a missing instrument never reads as a clean pass. A
+    // report that EXISTS but will not parse is still exit 2 on both paths.
+    if (checkExpiring && e.code === 'ENOENT') {
+      console.log(`ℹ no scan report at ${reportPath} — expiry/expired classification still runs from the allowlist; UNMATCHED detection is skipped (no scanner produced findings).`);
+      // `reportAbsent` is what `selectAsymmetric` keys its exemption on. It must be set HERE, on the
+      // announced ENOENT path, and nowhere else — a report read off disk never carries it, so a real
+      // report missing `generatedAtScope` is still a hard error.
+      report = { findings: [], reportAbsent: true };
+    } else {
+      console.error(`✗ could not read/parse report ${reportPath}: ${e.message}`);
+      process.exit(2);
+    }
+  }
+  let allowlist;
+  try {
+    allowlist = loadAllowlist(allowlistPath);
+  } catch (e) {
+    console.error(`✗ ${e.message}`);
+    process.exit(2);
+  }
+  // The override map for lever advice. Read HERE rather than inside gate() so gate()
+  // stays pure and unit-testable. An unreadable or absent workspace manifest costs the advice and
+  // NOTHING ELSE — the gate's result must never depend on this file, so a failure here is swallowed
+  // to an empty map rather than exiting 2. That asymmetry is deliberate: this is an aid, not a gate.
+  let overrides = {};
+  try {
+    overrides = parseYaml(readFileSync(resolve(REPO_ROOT, 'pnpm-workspace.yaml'), 'utf8'))?.overrides ?? {};
+  } catch {
+    overrides = {};
+  }
+
+  // A GateError raised while EVALUATING the report (no usable `generatedAtScope`) is an invalid
+  // report: exit 2, never the uncaught throw's exit 1, which would read as a blocking finding.
+  let code;
+  try {
+    code = gate(report, allowlist, today(), { checkExpiring, overrides });
+  } catch (e) {
+    if (!(e instanceof GateError)) throw e;
+    console.error(`✗ ${e.message}`);
+    process.exit(2);
+  }
+  process.exit(code);
+}
+
+const invokedPath = process.argv[1] ? resolve(process.argv[1]) : '';
+if (invokedPath === fileURLToPath(import.meta.url)) main();

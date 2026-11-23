@@ -63,6 +63,7 @@ BELAY is a polyglot monorepo of tooling that other repositories share, so every 
 - [CI guardrails, the failure digest, and the PR loop](openwiki/runbooks/ci.md) — `guardrails.yml`, `ci-status.mjs`, `forge-pr.mjs`
 - [The dev container — Docker Sandbox, credentials, egress and the worktree rule](openwiki/runbooks/devcontainer.md) — `open-sandbox.ps1`, recreate, re-pin, the worktree rule
 - [Doc drift: the doc-impact sweep and the quarterly audit](openwiki/runbooks/doc-drift.md)
+- [SAST and SCA — the static security gate](openwiki/runbooks/sast.md) — `pnpm nx run scripts:sast`, the allowlist, outage vs finding
 - [Spec Kit: this repository's customisations, and upgrading it](openwiki/runbooks/spec-kit.md) — the override gate and its failure codes
 
 ### Process

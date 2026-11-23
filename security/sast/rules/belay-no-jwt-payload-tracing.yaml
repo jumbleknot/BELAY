@@ -1,0 +1,34 @@
+# belay-no-jwt-payload-tracing — ported from MCM's mcm-no-jwt-payload-tracing (MCM feature 033,
+# FR-004). PII/credential-leak rule → ERROR (High, blocking).
+#
+# The constitution (Observability, "Sensitive Data Prohibition"): never log or trace a decoded JWT
+# payload — its claims are identity data. Matches a logger/console call whose argument is a decode
+# call (jwtDecode/decodeJwt/jwt.decode) or an identifier named like a decoded-payload variable.
+#
+# SCOPE: TS/JS + Python surfaces ONLY. Semgrep does not scan Rust code here (MCM research R6: Rust's
+# Semgrep support is experimental); a Rust service's no-JWT-logging invariant stays with clippy and
+# code review — a documented gap, NOT enforced by this rule. Do not attempt to make this rule scan Rust.
+rules:
+  - id: belay-no-jwt-payload-tracing
+    languages: [typescript, javascript, python]
+    severity: ERROR
+    message: >-
+      Logging/tracing a decoded JWT payload or the result of a token decode. Never emit decoded token
+      claims to logs or traces (constitution, "Sensitive Data Prohibition") — log the subject id only,
+      via a safe-keyed object.
+    metadata:
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - metavariable-regex:
+          metavariable: $M
+          regex: ^(log|info|warn|error|debug|trace|audit)$
+      - pattern-either:
+          - patterns:
+              - pattern: $LOG.$M(..., $PAYLOAD, ...)
+              - metavariable-regex:
+                  metavariable: $PAYLOAD
+                  regex: ^(jwtPayload|payload|claims|decodedToken|tokenPayload|decodedJwt|decoded)$
+          - pattern: $LOG.$M(..., jwtDecode(...), ...)
+          - pattern: $LOG.$M(..., decodeJwt(...), ...)
+          - pattern: $LOG.$M(..., jwt.decode(...), ...)

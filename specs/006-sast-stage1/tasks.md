@@ -35,7 +35,7 @@ missing module or a mutation, then GREEN. Custom rules are fixture-first.
 
 ## Phase 2: Foundational
 
-- [ ] T003 [P] Port `scripts/lib/scanner-retry.mjs` (shared retry) and `scripts/allowlist-expiry.mjs`,
+- [x] T003 [P] Port `scripts/lib/scanner-retry.mjs` (shared retry) and `scripts/allowlist-expiry.mjs`,
   with their tests (`allowlist-expiry.test.mjs`, and the retry cases MCM keeps in
   `sast-scan-retry.guard.test.mjs`)
   - **Verify RED**: `node --test scripts/__tests__/allowlist-expiry.test.mjs` → ≥1 failing, `Cannot find module`
@@ -47,7 +47,7 @@ missing module or a mutation, then GREEN. Custom rules are fixture-first.
 
 ### Tests ⚠️
 
-- [ ] T010 [P] [US1] Port `scripts/__tests__/sast-scan.guard.test.mjs` and `sast-scan-retry.guard.test.mjs`.
+- [x] T010 [P] [US1] Port `scripts/__tests__/sast-scan.guard.test.mjs` and `sast-scan-retry.guard.test.mjs`.
   Add cases for the enabled-scanner list: an unknown name exits 2; an empty list exits 2; `--only`
   outside the list exits 2; a disabled scanner reports `not-enabled`, never clean
   - **Scenarios covered**: US1-AC1, US1-AC2, US1-AC3
@@ -55,11 +55,11 @@ missing module or a mutation, then GREEN. Custom rules are fixture-first.
 
 ### Implementation
 
-- [ ] T011 [US1] Port `scripts/sast-scan.mjs` (research R1, R7); add `security/sast/scan.yaml`,
+- [x] T011 [US1] Port `scripts/sast-scan.mjs` (research R1, R7); add `security/sast/scan.yaml`,
   `semgrep.yaml` (R4), `severity-map.yaml`, `README.md`; gitignore `security/sast/reports/`
   - **Verify GREEN**: the T010 commands → 0 failures; `node scripts/sast-scan.mjs --scope full` writes the
     report, with semgrep and pnpm-audit `ran` and the other two `not-enabled`
-- [ ] T012 [US1] Add the Nx target `scripts:sast` (full scan, then the gate)
+- [x] T012 [US1] Add the Nx target `scripts:sast` (full scan, then the gate)
   - **Done when**: `pnpm nx run scripts:sast` runs both
 
 ---
@@ -68,16 +68,16 @@ missing module or a mutation, then GREEN. Custom rules are fixture-first.
 
 ### Tests ⚠️
 
-- [ ] T015 [P] [US2] Port `scripts/__tests__/check-sast-findings.test.mjs` and
+- [x] T015 [P] [US2] Port `scripts/__tests__/check-sast-findings.test.mjs` and
   `allowlist-expiry-wiring.guard.test.mjs`
   - **Scenarios covered**: US2-AC1, US2-AC2, US2-AC3 (runtime vs dev scope)
   - **Verify RED**: `node --test scripts/__tests__/check-sast-findings.test.mjs` → ≥1 failing, `Cannot find module`
 
 ### Implementation
 
-- [ ] T016 [US2] Port `scripts/check-sast-findings.mjs`; add `--selftest` to `scripts:lint`
+- [x] T016 [US2] Port `scripts/check-sast-findings.mjs`; add `--selftest` to `scripts:lint`
   - **Verify GREEN**: the T015 commands → 0 failures; `--selftest` exits 0
-- [ ] T017 [US2] Add the `sast` job to `.forgejo/workflows/guardrails.yml` (research R2), with the
+- [x] T017 [US2] Add the `sast` job to `.forgejo/workflows/guardrails.yml` (research R2), with the
   failure digest and the report artifact; extend `guardrails-workflow.test.mjs` to pin the job's
   shape (runner, timeout, steps, setup-node before Node, `--apply`-style inputs absent)
   - **Verify RED**: the extended workflow test fails before the job exists
@@ -88,7 +88,7 @@ missing module or a mutation, then GREEN. Custom rules are fixture-first.
 
 ## Phase 5: User Story 3 - Allowlist (P2)
 
-- [ ] T020 [US3] Seed `security/sast/allowlist.yaml` from a full scan (research R5). Each entry
+- [x] T020 [US3] Seed `security/sast/allowlist.yaml` from a full scan (research R5): 0 blocking findings, so the baseline is empty (recorded in its header). Each entry
   carries a real justification; a cheap real defect is fixed instead
   - **Done when**: `pnpm nx run scripts:sast` exits 0 on the branch (SC-006)
 
@@ -96,10 +96,10 @@ missing module or a mutation, then GREEN. Custom rules are fixture-first.
 
 ## Phase 6: User Story 4 - Custom rules (P2)
 
-- [ ] T025 [P] [US4] Port the rule fixtures first: `belay-ci-curl-pipe-shell`,
+- [x] T025 [P] [US4] Port the rule fixtures first: `belay-ci-curl-pipe-shell`,
   `belay-no-token-logging`, `belay-no-jwt-payload-tracing` (research R3)
   - **Verify RED**: `node scripts/sast-scan.mjs --test-rules` fails while the rule files are absent
-- [ ] T026 [US4] Port the three rules (ids, paths and messages rewritten for BELAY; curl-pipe's accepted
+- [x] T026 [US4] Port the three rules (ids, paths and messages rewritten for BELAY; curl-pipe's accepted
   list = uv's pinned installer only)
   - **Verify GREEN**: `node scripts/sast-scan.mjs --test-rules` passes every rule
 
@@ -107,17 +107,17 @@ missing module or a mutation, then GREEN. Custom rules are fixture-first.
 
 ## Phase 7: Polish
 
-- [ ] T030 [P] `docs/runbooks/sast.md` (new): what runs, how to run it locally, the allowlist and expiry,
+- [x] T030 [P] `docs/runbooks/sast.md` (new): what runs, how to run it locally, the allowlist and expiry,
   the pins, stages 2–4; `docs/runbooks/ci.md`: the `sast` job and the second required context
-- [ ] T031 [P] `docs/repo-foundation-setup.md`: step 13's SAST paragraph says stage 1 is in place;
+- [x] T031 [P] `docs/repo-foundation-setup.md`: step 13's SAST paragraph says stage 1 is in place;
   history points at feature 006 and item #37's remaining stages
-- [ ] T032 [P] `openwiki/runbooks/ci.md` ("one job"), plus an openwiki page for the SAST runbook if the
+- [x] T032 [P] `openwiki/runbooks/ci.md` ("one job"), plus an openwiki page for the SAST runbook if the
   brief calls for one; record fingerprints with `wiki-refresh.mjs --record`
   - **Done when**: `wiki-refresh.mjs --stale` exits 0, and the okf and governance gates pass
-- [ ] T033 Close-out re-search: re-run T002's searches
-- [ ] T034 Quickstart steps 1–4; final `scripts:lint`, `scripts:test` (skip count),
+- [x] T033 Close-out re-search: re-run T002's searches
+- [x] T034 Quickstart steps 1–4; final `scripts:lint`, `scripts:test` (skip count),
   `check-speckit-overrides.mjs`
-- [ ] T035 Update item #37: stage 1 done, with evidence; stages 2–4 filed as their own items (its
+- [x] T035 Update item #37: stage 1 done, with evidence; stages 2–4 filed as items #39, #40, #41 (its
   acceptance criteria)
 - [ ] T036 **Open the PR** from a real branch: `git push origin HEAD:006-sast-stage1`;
   `node scripts/forge-pr.mjs open …`; `node scripts/ci-status.mjs watch --pr <n>`;
