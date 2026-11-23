@@ -25,6 +25,11 @@ test('triggers are dispatch, push and schedule only: never pull_request', () => 
   assert.deepEqual(on.schedule.map((s) => s.cron), ['0 6 * * 5']);
 });
 
+test('push runs only for main, the protected branch', () => {
+  // Any other pushed branch would otherwise run its own toolchain.Dockerfile on the host runner.
+  assert.deepEqual(wf().on.push.branches, ['main']);
+});
+
 test('push is filtered on the image inputs and package.json', () => {
   const paths = wf().on.push.paths;
   for (const p of ['.devcontainer/toolchain.Dockerfile', '.devcontainer/Dockerfile', '.forgejo/workflows/devcontainer-image.yml',

@@ -25,6 +25,10 @@ name: devcontainer-image
 on:
   workflow_dispatch:
   push:
+    # main ONLY: it is protected (no direct push; changes arrive through reviewed PRs). A push to any
+    # other branch must not run its own toolchain.Dockerfile on the host runner. A branch build is
+    # still possible by manual dispatch, which needs write access.
+    branches: [main]
     # Keep in step with IMAGE_INPUTS in scripts/devcontainer-image-gate.mjs (+ package.json, gated).
     paths:
       - '.devcontainer/toolchain.Dockerfile'
