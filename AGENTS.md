@@ -4,8 +4,9 @@ BELAY is a polyglot monorepo of tooling that other repositories share, so every 
 
 ## Gates that run before you act
 
-- **Never set `ANTHROPIC_API_KEY` where AI coding runs — it runs on the subscription** — Claude Code silently prefers that variable over a subscription login and bills per token (~$15 in one unnoticed day, measured in MovieCollectionManager); a tool that needs a model key takes it under another name, mapped only at the point of use — [secrets posture](openwiki/invariants/secrets-management.md)
+- **Never set `ANTHROPIC_API_KEY` where AI coding runs — it runs on the subscription** — Claude Code silently prefers that variable over a subscription login and bills per token; a tool that needs a model key takes it under another name, mapped only at the point of use — [secrets posture](openwiki/invariants/secrets-management.md)
 - **SDD is not optional for implementation** — code under `backend/`, `frontend/`, `agents/`, `mcp-servers/`, `packages/`, `tools/` or `infrastructure-as-code/` needs an existing `specs/NNN-*/` spec → plan → tasks set; write it first, or stop and ask. Docs, proposals and knowledge/index edits are exempt — [the lifecycle](openwiki/process/spec-driven-development.md)
+- **Other agents share this dev container — commit from a WORKTREE, never from `/workspaces/belay`** — a `git checkout -b`, `git add -A` or `git stash` there rewrites another session's work. `git worktree add -b <branch> /home/coder/worktrees/<slug> origin/main` (`/workspaces` is not writable); a symlinked `node_modules` serves `node --test` and gate scripts only, while any `pnpm nx` target needs a real `CI=true pnpm install --frozen-lockfile` in the worktree. It does not survive a rebuild — push first. Forge-API work needs no worktree — [procedure, traps, cleanup](docs/runbooks/devcontainer.md#shared-dev-container-commit-from-a-worktree)
 - **A structural decision is asked, not taken** — a new language toolchain, build plugin, top-level folder or dependency with an install script needs the maintainer's yes first; only pnpm + Nx is chosen — [the repository](openwiki/projects/repository.md)
 - **A PR's head MUST be a real branch — never an AGit push** — `git push origin HEAD:<branch>`, then `node scripts/forge-pr.mjs open`, `ci-status.mjs watch --pr <n>`, `forge-pr.mjs merge <n> --expect-head <sha>`; never hand-type a `git credential fill` recipe. An AGit (`refs/for/main`) head runs with NO Actions secrets — [the PR loop](openwiki/runbooks/ci.md)
 - **Commit or push only when asked; on `main`, branch first** — `main` is protected (no direct push, `guardrails` required) — [git](openwiki/projects/repository.md)
@@ -60,6 +61,7 @@ BELAY is a polyglot monorepo of tooling that other repositories share, so every 
 
 - [The agent-driven backlog (Forgejo Issues)](openwiki/runbooks/backlog.md) — `scripts/backlog.mjs`, `/speckit-taskstoissues`
 - [CI guardrails, the failure digest, and the PR loop](openwiki/runbooks/ci.md) — `guardrails.yml`, `ci-status.mjs`, `forge-pr.mjs`
+- [The dev container — credentials and the worktree rule](openwiki/runbooks/devcontainer.md) — planned; the worktree rule
 - [Doc drift: the doc-impact sweep and the quarterly audit](openwiki/runbooks/doc-drift.md)
 - [Spec Kit: this repository's customisations, and upgrading it](openwiki/runbooks/spec-kit.md) — the override gate and its failure codes
 

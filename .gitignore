@@ -59,7 +59,8 @@ coverage/
 # ---------------------------------------------------------------------------
 # Node / JavaScript / TypeScript
 # ---------------------------------------------------------------------------
-node_modules/
+# No trailing slash: it must also match a node_modules SYMLINK in a git worktree.
+node_modules
 .pnpm-store/
 .nx/
 .npm/
