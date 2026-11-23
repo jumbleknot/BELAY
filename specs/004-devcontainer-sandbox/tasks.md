@@ -258,7 +258,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
 
 ### Tests (written first)
 
-- [ ] T022 [P] [US1] Write the tests for `.devcontainer/fix-workspace-ownership.sh` in `scripts/__tests__/fix-workspace-ownership.test.mjs`, using bash through `shell-probe.mjs`
+- [x] T022 [P] [US1] Write the tests for `.devcontainer/fix-workspace-ownership.sh` in `scripts/__tests__/fix-workspace-ownership.test.mjs`, using bash through `shell-probe.mjs`
   - **Scenarios covered:** FR-003, the uid-mismatch edge case.
   - **Asserts:**
     - A temp tree owned by the current user prints `nothing to repair` and exits 0.
@@ -267,7 +267,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
     - It runs `git config --global --add safe.directory`, observed with a `HOME` pointing at a temp directory.
   - **Verify RED:** `node --test scripts/__tests__/fix-workspace-ownership.test.mjs` → expected: failing, because the T004 stub prints nothing (`missing "nothing to repair"`).
 
-- [ ] T023 [P] [US1] Write the static guard for `scripts/open-sandbox.ps1` in `scripts/__tests__/open-sandbox.guard.test.mjs`
+- [x] T023 [P] [US1] Write the static guard for `scripts/open-sandbox.ps1` in `scripts/__tests__/open-sandbox.guard.test.mjs`
   - **Scenarios covered:** US1-AC1, US1-AC3, US1-AC4, FR-021. Contract: [contracts/cli.md, open-sandbox.ps1](contracts/cli.md).
   - **Asserts:**
     - The parameter defaults are `belay`, `/workspaces/belay` and `/workspaces/belay/.devcontainer/devcontainer.json`.
@@ -284,10 +284,10 @@ Documentation, config and operator tasks use the "Done when" form instead.
 
 ### Implementation
 
-- [ ] T024 [US1] Implement `.devcontainer/fix-workspace-ownership.sh`, ported from MCM with the default `${BELAY_WORKSPACE:-/workspaces/belay}`. This needs T022 verified RED.
+- [x] T024 [US1] Implement `.devcontainer/fix-workspace-ownership.sh`, ported from MCM with the default `${BELAY_WORKSPACE:-/workspaces/belay}`. This needs T022 verified RED.
   - **Verify GREEN:** `node --test scripts/__tests__/fix-workspace-ownership.test.mjs` → 0 failures, with a skip count of 0 on a host with bash.
 
-- [ ] T025 [US1] Create `scripts/open-sandbox.ps1`, ported from MCM with BELAY defaults and saved with CRLF line endings. This needs T023 verified RED.
+- [x] T025 [US1] Create `scripts/open-sandbox.ps1`, ported from MCM with BELAY defaults and saved with CRLF line endings. This needs T023 verified RED.
   - **Verify GREEN:** `node --test scripts/__tests__/open-sandbox.guard.test.mjs` → 0 failures.
 
 - [ ] T026 [US1] **Operator:** bring the sandbox up from nothing (quickstart steps 2, 3, 5 and 6, without the dotfiles yet).
