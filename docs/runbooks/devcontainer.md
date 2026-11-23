@@ -61,8 +61,10 @@ bare `docker exec` shell. The read-only `FORGE_TOKEN` and `FORGE_ISSUE_TOKEN` wo
 
 Prerequisites **[host]**:
 - `sbx version` reports **v0.53.0** (see [Upgrading sbx](#upgrading-sbx)).
-- `DOCKER_SANDBOXES_DOCKER_SIZE=150GB` and `DOCKER_SANDBOXES_ROOT_SIZE=40GB` at User scope. They are
-  read at creation only; after setting them, run `sbx daemon stop; sbx ls`.
+- `DOCKER_SANDBOXES_DOCKER_SIZE=250GB` and `DOCKER_SANDBOXES_ROOT_SIZE=40GB` at User scope. They are
+  read at creation only; after setting them, run `sbx daemon stop; sbx ls`. The engine disk was
+  raised from 150GB to 250GB on 2026-11-23. A sandbox created before then keeps its 150GB engine
+  disk until it is recreated (`lsblk` in the VM shows it).
 - Windows OpenSSH (`C:\Windows\System32\OpenSSH\ssh.exe`). Git Bash's ssh cannot resolve `<name>.sbx`.
 - VS Code with Remote-SSH and Dev Containers, Node 24 or later, and `FORGE_TOKEN` and
   `FORGE_ISSUE_TOKEN` as user environment variables.
