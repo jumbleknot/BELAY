@@ -98,7 +98,7 @@ description: "Task list for feature 008: SAST stage prep and step durations"
 - [x] T032 SC-002 on the runner (research R7); delete the throwaway branch
 - [x] T033 Close-out re-search: re-run T002's searches
 - [x] T034 Final `scripts:lint`, `scripts:test` (skip count), `scripts:sast`, `check-speckit-overrides.mjs`
-- [ ] T035 **Open the PR** (branch `008-sast-stage-prep-step-durations`):
+- [x] T035 **Open the PR** (branch `008-sast-stage-prep-step-durations`, PR #45):
   `git push origin HEAD:008-sast-stage-prep-step-durations`; `node scripts/forge-pr.mjs open …`;
   `node scripts/ci-status.mjs watch --pr <n>`; merge only on the maintainer's approval.
   **CI evidence is never recorded here.**
