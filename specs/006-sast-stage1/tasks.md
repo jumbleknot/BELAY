@@ -119,7 +119,7 @@ missing module or a mutation, then GREEN. Custom rules are fixture-first.
   `check-speckit-overrides.mjs`
 - [x] T035 Update item #37: stage 1 done, with evidence; stages 2–4 filed as items #39, #40, #41 (its
   acceptance criteria)
-- [ ] T036 **Open the PR** from a real branch: `git push origin HEAD:006-sast-stage1`;
+- [x] T036 **Open the PR** (branch `006-sast-stage1`, PR #42) from a real branch: `git push origin HEAD:006-sast-stage1`;
   `node scripts/forge-pr.mjs open …`; `node scripts/ci-status.mjs watch --pr <n>`;
   `node scripts/forge-pr.mjs merge <n> --expect-head <sha>` (merge only on the maintainer's approval).
   **CI evidence is never recorded here.**
