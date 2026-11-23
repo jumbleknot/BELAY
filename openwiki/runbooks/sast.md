@@ -4,8 +4,8 @@ title: SAST and SCA — the static security gate
 description: BELAY's keyless static security gate, stage 1 of backlog item #37 — the sast job in guardrails.yml running Semgrep over the whole tree and pnpm audit over the lockfile, how a finding is normalized and gated against the allowlist (High/Critical in code or a runtime dependency blocks, everything else warns), how to run it locally, how to tell an outage from a finding, the custom rules and their fixtures, the pins, and what stages 2 to 4 add.
 tags: [security, sast, sca, ci, runbook]
 resource: docs/runbooks/sast.md
-resource-sha256: 280f4b8105439a2e14830a735ceef33c99a5981b008488cfe058d691f5d64762
-timestamp: 2026-11-23T16:00:42.548Z
+resource-sha256: 8a840011098356b3db3c4bfe8890a1a593db3b16327cd79e4958d1eab923d03a
+timestamp: 2026-11-23T18:10:50.434Z
 ---
 
 # SAST and SCA — the static security gate
@@ -29,6 +29,9 @@ The `sast` job in `.forgejo/workflows/guardrails.yml` runs on every pull request
 - **A scanner that is not enabled is never clean.** `security/sast/scan.yaml` lists the scanners
   that run (stage 1: `semgrep`, `pnpm-audit`). The others report `not enabled — NOT scanned`.
 - **The rules read text**, so a comment that quotes a forbidden pattern matches. Reword the prose.
+- **Write `<!--` in a JS regex as `<[!]--`.** Semgrep reads `<!--` as an HTML comment even in a
+  regex and skips the statement, or the whole file. The run's `errors` list names what is still only
+  partly parsed.
 - **Custom rules need fixtures.** `node scripts/sast-scan.mjs --test-rules` fails on a rule without
   one. Write the fixture first.
 - **`p/secrets` stays off:** `secret-scan.mjs` owns credential detection.

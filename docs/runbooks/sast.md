@@ -113,8 +113,11 @@ a toolchain step to the `sast` job, and nothing else:
 - **Check the finding count, not only the exit code.** "Scanned 0 files" and "found nothing" both
   exit 0. The summary prints the files scanned and each scanner's status: `not enabled`,
   `not selected` or `not run` is never clean.
-- **Some files only partly parse.** Semgrep reports a few files as partially parsed (recent JS syntax
-  and one intentionally broken fixture), and those files are only partly scanned. The run's
-  `errors` list names them.
+- **Write `<!--` in a JS regex as `<[!]--`.** Semgrep's JS parser reads `<!--` as a legacy HTML
+  comment even inside a regex literal (Node does not, in a module), and skips the rest of the
+  statement; one test file went entirely unscanned that way. `<[!]--` matches the same text and
+  parses. Two files still only partly parse, and the run's `errors` list names them: the Spec Kit
+  branch script (`$((10#…))`, which Semgrep's bash parser lacks; Spec Kit owns the file) and an
+  intentionally broken YAML fixture.
 - **The changed-files scope fails closed.** If the diff against the PR base cannot be computed, the
   scan fails rather than scanning an empty set (stricter than MCM).
