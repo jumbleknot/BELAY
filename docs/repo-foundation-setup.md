@@ -478,7 +478,7 @@ the script. Where the source has no test file, write one. Every gate follows one
 | `scripts/check-no-inline-secrets.mjs` | No literal credential, password-bearing URL or inline `${VAR:-default}` in a compose file |
 | `scripts/check-no-argv-secrets.mjs` | No secret-named `--env`/`-e` argument on a Maestro command line |
 | `scripts/check-override-consistency.mjs` | Each keyed `pnpm-workspace.yaml` override has its key bound equal to its value floor, and its cap does not widen past the declared major |
-| `scripts/check-resource-naming.mjs` | Compose volume, network and container names follow `<context>-<role>-<engine>`, and `container_name` equals the service key. A context is a project directory under `backend/`, `frontend/`, `agents/` or `mcp-servers/` |
+| `scripts/check-resource-naming.mjs` | Compose volume, network and container names follow `<context>-<role>-<engine>`, `container_name` equals the service key, and every named network is in `APPROVED_NETWORKS`. A context is a project directory under `backend/`, `frontend/`, `agents/` or `mcp-servers/` |
 | `scripts/check-openwiki-okf.mjs` | The `openwiki/` bundle: front matter, links, an `index.md` per directory, no orphans, and **V17**: a derived page's `resource-sha256` matches its source |
 | `scripts/check-openwiki-governance.mjs` | `AGENTS.md` is an index within its size budget, `CLAUDE.md` is only the shim, and every concept is derived or listed in `protected.yaml` |
 | `scripts/wiki-refresh.mjs` + `.claude/skills/wiki-refresh/` | `--stale`, `--diff <page>`, `--record <page>`. The only way a fingerprint is written |
@@ -489,7 +489,9 @@ have nothing to scan in a new repository, but the constitution requires those su
 lands with the first compose file catches only what comes after it, so port them now. Each prints how
 many files it examined, so "0 files" shows instead of a silent pass. Keep the source's rules and
 replace its names: BELAY's naming gate takes its contexts from the project directories, and keeps its
-vendor-bundle, retired-key and approved-network lists empty until they are needed.
+vendor-bundle, retired-key and approved-network lists empty until they are needed. Keep an allowlist
+enforced even while it is empty: BELAY's approved-networks list makes the first named network fail
+until someone approves it, as MCM's did.
 
 **Defer what needs a structural decision.** SAST needs Semgrep, uv and Rust on the runner, which is
 the maintainer's call. BELAY filed it as a staged backlog item (item #37): Semgrep and `pnpm audit`

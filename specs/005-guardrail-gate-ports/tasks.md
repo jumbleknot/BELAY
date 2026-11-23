@@ -306,6 +306,11 @@ file count.
 - [x] T050 Run quickstart.md steps 1–5 (step 6's live report needs the registry secret)
 - [x] T051 Final checks: `pnpm nx run scripts:lint`, `pnpm nx run scripts:test` (watch the skip
   count), and `node scripts/check-speckit-overrides.mjs`
+- [x] T054 [US5] `check-resource-naming.mjs`: enforce `APPROVED_NETWORKS` even while empty, as MCM
+  does (maintainer decision; the first port enforced it only once non-empty)
+  - **Verify RED**: `node --test scripts/__tests__/check-resource-naming.test.mjs` → 1 failing:
+    `a well-formed named network fails while APPROVED_NETWORKS is empty`
+  - **Verify GREEN**: the same command → 16 pass, 0 fail; `--selftest` and the scan exit 0
 - [x] T053 `docs/repo-foundation-setup.md` (maintainer request, overriding T002's "no change: dated
   playbook"): add step 13 for this feature, the fixture `-text` rule, `REGISTRY_CLEANUP_TOKEN`, the
   retention renaming rows and final checks, and point the history at item #37

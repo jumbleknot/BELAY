@@ -52,9 +52,10 @@ const GOOD = [
   '    name: foo-service-trace-logs',
   '  snaps:',
   '    name: foo-service-search-snapshots',
+  // A compose-managed network (no `name:`) is out of scope. A NAMED one must be approved first,
+  // which the tests below cover.
   'networks:',
-  '  foo-service-network:',
-  '    name: foo-service-network',
+  '  foo-service-network: {}',
   '',
 ].join('\n');
 
@@ -115,6 +116,20 @@ test('every tracked compose file in the tree is scanned, wherever it lives', () 
   assert.equal(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stderr, /^backend\/foo-service\/compose\.dev\.yml:3: volume-grammar: /m);
   assert.match(r.stderr, /\b2 compose file\(s\) scanned/);
+});
+
+test('a well-formed named network fails while APPROVED_NETWORKS is empty (approval is explicit)', () => {
+  const compose = 'networks:\n  a:\n    name: foo-service-network\n';
+  const r = run('--dir', monorepo({ 'compose.yaml': compose }));
+  assert.equal(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stderr, /^compose\.yaml:3: network-approved: .*foo-service-network/m);
+});
+
+test('a named network listed in the approved set passes; one not listed fails', async () => {
+  const { checkCompose } = await import('../check-resource-naming.mjs');
+  const compose = 'networks:\n  a:\n    name: foo-service-network\n  b:\n    name: bar-network\n';
+  const findings = checkCompose(compose, 'compose.yaml', { contexts: ['foo-service', 'bar'], approvedNetworks: ['foo-service-network'] });
+  assert.deepEqual(findings.map((f) => [f.rule, f.token]), [['network-approved', 'bar-network']]);
 });
 
 test('zero compose files passes and prints a scanned count of 0', () => {

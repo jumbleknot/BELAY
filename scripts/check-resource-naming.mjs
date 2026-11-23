@@ -17,10 +17,10 @@
 //               Two relaxed forms, kept from MCM and generalised to any context: `<context>-<…>-logs` (a
 //               vendor stack with a separate log volume) and `<context>-<…>-snapshots` (a snapshot
 //               repository, which must NOT live inside the data volume an upgrade replaces).
-//   networks    a declared `name:` (or an external network's key) ends in `-network`. APPROVED_NETWORKS
-//               is enforced as an allowlist ONLY when it is non-empty; while empty, the grammar alone is
-//               enforced. (MCM enforced its list unconditionally; an empty list would reject every
-//               network, so BELAY opts in by adding the first entry.)
+//   networks    a declared `name:` (or an external network's key) ends in `-network` AND is listed in
+//               APPROVED_NETWORKS. The allowlist is enforced unconditionally, as in MCM: while it is
+//               empty, every named network fails, so the first one is approved by a deliberate
+//               one-line edit to that list, reviewed like the other lists here.
 //   containers  `container_name` equals its service key (one identifier, so a rename cannot half-apply),
 //               and that identifier is `<context>[-<role>-<engine>]`, unless listed in VENDOR_BUNDLES.
 //               A service never re-adds a RETIRED_KEYS entry as a network alias (an old name must fail
@@ -77,8 +77,10 @@ export const VENDOR_BUNDLES = Object.freeze([]);
 export const RETIRED_KEYS = Object.freeze([]);
 
 /**
- * When non-empty, the only network names allowed. Add an entry when a network is shared across compose
- * files or joined externally (an edge tunnel, an isolated database link), so its name is reviewed once.
+ * The only network names a compose file may declare (by `name:`, or as an external network's key).
+ * Empty until the first compose file names one, so that first network fails until it is added here:
+ * a shared or external network (an edge tunnel, an isolated database link) is approved once, in review.
+ * A compose-managed network with no `name:` is out of scope and needs no entry.
  */
 export const APPROVED_NETWORKS = Object.freeze([]);
 
@@ -180,7 +182,7 @@ export function checkCompose(text, file, {
         add(at, 'compose-prefix', name, `network '${key}' name '${name}' carries a compose-project prefix (underscore)`);
       } else if (!/^[a-z0-9]+(?:-[a-z0-9]+)*-network$/.test(name)) {
         add(at, 'network-grammar', name, `network '${key}' name '${name}' must be kebab-case ending in -network`);
-      } else if (approved.size && !approved.has(name)) {
+      } else if (!approved.has(name)) {
         add(at, 'network-approved', name, `network '${name}' is not in APPROVED_NETWORKS — add it there to approve it`);
       }
     }
@@ -267,10 +269,11 @@ function selftest() {
     ['a near-miss context (fooservice-*) is rejected', count('volumes:\n  a: { name: fooservice-store-postgres-data }\n'), 1],
     ['a context with no role (foo-service-data) is rejected', count('volumes:\n  a: { name: foo-service-data }\n'), 1],
     ['an underscore-prefixed name is rejected', count('volumes:\n  a: { name: belay_foo-service-store-postgres-data }\n'), 1],
-    ['a -network network passes', count('networks:\n  n: { name: foo-service-network }\n'), 0],
+    ['an approved -network network passes', count('networks:\n  n: { name: foo-service-network }\n', { approvedNetworks: ['foo-service-network'] }), 0],
+    ['a well-formed network is rejected while APPROVED_NETWORKS is empty', count('networks:\n  n: { name: foo-service-network }\n', { approvedNetworks: [] }), 1],
     ['a non -network network is rejected', count('networks:\n  n: { name: foo-service-net }\n'), 1],
     ['an external network key is checked', count('networks:\n  shared: { external: true }\n'), 1],
-    ['an unapproved network is rejected once APPROVED_NETWORKS is non-empty', count('networks:\n  n: { name: bar-network }\n', { approvedNetworks: ['foo-service-network'] }), 1],
+    ['a network missing from a non-empty APPROVED_NETWORKS is rejected', count('networks:\n  n: { name: bar-network }\n', { approvedNetworks: ['foo-service-network'] }), 1],
     ['matching container_name and service key pass', count('services:\n  foo-service-store-postgres:\n    container_name: foo-service-store-postgres\n'), 0],
     ['container_name ≠ service key is rejected', count('services:\n  foo-service:\n    container_name: foo-service-app\n'), 1],
     ['an unknown-context container is rejected', count('services:\n  baz:\n    container_name: baz\n'), 1],

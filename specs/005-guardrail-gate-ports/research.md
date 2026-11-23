@@ -105,7 +105,8 @@ and `.devcontainer/toolchain.Dockerfile` (`FROM node:`).
     infrastructure contexts (an identity provider, an observability stack) added with the first
     compose file that needs one;
   - **vendor bundles**, **retired keys** and **approved networks** become explicit, initially empty
-    lists, each with a comment saying when to add an entry;
+    lists, each with a comment saying when to add an entry. Approved networks stay enforced while
+    empty, as in MCM (maintainer decision, 2026-11-23), so the first named network needs an entry;
   - the grammar itself is kept: `<context>-<role>-<engine>-data` volumes (and MCM's `-logs` and
     `-snapshots` forms), `-network` networks with no compose-project underscore, and
     `container_name` equal to the service key;
