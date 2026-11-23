@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 // A REAL-shaped tailnet host, assembled from fragments so no contiguous `.ts.net` literal appears in
-// this file. A tree-wide topology scan (a topology-scrub gate, issue #1) holds no literal to compare
+// this file. A tree-wide topology scan (scripts/check-topology-scrub.mjs) holds no literal to compare
 // against (by design), so it cannot tell an invented tailnet host from the real one — spelling one out
 // here fails that gate, which is exactly what happened once before. Same technique
 // as ci-digest-redact.test.mjs. Do not "tidy" this into a single string.
