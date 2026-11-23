@@ -8,15 +8,16 @@ node scripts/registry-retention.mjs --apply            # delete the `delete` row
                                                        # the committed config says `mode: apply`
 ```
 
-Env: `FORGE_URL` (required; the workflow passes `github.server_url`), `REGISTRY_CLEANUP_TOKEN`
-(`write:package`; a read-only `FORGE_TOKEN` is enough for a report), and `REGISTRY_USER` (optional;
-defaults to the owner).
+Forge address: the runner's `GITHUB_SERVER_URL`, else the scheme and host of the `origin` remote (the
+same resolution `ci-failure-digest.mjs` and `ci-status.mjs` use). It is never committed, never
+printed, and has no default. Env: `REGISTRY_CLEANUP_TOKEN` (`write:package`; the read-only
+`FORGE_TOKEN` is enough for a report) and `REGISTRY_USER` (optional; defaults to the owner).
 
 | Exit | Meaning |
 |---|---|
 | 0 | report printed (and, with apply, deletions done) |
 | 1 | forge or API error |
-| 2 | usage error, invalid config, or `--apply` against `mode: report` |
+| 2 | usage error, invalid config, a missing forge address or token, or `--apply` against `mode: report` |
 | 5 | a `protect` digest is not in the registry; nothing is deleted |
 
 Workflow `.forgejo/workflows/registry-retention.yml`:

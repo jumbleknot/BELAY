@@ -102,12 +102,40 @@ The repository is private, and Forgejo gives no secrets (`CI_DIGEST_TOKEN`) to f
 - **The result:** the job writes the digest-pinned reference to the step summary, which this forge cannot read back. Resolve the digest from the registry instead (the recipe is in [devcontainer.md](devcontainer.md)).
 - **Failure digest:** the job ends with the standard failure-digest step, like every job here.
 
+## The registry-retention workflow
+
+[`.forgejo/workflows/registry-retention.yml`](../../.forgejo/workflows/registry-retention.yml) runs
+[`scripts/registry-retention.mjs`](../../scripts/registry-retention.mjs) against the forge's package
+registry. It is not a merge check.
+
+- **Triggers:** Sundays at 06:00 UTC, and manual dispatch with a boolean `apply` input. The schedule
+  never deletes.
+- **What it keeps:** the rules are in
+  [`infrastructure-as-code/forgejo/registry-retention.yaml`](../../infrastructure-as-code/forgejo/registry-retention.yaml).
+  - `belay-devcontainer`: the newest 4, or anything younger than 21 days, plus every digest under
+    `protect:`.
+  - `belay-ci-failures`: at least 75 versions and 45 days, the floor `ci-status durations` needs. The
+    floor is 25 runs × 3 bundle-publishing jobs, so a new job that publishes a bundle makes the config
+    fail until the number is raised.
+  - A package the file does not list (another repository's, under the same owner) is reported and
+    never deleted.
+- **Deleting takes two keys.** `--apply` reaches the script only on a dispatch with `apply: true`, and
+  the script refuses it (exit 2) unless the committed config says `mode: apply`. The config ships with
+  `mode: report`.
+- **Fail-safe exits:**
+  - exit 5: a `protect:` digest is missing from the registry, and nothing is deleted;
+  - `keep:unverified`: a manifest could not be read, so that package's children are all kept.
+- **Locally:** with `FORGE_TOKEN` (`read:package`), `node scripts/registry-retention.mjs --package
+  belay-devcontainer` prints the report. The forge address comes from `origin`.
+- **The result:** the report is in the job log, and the non-keep rows are in the step summary.
+
 ## Secrets
 
 | Name | Where | Scopes | Used by |
 | --- | --- | --- | --- |
 | `CI_DIGEST_TOKEN` | Repository **Settings → Actions → Secrets** | `write:issue`, `write:package`, `read:repository` | The failure-digest step only |
 | `REGISTRY_TOKEN` | Repository **Settings → Actions → Secrets** | `write:package` | The `devcontainer-image` push step only |
+| `REGISTRY_CLEANUP_TOKEN` | Repository **Settings → Actions → Secrets** | `write:package` | The `registry-retention` report step only. Without it, the job fails loudly rather than reporting an empty registry |
 
 Guardrails needs no repository variables. If `CI_DIGEST_TOKEN` is missing or empty, the digest falls back to the run token, then to the job log. CI never fails because of it.
 

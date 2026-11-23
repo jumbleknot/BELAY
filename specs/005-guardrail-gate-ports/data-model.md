@@ -32,7 +32,7 @@ mode: report | apply
 owner: <forge owner>
 evidenceWindowDays: <int ≥ 1>
 protect:                       # BELAY addition (research R5)
-  - { package: <name>, digest: sha256:<64 hex>, note: <why> }
+  - { package: <name>, digest: sha256:<64 hex>, note: <why> }   # note is required
 packages:
   - { name, type: container|generic, keepNewest?, keepDays?, keepAll?, note? }
 ```
@@ -43,7 +43,10 @@ well-formed digest.
 
 ## Retention row
 
-`{ package, version, created, decision: keep|delete, reason: protected|newest|recent|referenced|unlisted|expired }`
+`{ package, version, digest, created_at, size, decision, reason }`, where `decision` is one of
+`keep:protected`, `keep:newest`, `keep:recent`, `keep:referenced`, `keep:unverified` (a manifest
+that could not be read), `keep:unconfigured` (a package the config does not list), `keep:all`, or
+`delete`; `reason` is free text.
 
 A container child (`sha256:…` version) is kept while any kept index references it. If any kept index
 of that package cannot be read, no child of that package is deleted.
