@@ -306,7 +306,7 @@ file count.
 - [x] T050 Run quickstart.md steps 1–5 (step 6's live report needs the registry secret)
 - [x] T051 Final checks: `pnpm nx run scripts:lint`, `pnpm nx run scripts:test` (watch the skip
   count), and `node scripts/check-speckit-overrides.mjs`
-- [ ] T052 **Open the PR** from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
+- [x] T052 **Open the PR** (branch `005-guardrail-gate-ports`, PR #38) from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
   1. `git push origin HEAD:005-guardrail-gate-ports`
   2. `node scripts/forge-pr.mjs open --head 005-guardrail-gate-ports --title "…" --body-file <file>`
   3. `node scripts/ci-status.mjs watch --pr <n>`, until it exits 0
