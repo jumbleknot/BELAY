@@ -1,0 +1,166 @@
+{
+  // .devcontainer/devcontainer.json — feature 004 (dev container on Docker Sandbox)
+  //
+  // BELAY's ONLY dev-container config. It runs inside the `belay` Docker Sandbox microVM as an
+  // ordinary, unprivileged client of the VM's own container engine. There is no Docker-in-Docker
+  // path and no in-VM firewall: egress is enforced host-side by the sandbox policy
+  // (.devcontainer/egress-allowlist.json), and this container only ASSERTS it at start.
+  //
+  // Every setting below carries a measured reason, ported from an identical sandbox dev container
+  // that has run for months (specs/004-devcontainer-sandbox/research.md R3). Guarded by
+  // scripts/__tests__/devcontainer-config.guard.test.mjs: if a guard fails because you changed a
+  // setting, update the guard at the cause only when the premise changed.
+  //
+  // Bring it up from the VM shell (docs/runbooks/devcontainer.md):
+  //   set -a; . ~/.belay-sandbox-env; set +a
+  //   devcontainer up --workspace-folder /workspaces/belay \
+  //     --config /workspaces/belay/.devcontainer/devcontainer.json \
+  //     --dotfiles-repository https://github.com/jumbleknot/<personal-layer-repo>
+  "name": "belay-workspace",
+
+  // The dev-container spec's top-level `image` is NOT substitution-eligible, but `build.args` is,
+  // so the digest-pinned toolchain image flows in through the thin Dockerfile's BASE_IMAGE.
+  // The default is COLON-FREE because ${localEnv:VAR:default} truncates a default at its first
+  // colon. A missing pin falls back to that local tag, which check-image-pin.sh (initializeCommand)
+  // reports loudly at every `devcontainer up`, so the fallback is never silent.
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {
+      "BASE_IMAGE": "${localEnv:BELAY_DEVCONTAINER_IMAGE:belay-devcontainer}"
+    }
+  },
+
+  // docker-outside-of-docker: the docker CLI plus the VM engine's socket. This container runs NO
+  // daemon; anything it starts is a SIBLING on the VM's engine. The `:1` is a floating tag: the
+  // real pin is devcontainer-lock.json beside this file, which the CLI regenerates on every build.
+  // It is TRACKED ON PURPOSE. A digest change in it is the supply-chain signal; review it, never
+  // discard it.
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+      "moby": true,
+      // The feature's default also downloads a standalone `docker-compose` binary from GitHub
+      // releases. Under governed egress that fetch fails (curl exit 6), and nothing here uses the
+      // legacy hyphenated binary, so the download is removed rather than allowlisted.
+      "dockerDashComposeVersion": "none"
+    }
+  },
+
+  // "host" is the SANDBOX VM, never Windows.
+  //
+  // --restart=always: the microVM idle-stops ~30 s after the last session, and containers do not
+  //   come back on their own. Measured: a dev container repeatedly presented as `Exited (255)`,
+  //   which reads as a crash and was the VM going away underneath it. `unless-stopped` was
+  //   measured insufficient after a host restart.
+  // --memory / --memory-swap: a LIMIT, so an out-of-memory kill lands in here rather than on a
+  //   bystander process in the VM. Budget of the 8 GiB VM: this container 5, the VM's engine ~1,
+  //   ~2 headroom for siblings. Swap equal to memory means none above it.
+  // --env-file: the forge tokens travel here, NOT in containerEnv (see the note there). The file
+  //   is written by initializeCommand on the VM before the container is created; `docker run
+  //   --env-file` fails outright on a missing file, so the order matters.
+  "runArgs": [
+    "--network=host",
+    "--restart=always",
+    "--memory=5g",
+    "--memory-swap=5g",
+    "--env-file", "${localEnv:HOME}/.belay-devcontainer-secrets.env"
+  ],
+
+  // Runs on the SANDBOX VM before build and create.
+  //   1. check-image-pin.sh warns when BELAY_DEVCONTAINER_IMAGE is unset or undigested.
+  //   2. gen-container-secrets-env.sh re-emits ~/.belay-sandbox-env's `KEY='value'` lines as the
+  //      bare `KEY=value` docker requires: --env-file does no quote processing, so the shell form
+  //      would deliver values wrapped in literal apostrophes and fail auth like a bad key.
+  "initializeCommand": "/bin/bash ${localWorkspaceFolder}/.devcontainer/check-image-pin.sh; /bin/bash ${localWorkspaceFolder}/.devcontainer/gen-container-secrets-env.sh",
+
+  // Never root, never the host user.
+  "remoteUser": "coder",
+
+  // The VM user that owns the clone is uid 1000, so `coder` must be uid 1000 too, or git fails
+  // deep on object writes with errors that read like repository corruption. The CURE is in
+  // toolchain.Dockerfile, where coder is created at 1000. This flag is the spec's own mechanism
+  // and is set explicitly, because it was measured NOT to engage on this path; an implicit default
+  // that silently no-ops looks exactly like one that worked. fix-workspace-ownership.sh is the
+  // REPAIR for a tree already touched from the VM side.
+  "updateRemoteUserUID": true,
+
+  // workspaceMount / workspaceFolder are deliberately OMITTED. `devcontainer up --workspace-folder
+  // /workspaces/belay` supplies a bind mount at the IDENTICAL in-container path, and that equality
+  // is required: with one engine, every sibling's `-v` resolves against the VM's filesystem, so a
+  // mismatch silently binds the wrong content.
+
+  // Volumes on the sandbox's engine. They survive a dev-container recreate, but NOT `sbx rm`,
+  // which removes the VM, its engine, every volume and the clone.
+  //   belay-claude: the personal layer (plugins, logins, the RTK binary and its hook). EMPTY on a
+  //   fresh sandbox; populated once by `devcontainer up --dotfiles-repository …`.
+  "mounts": [
+    "source=belay-commandhistory,target=/commandhistory,type=volume",
+    "source=belay-pnpm-store,target=/home/coder/.local/share/pnpm/store,type=volume",
+    "source=belay-claude,target=/home/coder/.claude,type=volume"
+  ],
+
+  // 🔴 NO CREDENTIAL MAY BE LISTED HERE. The devcontainer CLI compiles every containerEnv entry into
+  // an ENV instruction in the generated Dockerfile, so a value here is BAKED INTO THE IMAGE
+  // (measured: secrets present in 3 history layers, and echoed on the `docker run` line at every
+  // rebuild). `remoteEnv` is not the fix either: `ssh` + `docker exec` sessions do not see it.
+  // Credentials travel by --env-file (runArgs). ANTHROPIC_API_KEY is never set anywhere: Claude
+  // Code silently prefers it over a subscription login and bills per token.
+  "containerEnv": {
+    // Markers: in-container identity, and the personal layer's install guard.
+    "BELAY_DEVCONTAINER": "1",
+    "BELAY_DEVCONTAINER_PLATFORM": "sandbox",
+    "DEVCONTAINER_PERSONAL_LAYER": "1",
+
+    // Talk to the engine socket DIRECTLY, not through the feature's socat relay on
+    // /var/run/docker.sock. The relay's half-close timeout is 0.5 s, so `docker exec` of anything
+    // slower returns exit 0 with EMPTY output: a wrong answer delivered confidently. The host
+    // socket is already group-owned by coder, so the relay is unnecessary.
+    "DOCKER_HOST": "unix:///var/run/docker-host.sock",
+
+    // A clean, container-local docker config. When VS Code builds or attaches, it injects a
+    // `credsStore` helper that works only inside its own session, so pulls then fail with
+    // `exit status 255` from any other shell. This directory has no helper.
+    "DOCKER_CONFIG": "/home/coder/.docker-sandbox",
+
+    // Put Claude Code's GLOBAL config file on the persistent volume. The volume holds ~/.claude,
+    // but the global config is ~/.claude.json, a sibling on the ephemeral overlay, so a recreate
+    // dropped the account identity and project history while the OAuth tokens survived. Pointing
+    // the config root at ~/.claude changes only that one file's location. NOT a symlink: Claude
+    // Code replaces the file by write-then-rename, which would silently swap the symlink back.
+    "CLAUDE_CONFIG_DIR": "/home/coder/.claude",
+
+    // Topology, not a secret, and never committed: injected from the VM shell's environment.
+    "FORGE_REGISTRY_HOST": "${localEnv:FORGE_REGISTRY_HOST}"
+  },
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "files.eol": "\n"
+      },
+      "extensions": [
+        "anthropic.claude-code"
+      ]
+    }
+  },
+
+  // ONE-TIME PER CONTAINER CREATION.
+  //   - chown the volume mount points: a fresh named volume can arrive root-owned.
+  //   - fix-workspace-ownership.sh repairs files written as a different uid (see above).
+  //   - persist-claude-config.sh carries an existing ~/.claude.json onto the volume once.
+  "onCreateCommand": "sudo chown -R coder:coder /home/coder/.local/share/pnpm /home/coder/.claude || true; /bin/bash ${containerWorkspaceFolder}/.devcontainer/fix-workspace-ownership.sh ${containerWorkspaceFolder} || true; /bin/bash ${containerWorkspaceFolder}/.devcontainer/persist-claude-config.sh || true",
+
+  // --config.confirmModulesPurge=false: without it, pnpm install on a bind-mounted checkout aborts
+  // with ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY in a non-interactive hook.
+  // ensure-rtk-hook.sh is load-bearing: `rtk init -g` run non-interactively defaults to NOT
+  // patching ~/.claude/settings.json, which leaves RTK installed but inactive (zero compression
+  // while `rtk --version` answers). It wires the hook idempotently and no-ops without RTK.
+  "postCreateCommand": "pnpm install --config.confirmModulesPurge=false && /bin/bash ${containerWorkspaceFolder}/.devcontainer/ensure-rtk-hook.sh",
+
+  // EVERY START.
+  //   - fix-workspace-ownership.sh again: any `ssh <sandbox> 'git …'` re-introduces the uid
+  //     mismatch, and the healthy case costs one `find`.
+  //   - assert-egress-governed.sh: fails if a blocked host is reachable, AND if an allowed one is
+  //     not (a severed network is not a security pass). Note postStartCommand does not run on a
+  //     Docker-level restart after an idle-stop, so this proves the policy at each real start.
+  "postStartCommand": "/bin/bash ${containerWorkspaceFolder}/.devcontainer/fix-workspace-ownership.sh ${containerWorkspaceFolder} || true; /bin/bash ${containerWorkspaceFolder}/.devcontainer/assert-egress-governed.sh"
+}

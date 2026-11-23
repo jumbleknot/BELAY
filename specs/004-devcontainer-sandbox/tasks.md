@@ -62,7 +62,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
     - `egress` hits in the constitution, the templates and the wiki ("regression"): no change, because they are false matches.
     - `mcm-dotfiles`, `open-sandbox`, `/workspaces/belay` (beyond the files above): no other hits.
 
-- [ ] T002 Confirm the line-ending rules cover the new file types: `.gitattributes` stores `*.sh` as LF and `*.ps1` as CRLF.
+- [x] T002 Confirm the line-ending rules cover the new file types: `.gitattributes` stores `*.sh` as LF and `*.ps1` as CRLF.
   - **Done when:** `git check-attr eol -- .devcontainer/x.sh scripts/open-sandbox.ps1` reports `lf` and `crlf`. If it doesn't, ask before editing `.gitattributes`, because it is a repository-wide convention.
 
 ---
@@ -71,7 +71,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
 
 **⚠️ Blocks** every story: US1, US3 and the sandbox bring-up need the configuration, and US4 publishes this image.
 
-- [ ] T003 [P] Write the dev-container config guard in `scripts/__tests__/devcontainer-config.guard.test.mjs`
+- [x] T003 [P] Write the dev-container config guard in `scripts/__tests__/devcontainer-config.guard.test.mjs`
   - **Scenarios covered:** US1-AC2, US3-AC1, US3-AC5, US4-AC3 (the pin check is wired), FR-001 to FR-006, FR-011, FR-013, FR-014 and FR-019. Contract: [research R3](research.md).
   - **Asserts, on `.devcontainer/devcontainer.json`:**
     - `build.dockerfile` is `Dockerfile`, and `build.args.BASE_IMAGE` is exactly `${localEnv:BELAY_DEVCONTAINER_IMAGE:belay-devcontainer}`.
@@ -92,13 +92,13 @@ Documentation, config and operator tasks use the "Done when" form instead.
     - The file contains no `mcm` substring.
   - **Verify RED:** `node --test scripts/__tests__/devcontainer-config.guard.test.mjs` → expected: every test failing, with `ENOENT … .devcontainer/devcontainer.json`.
 
-- [ ] T004 Create `.devcontainer/devcontainer.json`, ported from MCM's `.devcontainer/sandbox/devcontainer.json` per research R3 and keeping its explanatory comments where they still apply, and the thin `.devcontainer/Dockerfile` (`ARG BASE_IMAGE=belay-devcontainer` / `FROM ${BASE_IMAGE}`, with MCM's header explaining the seam). This needs T003 verified RED.
+- [x] T004 Create `.devcontainer/devcontainer.json`, ported from MCM's `.devcontainer/sandbox/devcontainer.json` per research R3 and keeping its explanatory comments where they still apply, and the thin `.devcontainer/Dockerfile` (`ARG BASE_IMAGE=belay-devcontainer` / `FROM ${BASE_IMAGE}`, with MCM's header explaining the seam). This needs T003 verified RED.
   - The `mounts` follow [data-model.md, Persistent volumes](data-model.md), and the marker variables follow [data-model.md, Markers](data-model.md).
   - Leave out `forwardPorts`, the Ollama and Android hooks, the app-path chowns, `OPENWIKI_*`, `MCM_USAGE_*` and `capAdd`.
   - The lifecycle scripts it names are created as empty stubs that exit 0, until their stories fill them: `check-image-pin.sh`, `gen-container-secrets-env.sh`, `fix-workspace-ownership.sh`, `persist-claude-config.sh`, `ensure-rtk-hook.sh` and `assert-egress-governed.sh`.
   - **Verify GREEN:** `node --test scripts/__tests__/devcontainer-config.guard.test.mjs` → expected: 0 failures. Then `pnpm nx run scripts:test` still passes.
 
-- [ ] T005 [P] Write the toolchain image guard in `scripts/__tests__/toolchain-dockerfile.guard.test.mjs`
+- [x] T005 [P] Write the toolchain image guard in `scripts/__tests__/toolchain-dockerfile.guard.test.mjs`
   - **Scenarios covered:** US1-AC2, US4-AC4, FR-005, FR-017, [research R5 and R6](research.md).
   - **Asserts, on `.devcontainer/toolchain.Dockerfile`:**
     - The first `FROM` is `node:26-bookworm@sha256:<64 hex>`, and its major equals the `node-version` major in `.forgejo/workflows/guardrails.yml`.
@@ -111,7 +111,7 @@ Documentation, config and operator tasks use the "Done when" form instead.
     - No `ENV` or `ARG` name matches `/TOKEN|SECRET|PASSWORD|API_KEY/`.
   - **Verify RED:** `node --test scripts/__tests__/toolchain-dockerfile.guard.test.mjs` → expected: all failing, with `ENOENT … toolchain.Dockerfile`.
 
-- [ ] T006 Create `.devcontainer/toolchain.Dockerfile`, a slim port of MCM's per research R5 and R6, keeping the reason comments for each layer. Add a header note that the image is built in CI or on a host engine with open egress, never inside the sandbox. This needs T005 verified RED. It follows [data-model.md, Toolchain image](data-model.md), "Must not contain".
+- [x] T006 Create `.devcontainer/toolchain.Dockerfile`, a slim port of MCM's per research R5 and R6, keeping the reason comments for each layer. Add a header note that the image is built in CI or on a host engine with open egress, never inside the sandbox. This needs T005 verified RED. It follows [data-model.md, Toolchain image](data-model.md), "Must not contain".
   - **Verify GREEN:** `node --test scripts/__tests__/toolchain-dockerfile.guard.test.mjs` → 0 failures.
 
 **Checkpoint:** the configuration and the image definition exist and are guarded.
