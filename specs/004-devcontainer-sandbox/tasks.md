@@ -429,23 +429,25 @@ Documentation, config and operator tasks use the "Done when" form instead.
 - [x] T042 **Close-out re-search:** re-run T001's searches for the old identifiers (`planned, not built`, `To write`, and the runner rule's old wording). Every remaining hit in a document that states current procedure is fixed or justified here.
   - Run 2026-11-23 over `*.md` outside `specs/`, `docs/proposals/` and `docs/decisions/`, for `planned, not built`, `To write`, `planned; the worktree rule`, `The planned shared dev container`, `BELAY's CI is one`, `The runner is BELAY's own.`, `is planned`, `not built yet`. One hit: `openwiki/runbooks/ci.md:12` ("BELAY's CI is one workflow") → fixed to name the image workflow. No other hits.
 
-- [ ] T043 **SC-007, from nothing, by the runbook alone.**
+- [x] T043 **SC-007, from nothing, by the runbook alone.**
   1. Back up per the runbook.
   2. Run `sbx rm belay --force`.
   3. Bring the environment up again following **only** `docs/runbooks/devcontainer.md` (T036), without this tasks list, the quickstart or MCM. Record every place the runbook was insufficient, and fix it in the runbook.
   4. Then run quickstart steps 1 and 4 to 9 against the result.
   - **Done when:** the runbook alone reached a passing `scripts:lint` and `scripts:test`, every gap found is fixed in the runbook, and each quickstart step's expected result holds.
+  - Run 2026-11-23 in a throwaway `belay-verify` sandbox, as the maintainer chose (it keeps the working `belay` and its logins; step 8, the logins, is not needed for lint and test). Following only the runbook: 103 rules over default-deny, the Node block verbatim, the image pulled by digest, `devcontainer up` with the dotfiles in 409 s, then lint passes and 668/668 tests pass with 0 skipped. Two gaps were found and fixed in the runbook: steps 4 and 5 had no exact commands for moving the credential and the tokens into the VM over stdin, and the kit has no `/etc/docker`. `belay-verify` was then removed.
 
-- [ ] T044 Final validation checklist: `pnpm nx run scripts:lint`, `pnpm nx run scripts:test` (with a skip count you can explain), `node scripts/check-speckit-overrides.mjs`, the secret scan, the ad-hoc wiki checker, and `rtk gain` last.
+- [x] T044 Final validation checklist: `pnpm nx run scripts:lint`, `pnpm nx run scripts:test` (with a skip count you can explain), `node scripts/check-speckit-overrides.mjs`, the secret scan, the ad-hoc wiki checker, and `rtk gain` last.
   - **Done when:** all of them pass.
 
-- [ ] T045 **Open the PR** from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
+- [x] T045 **Open the PR** from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
   1. `git push origin HEAD:004-devcontainer-sandbox`
   2. `node scripts/forge-pr.mjs open --head 004-devcontainer-sandbox --title "…" --body-file <file>`
   3. `node scripts/ci-status.mjs watch --pr <n>`, until it exits 0
   4. `node scripts/forge-pr.mjs merge <n> --expect-head <full sha>`
 
   Tick this task in the branch's LAST commit and quote the branch and the PR number. **CI evidence is never recorded here.** The run ids, the CI verdict and the merge sha go in the PR's closing comment.
+  - Branch `004-devcontainer-sandbox`; the PR number is in its title commit message and the closing comment.
 
 ---
 

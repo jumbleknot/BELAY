@@ -94,23 +94,45 @@ Prerequisites **[host]**:
    sudo /usr/local/bin/npm install -g @devcontainers/cli
    sudo mkdir -p /workspaces && sudo chown agent:agent /workspaces
    ```
-4. **Configure the VM's engine and git [VM].**
-   - The forge registry is plain HTTP, so list it in `/etc/docker/daemon.json` as
-     `{"insecure-registries": ["<forge-host>:3000"]}`, mode 644, then restart with **[host]**
-     `sbx stop belay` and `sbx run --name belay -d`. `/etc/init.d/docker restart` fails, because
-     PID 1 is not an init system. Check with `docker info | grep -A2 'Insecure Registries'`.
-   - Set `git config --global user.name/user.email`, and `git config --global credential.helper store`
-     with the forge credential approved into it (`git credential approve`, fed on stdin).
-5. **Write `~/.belay-sandbox-env` [VM]**, mode 600, `KEY='value'` lines, no `export`, and never an
-   `ANTHROPIC_API_KEY` line:
+4. **Configure the VM's engine and git**, from **Git Bash on the host**. Every value is piped over
+   stdin into `sbx exec -i`; `printf` is a bash builtin, so no value appears in any process's argv.
+   Set the variables once:
    ```bash
-   BELAY_DEVCONTAINER_IMAGE='<forge-host>:3000/<owner>/belay-devcontainer@sha256:<digest>'
-   FORGE_REGISTRY_HOST='<forge-host>'
-   FORGE_TOKEN='…'
-   FORGE_ISSUE_TOKEN='…'
+   SBX="$LOCALAPPDATA/DockerSandboxes/bin/sbx.exe"; SB=belay
+   ORIGIN=$(git remote get-url origin)                                   # in your BELAY checkout
+   FORGE_HOST=$(echo "$ORIGIN" | sed -E 's#^[a-z]+://([^/:]+).*#\1#')     # <forge-host>
+   FORGE_AUTH=$(echo "$ORIGIN" | sed -E 's#^[a-z]+://([^/]+)/.*#\1#')     # <forge-host>:3000
+   FORGE_SCHEME=$(echo "$ORIGIN" | sed -E 's#^([a-z]+)://.*#\1#')
+   OWNER=$(echo "$ORIGIN" | sed -E 's#^[a-z]+://[^/]+/([^/]+)/.*#\1#')
    ```
-   Feed the token values on stdin from the host's environment, so they never appear on a command
-   line or in a transcript.
+   - **The insecure registry.** The forge registry is plain HTTP. The kit has no `/etc/docker`, so
+     create it:
+     ```bash
+     printf 'sudo mkdir -p /etc/docker && printf "{\\n  \\"insecure-registries\\": [\\"%%s\\"]\\n}\\n" "%s" | sudo tee /etc/docker/daemon.json >/dev/null && sudo chmod 644 /etc/docker/daemon.json\n' "$FORGE_AUTH" \
+       | MSYS_NO_PATHCONV=1 "$SBX" exec -i $SB sh -s
+     MSYS_NO_PATHCONV=1 "$SBX" stop $SB; MSYS_NO_PATHCONV=1 "$SBX" run --name $SB -d
+     ```
+     Restart with `sbx stop` and `sbx run`, because `/etc/init.d/docker restart` fails (PID 1 is not
+     an init system). Check with `docker info | grep -A1 'Insecure Registries'` in the VM.
+   - **Git identity and the forge credential.** The credential goes from the host's helper straight
+     into the VM's store:
+     ```bash
+     printf 'git config --global user.name "%s"\ngit config --global user.email "%s"\ngit config --global credential.helper store\n' \
+       "$(git config user.name)" "$(git config user.email)" | MSYS_NO_PATHCONV=1 "$SBX" exec -i $SB sh -s
+     printf 'protocol=%s\nhost=%s\n\n' "$FORGE_SCHEME" "$FORGE_AUTH" | git credential fill \
+       | MSYS_NO_PATHCONV=1 "$SBX" exec -i $SB git credential approve
+     ```
+5. **Write `~/.belay-sandbox-env`**, from Git Bash on the host. It holds `KEY='value'` lines with no
+   `export`, at mode 600, and never an `ANTHROPIC_API_KEY` line. `PIN` is the digest-pinned
+   reference from [Re-pin the image](#re-pin-the-image):
+   ```bash
+   PIN="$FORGE_AUTH/$OWNER/belay-devcontainer@sha256:<digest>"
+   printf "BELAY_DEVCONTAINER_IMAGE='%s'\nFORGE_REGISTRY_HOST='%s'\nFORGE_TOKEN='%s'\nFORGE_ISSUE_TOKEN='%s'\n" \
+     "$PIN" "$FORGE_HOST" "$FORGE_TOKEN" "$FORGE_ISSUE_TOKEN" \
+     | MSYS_NO_PATHCONV=1 "$SBX" exec -i $SB sh -c 'umask 077; cat > ~/.belay-sandbox-env'
+   ```
+   Check it in the VM: `stat -c '%a' ~/.belay-sandbox-env` prints `600`, and
+   `cut -d= -f1 ~/.belay-sandbox-env` lists the four keys.
 6. **Log the VM's engine in to the registry [VM].** The image package is private:
    `set -a; . ~/.belay-sandbox-env; set +a; printf %s "$FORGE_TOKEN" | docker login <forge-host>:3000 -u <owner> --password-stdin`,
    then `docker pull "$BELAY_DEVCONTAINER_IMAGE"`. The image is about 4.2 GB.
