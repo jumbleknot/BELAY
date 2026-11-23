@@ -56,7 +56,10 @@ them locally reproduces the required check.
   block into `CLAUDE.md`. BELAY tried it on 2026-11-22 and removed it, as MovieCollectionManager did,
   because it went unused there for a long time. It also pulled an unpinned third-party marketplace
   into every session. Don't re-run the generator without asking. `configure-ai-agents --check`
-  reporting agents as "not configured" is expected.
+  reporting agents as "not configured" is expected. Use the plain commands the plugin's skills
+  wrapped: `pnpm nx show projects` and `pnpm nx show project <name>` to explore the workspace,
+  `pnpm nx graph` for dependencies, and `pnpm nx g <generator> --dry-run` before any scaffolding. A
+  new generator from a new plugin is still a structural decision, so ask first.
 
 See [package-manager enforcement](./package-manager-enforcement.md) for how dependencies get
 installed in the first place.
