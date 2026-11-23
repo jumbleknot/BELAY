@@ -40,11 +40,12 @@ echo "$BELAY_DEVCONTAINER_IMAGE"          # must contain @sha256:
 git clone <origin url> /workspaces/belay
 devcontainer up --workspace-folder /workspaces/belay \
   --config /workspaces/belay/.devcontainer/devcontainer.json \
-  --dotfiles-repository https://github.com/jumbleknot/mcm-dotfiles
+  --dotfiles-repository https://github.com/jumbleknot/mcm-dotfiles 2>&1 | tee ~/devcontainer-up.log
 ```
 
 **Expected:**
-- the `initializeCommand` reports `✓ FORGE_TOKEN (N chars)` and `✓ FORGE_ISSUE_TOKEN (N chars)`;
+- the `initializeCommand` first prints `✓ pinned: sha256:…` from `check-image-pin.sh`. A `⚠` warning instead means the pin was not exported;
+- it then reports `✓ FORGE_TOKEN (N chars)` and `✓ FORGE_ISSUE_TOKEN (N chars)`;
 - `postStart` prints `[assert-egress-governed] PASS`;
 - no toolchain layer is rebuilt, because the base image is pulled.
 
@@ -66,6 +67,7 @@ sbx stop belay
 node --version; pnpm --version; specify --version; pwsh --version
 pnpm nx run scripts:lint && pnpm nx run scripts:test      # same result as CI on this commit (SC-002)
 pwsh -NoProfile -File .specify/scripts/powershell/check-prerequisites.ps1 -Json -PathsOnly
+docker run --rm busybox sh -c "sleep 3; echo engine-seam-ok"    # must print engine-seam-ok (FR-006: no truncated output)
 ```
 
 ## 6. Egress is denied by default (SC-003)
@@ -89,6 +91,7 @@ img=$(docker inspect --format '{{.Image}}' <dc>)
 docker history --no-trunc "$img" | grep -cF "$FORGE_TOKEN"            # 0
 docker image inspect "$img" | grep -cF "$FORGE_TOKEN"                 # 0
 docker exec <dc> ps -eo args | grep -cF "$FORGE_TOKEN"                # 0
+grep -cF "$FORGE_TOKEN" ~/devcontainer-up.log                         # 0: the captured devcontainer up output
 # [dc]
 env | grep -c '^ANTHROPIC_API_KEY='                                   # 0
 node scripts/ci-status.mjs status --branch main                       # works: FORGE_TOKEN arrived

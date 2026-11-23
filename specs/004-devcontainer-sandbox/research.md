@@ -55,7 +55,7 @@ Kept as in MCM, each for MCM's measured reason:
 - `customizations.vscode`: `files.eol: "\n"` and the `anthropic.claude-code` extension. MCM's eslint and prettier extensions are dropped, because BELAY has no app lint.
 
 Lifecycle commands:
-- `initializeCommand`: `gen-container-secrets-env.sh`.
+- `initializeCommand`: `check-image-pin.sh` (R7), then `gen-container-secrets-env.sh`.
 - `onCreateCommand`: chown the volumes, then `fix-workspace-ownership.sh`, then `persist-claude-config.sh`.
 - `postCreateCommand`: `pnpm install --config.confirmModulesPurge=false`, then `ensure-rtk-hook.sh`.
 - `postStartCommand`: `fix-workspace-ownership.sh`, then `assert-egress-governed.sh`.
@@ -110,6 +110,8 @@ BELAY mirrors this and documents it as a trap. Putting the push credential in th
 - Spec Kit's scripts are PowerShell only, so without `pwsh` the `/speckit-*` commands silently fall back to hand bookkeeping.
 - `SPECKIT_VERSION` must equal `.specify/init-options.json` (1.4.2). Bump both together (see `docs/runbooks/spec-kit.md`).
 
+**The image is never built inside the sandbox.** Building it needs open egress: rustup fetches from `sh.rustup.rs` and `static.rust-lang.org`, which are not on the allowlist (MCM lists `static.rust-lang.org` under `$consideredAndExcluded`, deliberately). MCM builds its image in CI for the same reason. BELAY builds it in CI (R7), or with `scripts/build-devcontainer-image.mjs` on a host engine that has open egress, such as Docker Desktop. The allowlist is not widened to make an in-sandbox build work. The personal layer's RTK build is unaffected: it runs `cargo install` against the baked toolchain and needs only `crates.io`, `static.crates.io`, `index.crates.io` and GitHub, all allowed.
+
 **Dropped.** The Android SDK and emulator, Gradle, the ten cargo utilities, OpenWiki with mermaid and jsdom, the Docker Compose v5 plugin and `.docker-dind`, and the iptables, ipset, dnsutils and iproute2 packages. This takes the image from about 13 GB to roughly 2–3 GB (to be measured).
 
 **Alternatives considered.**
@@ -140,6 +142,10 @@ Keep `fix-workspace-ownership.sh`, with its default renamed to `${BELAY_WORKSPAC
 - **Operator setup.** BELAY repository variables `REGISTRY`, `NS` and `REGISTRY_USER`, and the secret `REGISTRY_TOKEN` (with `write:package`). Forgejo reserves the `FORGEJO_`, `GITEA_` and `GITHUB_` prefixes for names.
 - **CI rules.** Every `run:` step goes through `scripts/ci-log-step.sh`, and the job ends with the failure-digest step. `scripts/check-ci-digest-coverage.mjs` scans every workflow, so it enforces this.
 - **Reading the digest.** The forge cannot read back the step summary. Resolve the digest from the registry: `GET /v2/<ns>/belay-devcontainer/manifests/<sha>` with `Accept` set to the OCI index type, then read the `docker-content-digest` header. The packages API's first row is the attestation, not the image.
+
+**Making a missing pin visible.** The thin `Dockerfile` defaults `BASE_IMAGE` to the local tag `belay-devcontainer`, so an unset or unexported `BELAY_DEVCONTAINER_IMAGE` silently builds from whatever local image exists. That is a measured MCM trap, and spec US4-AC3 forbids it. So `initializeCommand` first runs `.devcontainer/check-image-pin.sh`.
+- It prints a loud warning, naming the runbook section, when `BELAY_DEVCONTAINER_IMAGE` is unset, or is set without `@sha256:`. Otherwise it prints the pinned digest.
+- It exits 0, so an intentional offline build with the local tag still works. The warning is what makes the fallback visible.
 
 **Rationale.** A digest pin makes recreates downloads, not rebuilds, and makes them reproducible. The gate stops a no-op push from paying for a build, and fails safe: if it cannot tell, it builds.
 

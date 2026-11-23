@@ -41,9 +41,19 @@ node scripts/build-devcontainer-image.mjs [--tag <ref>]
 ```
 
 - It builds `.devcontainer/toolchain.Dockerfile` with the repository root as context, tagged `belay-devcontainer` unless `--tag` is given.
+- **It needs an engine with open egress**: CI, or a host engine such as Docker Desktop. It is never run inside the sandbox, where rustup's hosts are blocked (research R5).
 - **Exit codes:** 0 built; 1 the build failed; 2 a usage error, a missing Dockerfile, or `docker` not reachable.
 
-## `.devcontainer/gen-container-secrets-env.sh` (the `initializeCommand`)
+## `.devcontainer/check-image-pin.sh` (the first `initializeCommand` step)
+
+- **Input:** `BELAY_DEVCONTAINER_IMAGE`, from the VM shell that runs `devcontainer up`.
+- **Behaviour:**
+  - set and containing `@sha256:<64 hex>` → prints `✓ pinned: <digest>`;
+  - unset, empty, or set without a digest → prints a multi-line `⚠` warning that the build will use the local `belay-devcontainer` tag. The warning says how to source `~/.belay-sandbox-env` with `set -a`, and names the runbook section.
+- **It never prints the full reference.** The registry host is topology, so only the digest is shown.
+- **Always exits 0.** An offline local build must still be possible.
+
+## `.devcontainer/gen-container-secrets-env.sh` (the second `initializeCommand` step)
 
 - **Source:** `${BELAY_SANDBOX_ENV_FILE:-$HOME/.belay-sandbox-env}`.
 - **Output:** `${BELAY_CONTAINER_SECRETS_ENV:-$HOME/.belay-devcontainer-secrets.env}`.

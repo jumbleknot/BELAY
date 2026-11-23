@@ -20,7 +20,7 @@ This feature stores no application data. Its "entities" are configuration artefa
 
 | Key | Secret? | Used by |
 | --- | --- | --- |
-| `BELAY_DEVCONTAINER_IMAGE` | no | `build.args.BASE_IMAGE`. Must contain `@sha256:` for a pinned build. |
+| `BELAY_DEVCONTAINER_IMAGE` | no | `build.args.BASE_IMAGE`. Must contain `@sha256:` for a pinned build. `check-image-pin.sh` warns at every `devcontainer up` when it does not. |
 | `FORGE_REGISTRY_HOST` | no (topology) | `containerEnv`, and `--forge-host` when generating the policy |
 | `FORGE_TOKEN` | yes | `ci-status.mjs`, and reads in `backlog.mjs` |
 | `FORGE_ISSUE_TOKEN` | yes | writes in `backlog.mjs` and `taskstoissues.mjs` |

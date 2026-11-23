@@ -56,6 +56,7 @@ The personal layer comes from `jumbleknot/mcm-dotfiles`, once its guard accepts 
 - A pinned recreate in under 10 minutes, with 0 local toolchain layers rebuilt (SC-006).
 
 **Constraints**:
+- **Image builds:** CI, or a host engine with open egress. Never inside the sandbox.
 - **Memory:** the VM has 8 GiB and the container is capped at 5 GiB. The host has 31.8 GiB, shared with MCM's 16 GiB VM.
 - **Credentials:** never in image layers, argv, logs or git.
 - **`ANTHROPIC_API_KEY`:** never set.
@@ -111,6 +112,7 @@ specs/004-devcontainer-sandbox/
 ├── devcontainer-lock.json       # generated on first build; committed
 ├── Dockerfile                   # thin seam: ARG BASE_IMAGE=belay-devcontainer
 ├── toolchain.Dockerfile         # slim toolchain image
+├── check-image-pin.sh           # initializeCommand step 1: warns when the pin is missing
 ├── egress-allowlist.json        # MCM's list minus api.themoviedb.org, plus $removedFromMcmBaseline
 ├── gen-container-secrets-env.sh
 ├── fix-workspace-ownership.sh
