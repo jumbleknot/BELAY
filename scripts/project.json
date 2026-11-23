@@ -26,6 +26,7 @@
           "node scripts/check-no-argv-secrets.mjs",
           "node scripts/check-override-consistency.mjs --selftest",
           "node scripts/check-override-consistency.mjs",
+          "node scripts/check-sast-findings.mjs --selftest",
           "node scripts/check-resource-naming.mjs --selftest",
           "node scripts/check-resource-naming.mjs",
           "node scripts/check-openwiki-okf.mjs --selftest",
@@ -47,6 +48,20 @@
       },
       "metadata": {
         "description": "Build the dev-container toolchain image locally as belay-devcontainer (feature 004). Needs an engine with OPEN egress (CI, or a host engine such as Docker Desktop): never run it inside the sandbox, where rustup's hosts are not allowlisted. The normal path is the devcontainer-image workflow, which publishes a digest-pinned image. See docs/runbooks/devcontainer.md."
+      }
+    },
+    "sast": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "parallel": false,
+        "commands": [
+          "node scripts/sast-scan.mjs --scope full",
+          "node scripts/check-sast-findings.mjs"
+        ]
+      },
+      "metadata": {
+        "description": "SAST + SCA, stage 1: Semgrep over the whole tree and pnpm audit over the lockfile, then the allowlist gate. Keyless; needs uv (uvx) and network access to semgrep.dev, PyPI and the npm registry. Reports land in security/sast/reports/. See docs/runbooks/sast.md."
       }
     },
     "test": {

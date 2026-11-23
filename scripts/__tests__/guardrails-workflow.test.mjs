@@ -30,9 +30,9 @@ test('concurrency: one run per ref, a newer run cancels an older one', () => {
   assert.equal(concurrency['cancel-in-progress'], true);
 });
 
-test('a single guardrails job on the belay runner label with a timeout', () => {
+test('two jobs, guardrails and sast, each on the belay runner label with a timeout', () => {
   const { jobs } = load();
-  assert.deepEqual(Object.keys(jobs), ['guardrails']);
+  assert.deepEqual(Object.keys(jobs), ['guardrails', 'sast'], 'sast is a separate job so guardrails keeps its run time');
   assert.equal(jobs.guardrails['runs-on'], 'belay', 'BELAY jobs run on its own repository runner (ci-belay), never the shared global one');
   assert.equal(jobs.guardrails['timeout-minutes'], 10);
 });
@@ -59,4 +59,61 @@ test('the last step publishes the failure digest and can never change the job ou
   assert.equal(digest.env.CI_DIGEST_TOKEN, '${{ secrets.CI_DIGEST_TOKEN }}');
   assert.equal(digest.env.GITHUB_TOKEN, '${{ github.token }}');
   assert.equal(digest.env.CI_DIGEST_JOB_STATUS, '${{ job.status }}');
+});
+
+// ── The sast job (feature 006, SAST stage 1). MCM's feature-033 job is the baseline; Rust and the
+// Python env syncs are stages 2 and 3, so they must not appear here until those stages land.
+const UPLOAD_ARTIFACT = 'actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5';
+const sastJob = () => load().jobs.sast;
+const stepNamed = (re) => sastJob().steps.find((st) => re.test(st.name ?? ''));
+
+test('sast runs on the belay runner, keyless, with a bounded timeout', () => {
+  const job = sastJob();
+  assert.equal(job['runs-on'], 'belay');
+  assert.equal(job['timeout-minutes'], 15);
+  const secrets = JSON.stringify(job).match(/secrets\.[A-Z_]+/g) ?? [];
+  assert.deepEqual([...new Set(secrets)], ['secrets.CI_DIGEST_TOKEN'], 'the scan itself needs no secret; only the digest step reads one');
+});
+
+test('sast checks out full history and pins Node before any Node use', () => {
+  const steps = sastJob().steps;
+  assert.equal(steps[0].uses, CHECKOUT);
+  assert.equal(steps[0].with['fetch-depth'], 0, 'the changed-files scope diffs against the PR base');
+  assert.equal(steps[1].uses, SETUP_NODE);
+  assert.equal(String(steps[1].with['node-version']), NODE_VERSION);
+});
+
+test('uv is installed from a PINNED installer URL, never an unversioned one', () => {
+  const run = stepNamed(/install uv/i).run;
+  assert.match(run, /https:\/\/astral\.sh\/uv\/\d+\.\d+\.\d+\/install\.sh/);
+  assert.doesNotMatch(run, /astral\.sh\/uv\/install\.sh/);
+});
+
+test('sast proves its instruments before the scan, then gates on the report', () => {
+  const runs = sastJob().steps.map((st) => (st.run ?? '').trim());
+  const at = (needle) => runs.findIndex((r) => r.includes(needle));
+  const selftest = at('node scripts/check-sast-findings.mjs --selftest');
+  const rules = at('node scripts/sast-scan.mjs --test-rules');
+  const scan = at('node scripts/sast-scan.mjs --scope');
+  const gate = runs.findIndex((r) => /check-sast-findings\.mjs\s*$/.test(r));
+  assert.ok(selftest > 0 && rules > selftest && scan > rules && gate > scan, `order: selftest ${selftest}, rules ${rules}, scan ${scan}, gate ${gate}`);
+  assert.match(runs[scan], /--scope changed --base "origin\/\$BASE_REF"/);
+  assert.match(runs[scan], /--scope full/);
+});
+
+test('the reports are uploaded whatever the outcome, and the digest is the last step', () => {
+  const steps = sastJob().steps;
+  const upload = steps.find((st) => st.uses?.startsWith('actions/upload-artifact@'));
+  assert.equal(upload.uses, UPLOAD_ARTIFACT);
+  assert.equal(upload.if, '${{ always() }}');
+  assert.equal(upload.with.path, 'security/sast/reports/');
+  const digest = steps.at(-1);
+  assert.equal(digest.run.trim(), 'node scripts/ci-failure-digest.mjs');
+  assert.equal(digest.if, 'always()');
+  assert.equal(digest['continue-on-error'], true);
+});
+
+test('stage 1 only: no Rust toolchain, cargo-audit or Python env sync in the sast job', () => {
+  const text = JSON.stringify(sastJob());
+  assert.doesNotMatch(text, /rustup|cargo install|uv sync/);
 });

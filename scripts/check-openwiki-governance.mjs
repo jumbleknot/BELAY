@@ -90,7 +90,7 @@ const ASSISTANT_SURFACES = ['opencode.json', '.claude/settings.json'];
  * region only when a tool that writes it is adopted.
  */
 const MANAGED_REGIONS = [
-  [/<!--\s*SPECKIT START\s*-->/i, /<!--\s*SPECKIT END\s*-->/i],
+  [/<[!]--\s*SPECKIT START\s*-->/i, /<[!]--\s*SPECKIT END\s*-->/i],
 ];
 
 /**

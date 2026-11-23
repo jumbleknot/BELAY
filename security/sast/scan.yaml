@@ -1,0 +1,17 @@
+# Enabled scanners (feature 006, research R1 / data-model "Enabled-scanner list").
+#
+# scripts/sast-scan.mjs implements four scanners: semgrep, cargo-audit, pnpm-audit, pip-audit. Only
+# the ones listed here run. A scanner left off this list is reported as "not enabled" in
+# findings.json (`status: not-enabled`) and in the summary, never as clean. `--only` can narrow this
+# list for a local run, but can never add a scanner it does not name (exit 2).
+#
+# Refused (exit 2): an unknown name, a repeated name, and an empty list (a scan of nothing must not
+# read as clean).
+#
+# Stage 1 (item #37): code patterns (Semgrep) and the JavaScript dependency audit (pnpm audit).
+# Stage 2 adds `cargo-audit` with the first Rust crate (a committed Cargo.lock); stage 3 adds
+# `pip-audit` with the first Python project (a committed uv.lock under a project directory). Each is
+# a list entry here plus its toolchain step in the `sast` job.
+scanners:
+  - semgrep
+  - pnpm-audit

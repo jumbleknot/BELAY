@@ -1,0 +1,62 @@
+# belay-ci-curl-pipe-shell — ported from MCM's mcm-ci-curl-pipe-shell (MCM item #224), which replaced
+# a community rule that had gone BLIND there.
+#
+# WHY THIS EXISTS. `p/owasp-top-ten` ships
+# `yaml.github-actions.security.gha-curl-pipe-shell`, which re-parses a step's `run:` block as Bash
+# through `metavariable-pattern`. BELAY wraps its run-steps in the ci-log-step heredoc, as MCM does:
+#
+#   run: |
+#     bash scripts/ci-log-step.sh sast-install-uv bash -e /dev/stdin <<'CI_LOG_STEP'
+#     curl -LsSf https://astral.sh/uv/0.13.9/install.sh | sh
+#     CI_LOG_STEP
+#
+# Semgrep's Bash sub-parser cannot read that form and ABANDONS the block rather than matching inside
+# it. Measured on MCM's main 2026-09-06, pinned semgrep@1.169.0: 36 errors, every one attributed to
+# that rule, and 0 findings from it — while six `curl … | sh` lines sat in the workflows unexamined. A
+# blinded rule and a remediated one produce identical gate output.
+#
+# THIS RULE IS TEXT-LEVEL ON PURPOSE. `pattern-regex` / `pattern-not-regex` invoke no sub-parser, so
+# the heredoc wrapper is irrelevant to it. Do NOT "improve" this into a `metavariable-pattern` form:
+# that is the exact change that blinded the rule it replaces.
+# scripts/__tests__/ci-curl-pipe-shell-rule.test.mjs fails if anyone does.
+#
+# WHERE THE ACCEPTANCE LIVES — HERE, NOT IN allowlist.yaml. An allowlist entry matches on
+# `path:line`, so accepting an installer there is either line-pinned (every edit above it re-blocks an
+# unrelated pull request) or file-wildcarded (a NEW `curl | sh` in an already-listed workflow is
+# suppressed unexamined). Naming the accepted URLs in `pattern-not-regex` instead means an unknown
+# host, or an UNPINNED version of an accepted one, blocks anywhere. Adding an installer is a
+# deliberate edit to this list, and the comment you write beside it IS the written decision.
+#
+# ACCEPTED INSTALLERS (fixed, non-attacker-controlled, fetched over TLS):
+#   * astral.sh/uv/<x.y.z>/install.sh — VERSION-PINNED PATH ONLY. uv carries Semgrep in the `sast`
+#     job (the maintainer approved uv on the runner on 2026-11-23, item #37). The unversioned
+#     `astral.sh/uv/install.sh` is deliberately NOT accepted: MCM nearly merged exactly that line,
+#     heredoc-wrapped, and the blinded rule would not have objected.
+#
+# NOT ACCEPTED YET (MCM accepted both): `sh.rustup.rs` arrives with stage 2 (the Rust toolchain for
+# cargo-audit) and `get.maestro.mobile.dev` with a mobile E2E surface. Each is added here, with its
+# reason, in the change that needs it.
+rules:
+  - id: belay-ci-curl-pipe-shell
+    languages: [yaml]
+    severity: ERROR
+    message: >-
+      A CI step pipes `curl` straight into a shell from a URL that is not on the accepted list in
+      security/sast/rules/belay-ci-curl-pipe-shell.yaml. Whatever that host serves at run time
+      executes with the runner's full credentials. Prefer a pinned action; if a piped installer is
+      genuinely the only option, pin the version in the URL and add it to that rule's
+      pattern-not-regex with a comment saying why it is accepted.
+    metadata:
+      category: security
+      confidence: HIGH
+      references:
+        - https://owasp.org/www-project-top-ten/2021/A08_2021-Software_and_Data_Integrity_Failures
+    paths:
+      include:
+        - .forgejo/workflows/*
+        - .github/workflows/*
+    patterns:
+      # Text-level, single-line by construction: neither half may span a newline, so a hit is always
+      # one `curl … | shell` line and the reported location is that line, not the enclosing `run:`.
+      - pattern-regex: 'curl[^\n|]*\|[^\n]*\b(sh|bash|zsh)\b'
+      - pattern-not-regex: 'curl[^\n|]*https://astral\.sh/uv/[0-9]+\.[0-9]+\.[0-9]+/install\.sh[^\n|]*\|[^\n]*\b(sh|bash|zsh)\b'

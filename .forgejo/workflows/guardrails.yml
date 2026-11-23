@@ -2,8 +2,9 @@
 # workflow's status (docs/runbooks/ci.md).
 #
 # ACTION-LIGHT by design: `uses:` is kept to actions mirrored on the Forgejo instance's default
-# action registry (actions/checkout, actions/setup-node), so this workflow runs on the homelab
-# runner without pointing action resolution at github. Both are pinned by commit SHA.
+# action registry (actions/checkout, actions/setup-node, and actions/upload-artifact in `sast`), so
+# this workflow runs on the homelab runner without pointing action resolution at github. Each is
+# pinned by commit SHA.
 #
 # Runner: `belay` is the label of BELAY's own repository-scoped runner (ci-belay), mapped on the
 # host to a node:26-bookworm container. Jobs never queue on the shared global runner.
@@ -72,6 +73,79 @@ jobs:
           # digest publishes with this run-provisioned token instead. Without this line the fallback
           # is dead code: the script reads GITHUB_TOKEN from the step env, and nothing else puts it
           # there.
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_DIGEST_JOB_STATUS: ${{ job.status }}
+        run: node scripts/ci-failure-digest.mjs
+
+  # SAST + SCA, stage 1 (feature 006, backlog item #37; baseline: MovieCollectionManager's feature-033
+  # `sast` job). Keyless: Semgrep code SAST over the whole tree and `pnpm audit` over the JS
+  # lockfile, normalized to one Critical/High/Medium/Low scale and gated against
+  # security/sast/allowlist.yaml (the allowlist IS the baseline). Fails on an un-allowlisted
+  # High/Critical blocking finding (SAST, or runtime-scope SCA); Medium/Low and dev-scope findings are
+  # warnings. SCA runs FULL every time: a newly published advisory can hit an unchanged dependency.
+  # Semgrep is changed-files on PRs and full on push. The enabled scanners are a list in
+  # security/sast/scan.yaml: cargo-audit (stage 2) and pip-audit (stage 3) add a list entry and a
+  # toolchain step here, nothing else. A separate job, so `guardrails / guardrails` keeps its time.
+  sast:
+    runs-on: belay
+    timeout-minutes: 15
+    steps:
+      - name: Checkout (full history, so the PR-base diff for the changed-files scope resolves)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+      - name: Set up Node (constitution pin)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 26.13.1
+      - name: Ensure the PR base ref is available for the changed-files diff
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: bash scripts/ci-log-step.sh sast-fetch-base-ref git fetch --no-tags --depth=200 origin "$BASE_REF"
+      - name: Install pnpm (version from package.json packageManager)
+        run: bash scripts/ci-log-step.sh sast-install-pnpm bash scripts/install-pnpm.sh
+      # uv carries Semgrep (`uvx semgrep@<pin>`). The maintainer approved uv on the runner on
+      # 2026-11-23 (item #37). The installer URL is version-pinned; the belay-ci-curl-pipe-shell rule
+      # accepts exactly this pinned form and fails any unpinned piped installer.
+      - name: Install uv (pinned; carries Semgrep through uvx)
+        run: |
+          bash scripts/ci-log-step.sh sast-install-uv bash -e /dev/stdin <<'CI_LOG_STEP'
+          curl -LsSf https://astral.sh/uv/0.13.9/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          CI_LOG_STEP
+      - name: Install workspace dependencies (frozen lockfile; pnpm audit reads it)
+        run: bash scripts/ci-log-step.sh sast-install-deps pnpm install --frozen-lockfile
+      - name: Gate selftest (prove the fail, suppress and expiry paths before the real scan)
+        run: bash scripts/ci-log-step.sh sast-gate-selftest node scripts/check-sast-findings.mjs --selftest
+      - name: Custom-rule fixtures (semgrep --test; a rule with no fixture fails)
+        run: bash scripts/ci-log-step.sh sast-rule-fixtures node scripts/sast-scan.mjs --test-rules
+      - name: Static scan (Semgrep changed-files on PRs, full on push; SCA always full)
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          bash scripts/ci-log-step.sh sast-static-scan bash -e /dev/stdin <<'CI_LOG_STEP'
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            node scripts/sast-scan.mjs --scope changed --base "origin/$BASE_REF"
+          else
+            node scripts/sast-scan.mjs --scope full
+          fi
+          CI_LOG_STEP
+      - name: Gate (fail on any un-allowlisted High/Critical blocking finding)
+        run: bash scripts/ci-log-step.sh sast-gate node scripts/check-sast-findings.mjs
+      - name: Upload scan reports (findings.json, SARIF, summary, native output)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3
+        with:
+          name: sast-report
+          path: security/sast/reports/
+          retention-days: 14
+      - name: Publish failure digest
+        if: always()
+        continue-on-error: true
+        env:
+          CI_DIGEST_TOKEN: ${{ secrets.CI_DIGEST_TOKEN }}
           GITHUB_TOKEN: ${{ github.token }}
           CI_DIGEST_JOB_STATUS: ${{ job.status }}
         run: node scripts/ci-failure-digest.mjs
