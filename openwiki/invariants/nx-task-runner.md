@@ -13,14 +13,15 @@ operation to run through an Nx target, as `pnpm nx run <project>:<target>`. pnpm
 `package.json` may exist only as implementation details called by a target, never as the main way to
 run something.
 
-Today the workspace has one project, `scripts` (`scripts/project.json`), with two targets:
+Today the workspace has one project, `scripts` (`scripts/project.json`), with three targets:
 
 | Target | What it runs |
 | --- | --- |
-| `pnpm nx run scripts:lint` | every gate and its selftest: the Spec Kit override gate, the CI digest-coverage gate, and the secret-scan, redactor, digest and `ci-status` selftests |
+| `pnpm nx run scripts:lint` | every gate and its selftest: the Spec Kit override gate, the CI digest-coverage gate, the secret-scan, redactor, digest and `ci-status` selftests, and the egress allowlist check |
 | `pnpm nx run scripts:test` | `node --test "scripts/__tests__/*.test.mjs"` |
+| `pnpm nx run scripts:build-devcontainer-image` | a local build of the dev-container toolchain image. It needs an engine with **open egress** (CI, or a host engine such as Docker Desktop), never the sandbox; the normal path is the `devcontainer-image` workflow |
 
-**These two commands are exactly what CI runs** (see [CI guardrails](../runbooks/ci.md)), so running
+**The first two commands are exactly what CI runs** (see [CI guardrails](../runbooks/ci.md)), so running
 them locally reproduces the required check.
 
 ## Gotchas

@@ -33,6 +33,9 @@ pnpm nx run scripts:test         # script unit tests
 
 Every pull request runs the same checks in CI. See [docs/runbooks/ci.md](docs/runbooks/ci.md).
 
+The isolated development environment is a dev container in a Docker Sandbox microVM, opened in one
+step with `.\scripts\open-sandbox.ps1`. See [docs/runbooks/devcontainer.md](docs/runbooks/devcontainer.md).
+
 Coding assistants start at [AGENTS.md](AGENTS.md), an index into the knowledge bundle under
 [openwiki/](openwiki/quickstart.md).
 

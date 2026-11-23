@@ -1,0 +1,646 @@
+{
+  "$comment": "Canonical egress destinations for the BELAY engineering environment. Consumed ONLY by scripts/gen-egress-policy.mjs, which emits BOTH the host-side sandbox network policy (--format sbx-policy) and the in-VM firewall domain array (--format ipset-domains). NEVER hand-edit either emitted form, and never let a consumer keep its own copy of this list: two enforcement layers with two hand-maintained lists turn a blocked fetch into the union of two allowlists, and diagnosis into guesswork. The forge registry host is deliberately NOT in this file — it is topology-sensitive, gated out of git, and injected at runtime from FORGE_REGISTRY_HOST via the generator's --forge-host parameter, exactly as init-firewall.sh has always done.",
+  "$consideredAndExcluded": {
+    "$why": "Hosts that were FOUND while diagnosing a block and deliberately left out. Recorded because the next person to hit a Claude Code failure will extract the same hostname list and needs to know which absences are intentional — otherwise the allowlist grows by accretion, every unfamiliar name looking like a missing rule. Distinct from $mustNeverAppearHere: these are permissible, merely unnecessary. Add one only with a symptom that requires it.",
+    "$howTheListWasObtained": "grep -aoE '[a-z0-9][a-z0-9.-]*\\.(anthropic|claude)\\.(com|ai)' /usr/local/lib/node_modules/@anthropic-ai/claude-code/bin/claude.exe | sort | uniq -c | sort -rn — reading hostnames out of the compiled binary beats guess-and-retry against a deny-by-default policy.",
+    "www.anthropic.com / support.claude.com / support.anthropic.com / status.claude.com": "Marketing, support and status pages. The CLI only ever prints these as links for a human to open in a browser ON THE HOST; nothing in the container fetches them. Excluded. (docs.anthropic.com and docs.claude.com were in this group until 2026-10-24 and are now DESTINATIONS: that premise stopped holding for them — the assistant itself fetches them.)",
+    "api-staging.anthropic.com": "Anthropic's staging API. Never used by a released CLI against a production account. Excluded — allowlisting a staging endpoint on a production credential path is a needless widening.",
+    "downloads.claude.ai": "Claude Code SELF-UPDATE. Excluded deliberately: the CLI version in this environment is part of the toolchain image, and a container that silently updates its own assistant mid-session is a reproducibility problem, not a feature. Updates arrive by rebuilding the image. ADD THIS ONLY IF you decide in-place self-update is wanted — the symptom will be an update check failing, never a broken session.",
+    "gmail.mcp.claude.com / gcal.mcp.claude.com / microsoft365.mcp.claude.com": "Anthropic-hosted MCP connectors for Gmail, Google Calendar and Microsoft 365. This project's MCP servers are self-hosted and scoped; these connectors reach personal data stores that have no business being reachable from a repository's dev container. Excluded, and the bar for adding one should be high.",
+    "archive.ubuntu.com / security.ubuntu.com / static.rust-lang.org": "PACKAGE and TOOLCHAIN INSTALL hosts, found during the 2026-10-24 research sweep. Excluded deliberately: reading a vendor's docs and installing a vendor's binaries are different trust decisions. Ubuntu packages and the Rust toolchain arrive by rebuilding the image, not by a mid-session apt-get or rustup.",
+    "cloud.nx.app": "Nx Cloud remote cache. Excluded: CI runs its own self-hosted cache, and pointing the dev container at a hosted cache would upload task outputs to a third party. nx.dev (docs) IS listed.",
+    "security.snyk.io / stackoverflow.com / en.wikipedia.org": "Third-party aggregators and general reference. Excluded: the primary sources they summarise (NVD, cve.org, RustSec, vendor docs and trackers) are listed, and a summary is what misled the MongoDB 9.0 investigation's research. Add only with a symptom a primary source cannot answer."
+  },
+  "$removedFromMcmBaseline": {
+    "$why": "Destinations in the upstream list this file was derived from that BELAY deliberately leaves out. Every other upstream destination is kept, because BELAY is expected to grow into the same stacks.",
+    "api.themoviedb.org": {
+      "why": "A product-specific API of the upstream project. BELAY will never call it, so allowing it would only widen egress for no consumer."
+    }
+  },
+  "$schemaNotes": {
+    "domain": "FQDN. Never a bare IP — CDN-backed hosts rotate, and the list is resolved by domain and re-runnable.",
+    "group": "One of: agent | source | registry | packages | app.",
+    "reason": "Non-empty. An unexplained allowlist entry is an unreviewable one.",
+    "cdnRotating": "true marks the ipset-staleness class — entries whose blob timeouts are a re-resolve, not a missing rule. Set true only where the recorded evidence says the host actually rotates."
+  },
+  "$mustNeverAppearHere": [
+    "The forge / registry host, or any tailnet address — injected at runtime from FORGE_REGISTRY_HOST.",
+    "Any credential, token or key.",
+    "The OpenWiki analytics host. Telemetry is disabled BY CONFIGURATION (OPENWIKI_TELEMETRY_DISABLED=1), never by allowlisting the destination. This inversion is deliberate and must survive the migration.",
+    "Any Claude Code / Anthropic telemetry or analytics endpoint (statsig.* and similar). Same inversion as the OpenWiki rule above: telemetry is turned off by configuration, never permitted by allowlisting. A blocked telemetry host is a WORKING configuration, not a fault to be fixed by adding a rule."
+  ],
+  "destinations": [
+    {
+      "domain": "api.anthropic.com",
+      "group": "agent",
+      "reason": "Anthropic API — the Claude Code CLI the assistant runs in, and the agent gateway's model backend when MODEL_PROVIDER=anthropic. Also the re-record path for the golden-pair cassette harness. NOTE: this host carries model traffic ONLY — it does NOT cover Claude Code's subscription sign-in, which uses platform.claude.com and code.claude.com (next two entries). Allowlisting this one alone yields a CLI that cannot authenticate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "api.fireworks.ai",
+      "group": "agent",
+      "reason": "Fireworks AI serverless inference (OpenAI-compatible, base https://api.fireworks.ai/inference/v1) — the OpenWiki generator provider trial of 2026-09-27 (phase 2 of the LLM cost analysis), running DeepSeek V4.1 Flash on a US-hosted provider instead of DeepSeek's own API, by operator decision. Model traffic only, authenticated by `<PREFIX>_FIREWORKS_API_KEY` mapped to FIREWORKS_API_KEY at the point of use. The fireworks.ai website (pricing, docs) is a different FQDN and is deliberately NOT covered.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "platform.claude.com",
+      "group": "agent",
+      "reason": "Claude Code SUBSCRIPTION AUTHENTICATION. Signing in with a Claude.ai subscription (rather than an API key) fails with `getaddrinfo ENOTFOUND platform.claude.com` without this — and the failure happens AFTER the browser flow on the host reports success, so it reads as a broken login rather than a blocked host. Measured 2026-08-17. This is the same front-door-vs-second-host split this list documents for registries, now on the auth path: api.anthropic.com is the model API and does not cover sign-in.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "code.claude.com",
+      "group": "agent",
+      "reason": "Claude Code service endpoint — the most-referenced host in the CLI binary (455 occurrences vs 110 for platform.claude.com and 81 for api.anthropic.com). Required alongside platform.claude.com for the subscription-authenticated session. Discovered by extracting hostnames from the compiled binary itself (`grep -aoE '[a-z0-9][a-z0-9.-]*\\.(anthropic|claude)\\.(com|ai)' claude.exe | sort | uniq -c`) rather than by guessing and re-testing — a technique worth reusing whenever a closed-source tool is blocked by the policy.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "github.com",
+      "group": "source",
+      "reason": "git clone/fetch over HTTPS for public dependencies and tooling. GitHub IP churn is handled separately and more robustly than an A-record snapshot: init-firewall.sh additionally pulls the git/web/api/packages CIDR ranges from api.github.com/meta and adds them as networks, falling back to A-record resolution if that fetch fails. That is why this host is not marked as the ipset-staleness class.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "api.github.com",
+      "group": "source",
+      "reason": "GitHub REST API — used by gh, by tooling, and by init-firewall.sh itself to fetch the published egress CIDR ranges. Blocking it does not merely break the API: it silently degrades the firewall to A-record-only allowlisting (the script warns and continues).",
+      "cdnRotating": false
+    },
+    {
+      "domain": "codeload.github.com",
+      "group": "source",
+      "reason": "Tarball/zipball download host for GitHub archives. A separate host from github.com and reached by package managers fetching git-archive dependencies; allowlisting github.com alone does not cover it.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "objects.githubusercontent.com",
+      "group": "source",
+      "reason": "Release-asset and LFS object blob host for GitHub. Distinct from github.com in the same way a registry's blob CDN is distinct from its API. NOTE: GitHub has migrated RELEASE-ASSET delivery to release-assets.githubusercontent.com (see the next entry); this host is retained for LFS objects and older redirect targets, and must not be treated as covering release downloads.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "release-assets.githubusercontent.com",
+      "group": "source",
+      "reason": "CURRENT release-asset delivery host for GitHub. A download from github.com/<org>/<repo>/releases/download/... answers 302 to THIS host, and allowlisting github.com (or even objects.githubusercontent.com) does not cover it. Measured 2026-08-16: `uv run --with httpx` needed a standalone CPython 3.13 and died with `dns error` on the redirect target, failing the agent-stack bring-up at the Keycloak-secret step — a failure whose message named github.com, not the host actually blocked. This is the FIFTH instance on this list of the same front-door-vs-blob-host split (Docker Hub, ghcr, quay, MCR, now GitHub releases), with the extra wrinkle that the blob host CHANGED under a previously-correct entry: objects.githubusercontent.com was right when it was written and silently stopped covering release downloads. When a fetch fails with a DNS error, resolve the REDIRECT CHAIN before adding the host that appears in the error message.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "raw.githubusercontent.com",
+      "group": "source",
+      "reason": "Raw file fetches from GitHub — installer scripts and pinned single-file resources fetched by tooling at runtime.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "registry-1.docker.io",
+      "group": "registry",
+      "reason": "Docker Hub registry API — manifest resolution for every compose stack image. Under the DinD topology these registry entries were needed because the NESTED dockerd shared the dev container's netns and so its pulls hit the OUTPUT chain. Under the sandbox topology with --network=host they are needed for exactly the same structural reason, one level out: the script now programs the VM's OUTPUT chain, which covers the sandbox dockerd's pulls. Without these, docker pull fails and the allowlist is the FIRST suspect.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "auth.docker.io",
+      "group": "registry",
+      "reason": "Docker Hub token/authentication endpoint. A pull fails at the auth step, not the blob step, if this is missing — which reads as a credentials problem rather than a firewall one.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "index.docker.io",
+      "group": "registry",
+      "reason": "Docker Hub index/search endpoint, still contacted during normal pull resolution.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "hub.docker.com",
+      "group": "registry",
+      "reason": "Docker Hub tag-list API (/v2/repositories/<repo>/tags) — NOT a pull host; manifests and blobs come from registry-1 / index / the two CDN hosts above. Renovate's docker datasource reads `tag_last_pushed` from here, and that is the ONLY release timestamp the datasource has (its own releaseTimestampNote: Docker Hub only). With this host blocked, a local `RENOVATE_PLATFORM=local RENOVATE_DRY_RUN=lookup` marks EVERY Docker Hub tag and digest pending under renovate@44's timestamp-required default, so the Docker Hub half of the release-age control could only be observed in CI — the blind spot recorded 2026-09-04 in the Renovate runbook. Added 2026-09-05; measured the same day: node:24.20.0-alpine3.23 reports tag_last_pushed 2026-08-27, i.e. not pending. Under the sandbox platform the host-side rule was applied by the operator (`sbx policy allow network hub.docker.com --sandbox <name>`) — a committed entry alone does not reach a running sandbox.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "production.cloudflare.docker.com",
+      "group": "registry",
+      "reason": "Docker Hub blob-layer CDN (Cloudflare-fronted). Allowlisting these two STABLE blob hostnames — rather than widening to whole CDN provider ranges — was the actual fix for an earlier failing pull and is sufficient in the common case. FIREWALL_ALLOW_CDN_RANGES=1 remains the opt-in broad fallback for repeated stale-IP failures.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "production.cloudfront.docker.com",
+      "group": "registry",
+      "reason": "Docker Hub blob-layer CDN (CloudFront-fronted). Rotates IPs faster than a one-shot A-record ipset can track, so a mid-session blob timeout here means re-run init-firewall.sh to refresh the ipset — it does not mean a rule is missing.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "ghcr.io",
+      "group": "registry",
+      "reason": "GitHub Container Registry — the source of the devcontainer features (docker-outside-of-docker, and previously docker-in-docker) and of assorted tool images.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "pkg-containers.githubusercontent.com",
+      "group": "registry",
+      "reason": "GHCR blob-layer host. ghcr.io resolves manifests; layers come from here. Allowlisting ghcr.io alone yields a pull that authenticates and then stalls on the first layer.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "mcr.microsoft.com",
+      "group": "registry",
+      "reason": "Microsoft Container Registry — the source of mcr.microsoft.com/playwright:<pin>, the official Playwright image the documented web-E2E recipe runs in (chromium cannot be installed in-container; the browser CDN and apt mirrors are deliberately not allowlisted). THIS ENTRY IS NEW IN THE SANDBOX MIGRATION and was not in the inline array it replaced, because until now it was masked: the image was already cached on the DinD engine, so no pull ever traversed the firewall. Two things break that mask under the sandbox migration. (1) A fresh sandbox has an EMPTY image cache, so the first web-E2E run must actually pull ~3.4 GB from here. (2) The documented cold-pull escape — `sudo iptables -P OUTPUT ACCEPT`, pull, re-apply — DOES NOT WORK under sandbox policy, which is enforced host-side and is untamperable from inside the VM by design. Without this entry there is therefore no in-environment way to obtain the image at all, and the web-E2E acceptance check cannot pass. Measured 2026-08-15: the baseline run failed exactly this way (`dial tcp 150.171.70.10:443: i/o timeout`) once the pin moved 1.60.0 → 1.62.1 and the cached image no longer matched.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "*.data.mcr.microsoft.com",
+      "group": "registry",
+      "reason": "Microsoft Container Registry BLOB CDN. mcr.microsoft.com above resolves manifests; the actual layers are served from regional hosts such as eastus.data.mcr.microsoft.com, so allowlisting the manifest host alone yields a pull that authenticates and then dies on the first layer with 403 Forbidden. This is the SAME manifest/blob split already documented on this list for Docker Hub (registry-1.docker.io vs production.cloudfront.docker.com), ghcr.io (vs pkg-containers.githubusercontent.com) and quay.io (vs the cdn0N Akamai shards) — the pattern was written down here and still not applied when mcr.microsoft.com was added, which cost a failed Playwright pull to rediscover. Wildcarded because the region prefix varies by client location and is not predictable from the image reference.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "quay.io",
+      "group": "registry",
+      "reason": "Red Hat Quay registry — the project's auth stack pulls Keycloak from quay.io. Manifests resolve from this host; blob layers are served from the Akamai cdn0N.quay.io hosts below, which is why both are listed.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "cdn.quay.io",
+      "group": "registry",
+      "reason": "Quay blob-layer CDN (Akamai). Akamai rotates IPs faster than a one-shot A-record ipset can track, and — unlike the Docker Hub blob hosts — it is NOT covered by the FIREWALL_ALLOW_CDN_RANGES opt-in, which only knows AWS-CloudFront and Cloudflare. A cold Keycloak pull can therefore still time out on a blob even with the range fallback enabled. Documented escape: relax egress for the pull (sudo iptables -P OUTPUT ACCEPT), pull, then re-run init-firewall.sh — or pre-pull the images.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "cdn01.quay.io",
+      "group": "registry",
+      "reason": "Quay blob-layer CDN shard (Akamai). Same rotation and same FIREWALL_ALLOW_CDN_RANGES blind spot as cdn.quay.io; the shards are addressed individually by the registry so all of them must be present.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "cdn02.quay.io",
+      "group": "registry",
+      "reason": "Quay blob-layer CDN shard (Akamai). See cdn01.quay.io — the shard chosen for a given layer is not predictable, so allowlisting a subset produces intermittent, layer-dependent pull failures.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "cdn03.quay.io",
+      "group": "registry",
+      "reason": "Quay blob-layer CDN shard (Akamai). See cdn01.quay.io.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "registry.ollama.ai",
+      "group": "registry",
+      "reason": "Ollama MODEL registry — the default `OLLAMA_REGISTRY` compiled into the ollama binary (confirmed by extracting it from `/bin/ollama` in the `dev-ollama` container rather than by guessing, the same technique this file records for claude.exe). Without it `ollama pull <model>` dies at DNS — measured 2026-09-08: `pull model manifest: ... dial tcp: lookup registry.ollama.ai on 127.0.0.11:53: no such host` — so `ollama list` stays EMPTY and no model can be installed in this container by any means. That made TWO merge-gating tiers unreproducible locally: the golden tier (`nx test:golden` on the assistant project) and the agent half of the E2E gate, plus `nx up-agents-prod`, which aborts at its model precheck. The cost is not hypothetical — an earlier change shipped three defects that only CI caught (httpx2's separate exception hierarchy defeating `_is_transient_exc()`, an MCP server's bare `streamable_http_app()` re-enabling DNS-rebinding protection → 421, and a backend service's tool-error class not deriving from `ToolError` so mcp 2.x withheld its `<service>-status:<code>` sentinel). Two were first misdiagnosed as environmental PRECISELY BECAUSE the environment genuinely was degraded: with no model present, a real failure and an absent-model failure are indistinguishable. MANIFESTS ONLY — this host does NOT cover layer downloads; see the R2 entry below, which is the SIXTH measured instance of the front-door-vs-blob-host split this file tabulates. Measured 2026-09-09: with this entry alone `ollama pull qwen2.5` resolved the manifest and then died at `max retries exceeded ... lookup dd20bb891979d25aebc8bec07b2b3bbc.r2.cloudflarestorage.com ... no such host`, leaving `ollama list` still empty. `ollama.com` is deliberately NOT listed: that is the account/sign-in, cloud-model and web-search surface of the CLI, none of which this repository uses. cdnRotating is false because nothing here has been MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "dd20bb891979d25aebc8bec07b2b3bbc.r2.cloudflarestorage.com",
+      "group": "registry",
+      "reason": "Ollama BLOB host — the Cloudflare R2 bucket every model LAYER is actually downloaded from, paired with registry.ollama.ai above. registry.ollama.ai serves the manifest and then hands back a PRE-SIGNED URL on this name; allowlisting the front door alone yields a pull that resolves the manifest and then dies on the first layer — measured 2026-09-09: `max retries exceeded: Get \"https://dd20bb891979d25aebc8bec07b2b3bbc.r2.cloudflarestorage.com/ollama/docker/registry/v2/blobs/sha256/...?X-Amz-Algorithm=...\" dial tcp: lookup ... no such host`. THE HOSTNAME IS NOT RANDOM: `dd20bb891979d25aebc8bec07b2b3bbc` is Ollama's R2 ACCOUNT ID, constant across pulls; only the path and the AWS-SigV4 query are per-request. That is why the exact FQDN is pinned here rather than `*.r2.cloudflarestorage.com` — the wildcard would open every Cloudflare R2 bucket of every account on the internet to this VM, which is a vastly wider surface than one vendor's model store. IF THE PULL EVER FAILS AGAIN ON A LAYER after the manifest resolves, read the account id out of the error and add the new name; do not widen to the wildcard. cdnRotating is false: R2 is CDN-fronted but the NAME is stable, and nothing here has been measured to fail on a stale A record — a layer failure is a changed account id, not an ipset refresh.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "registry.npmjs.org",
+      "group": "packages",
+      "reason": "npm registry — pnpm/npm install for the JS workspace.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "crates.io",
+      "group": "packages",
+      "reason": "Rust crates registry. RUNTIME package sources for the full toolchain. Note the timing distinction that makes these entries easy to misjudge: the BAKED toolchain is fetched at IMAGE-BUILD time, BEFORE this firewall exists, so these entries matter only for RUNTIME fetches — cargo add / cargo install of a new crate, and the dotfiles RTK build (cargo install --git).",
+      "cdnRotating": true
+    },
+    {
+      "domain": "static.crates.io",
+      "group": "packages",
+      "reason": "Downloaded crate blob host for crates.io. CDN-backed (Fastly) and rotates IPs; a cold runtime cargo install that stalls on a blob is a stale ipset, not a missing rule — re-run init-firewall.sh.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "index.crates.io",
+      "group": "packages",
+      "reason": "Sparse registry index for crates.io. Separate host from crates.io and from static.crates.io; cargo contacts all three during a cold resolve.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "pypi.org",
+      "group": "packages",
+      "reason": "PyPI metadata — uv and the Specify CLI. Same build-time-vs-runtime distinction as the crates entries: only RUNTIME fetches (uv add, uv tool install) traverse this firewall.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "files.pythonhosted.org",
+      "group": "packages",
+      "reason": "PyPI package blob host. CDN-backed (Fastly) and rotates IPs — pypi.org alone gives a resolve that then stalls on the download.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "astral.sh",
+      "group": "packages",
+      "reason": "Astral installer host — the uv installer script. Needed only when uv itself is (re)installed at runtime rather than consumed from the baked image.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "dl-cdn.alpinelinux.org",
+      "group": "packages",
+      "reason": "Alpine package CDN. Required by an application IMAGE BUILD — the app Dockerfile's runner stage does `apk add --no-cache gcompat`. THIS IS A DIRECT COST OF THE SANDBOX MIGRATION'S HEADLINE SECURITY WIN, and worth understanding rather than just allowlisting: on the Docker Desktop path an image build runs in a container off the nested dockerd, whose traffic traverses the FORWARD chain that init-firewall.sh deliberately leaves alone — so build-time package fetches were NEVER governed and nobody had to think about them. Under the sandbox the policy is enforced host-side and covers ALL VM egress including build containers, which is precisely the earlier residual gap this migration closes. Closing it means every builder's package fetches now need explicit permission. Measured 2026-08-16: without this the build dies at `apk add --no-cache gcompat` -> exit 1. Retires with the other build-time entries if the runner stage ever stops needing gcompat.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "deb.debian.org",
+      "group": "packages",
+      "reason": "Debian package mirrors (main + security). REQUIRED AT DEV-CONTAINER BUILD TIME ONLY, and only under the sandbox topology. The docker-outside-of-docker devcontainer feature apt-installs the docker CLI and the compose plugin, which the toolchain image does not ship. On the Docker Desktop path this never needed an allowlist entry because the container build runs on the HOST engine, outside any egress governance; in the sandbox the build runs INSIDE the governed microVM, so the build itself is now subject to policy. Measured 2026-08-16: without this the build fails at DNS — 'Something wicked happened resolving deb.debian.org (-5 - No address associated with hostname)' — and the feature install aborts. THIS ENTRY SHOULD BE REMOVED once the docker CLI and compose plugin are baked into toolchain.Dockerfile and the sandbox variant drops its `features` block; that is the intended end state (it also removes a build-time network dependency, which helps the recreate-time budget). Until then, note honestly that this makes arbitrary Debian packages reachable from the VM at runtime, which is a broader surface than the registry entries above.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "packages.microsoft.com",
+      "group": "packages",
+      "reason": "Microsoft package repository — the source of the Moby engine/CLI/buildx/compose packages. BUILD-TIME ONLY, and required for the same reason as deb.debian.org: the docker-outside-of-docker feature is configured with \"moby\": true (matching the Docker Desktop config it was copied from), so it installs Moby from here rather than Docker CE from download.docker.com. Measured 2026-08-16: with deb.debian.org allowlisted the build got one layer further and then failed on 'curl: (6) Could not resolve host: packages.microsoft.com', followed by 'gpg: no valid OpenPGP data found' — the missing GPG key being a downstream symptom, not a separate fault. Retires together with deb.debian.org and cli.github.com when the docker CLI and compose plugin are baked into toolchain.Dockerfile and the sandbox variant drops its `features` block.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "cli.github.com",
+      "group": "packages",
+      "reason": "GitHub CLI apt repository. Not required by any build step, but it is a pre-existing apt source inside the toolchain image, so every apt-get update under the sandbox topology fails on it and buries the real error in noise. Allowlisted so build logs stay legible and a genuine failure is not mistaken for this one. Retires together with deb.debian.org when the CLI is baked and the feature block goes.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "update.code.visualstudio.com",
+      "group": "packages",
+      "reason": "VS Code update/version API. Required by the EDITOR CHAIN, not by any build: when VS Code Remote-SSH connects to the sandbox it installs a VS Code Server inside the microVM, and the remote CLI first calls https://update.code.visualstudio.com/api/latest/server-linux-x64/stable to resolve the server version. Blocked, the connection stalls forever at 'Downloading VS Code Server…' with the failure visible only in ~/.vscode-server/cli/agent-host-stable.log ('403 Blocked by network policy'), retrying every ~7 minutes. NOTE the client-side setting `remote.SSH.localServerDownload: always` does NOT avoid this: current VS Code uses a CLI-based flow (code-<commit> command-shell / agent host) in which the REMOTE cli performs the resolve and download, so the client setting never applies — measured 2026-08-16 with the setting enabled and the same 403 recurring.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "vscode.download.prss.microsoft.com",
+      "group": "packages",
+      "reason": "VS Code Server payload CDN, paired with update.code.visualstudio.com above — the version API resolves, this serves the actual server archive. Both are needed for the editor chain; allowlisting only the API leaves the connection failing one step later. Also editor-only: nothing in the build or test path touches it.",
+      "cdnRotating": true
+    },
+    {
+      "domain": "api.expo.dev",
+      "group": "packages",
+      "reason": "Expo / EAS API — reached by Expo CLI and EAS tooling during runtime operations.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "mcp.expo.dev",
+      "group": "agent",
+      "reason": "Expo's REMOTE MCP SERVER, reached over HTTP by the `expo` Claude Code plugin's MCP client. Without it the plugin fails at startup with `getaddrinfo ENOTFOUND mcp.expo.dev` and the session reports the server as unavailable — measured 2026-08-27. This is the front-door-vs-second-host trap this file documents for registries, now on the MCP path: api.expo.dev IS allowlisted and answers 200 from the dev container, and it does NOT cover this name. The allowlist resolves per FQDN, not per apex domain. Grouped `agent` rather than `packages` alongside api.expo.dev because the consumer is the coding assistant's own tooling, like api.anthropic.com / code.claude.com, not the build or test path — nothing in CI touches it. NOTE the failure signature: a blocked host NXDOMAINs here rather than being refused at the route, so `curl` reports rc=6 and writes http_code 000. The 000 is curl's placeholder for a request never made, not evidence of a route-layer block.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "exp.host",
+      "group": "packages",
+      "reason": "Expo services host, paired with api.expo.dev.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "mcp.context7.com",
+      "group": "agent",
+      "reason": "Context7's REMOTE MCP SERVER (operated by Upstash), reached over HTTP by the `context7` Claude Code plugin at https://mcp.context7.com/mcp. Without it the plugin fails at session start with `getaddrinfo ENOTFOUND mcp.context7.com` — same root cause and same day as mcp.expo.dev above. ADDED AS A DELIBERATE DECISION, not as a like-for-like fix, because this is the first entry that sends OUR PROMPT TEXT to a third party rather than fetching from one. What crosses the boundary is bounded and worth stating exactly: the plugin exposes two tools, `resolve-library-id` (a library search string) and `query-docs` (a library identifier plus the question being asked), so the payload is a public library name and a natural-language question. Repository source is NOT sent, and no credential is involved — CONTEXT7_API_KEY is unset here, so the connection is anonymous. The question text can still describe what is being built, which is the actual exposure and the reason this entry says so rather than reading like the Expo one. NOT a telemetry endpoint, so the $mustNeverAppearHere inversion does not apply: this host is REQUESTED BY US on demand and returns documentation, where the barred entries receive unsolicited analytics. Grouped `agent` with mcp.expo.dev and the Claude Code hosts — assistant tooling, not the build or test path; nothing in CI touches it. Only the `mcp.` name is listed: the bare context7.com apex is NOT needed and stays blocked. If requests later fail after a clean resolve, follow the redirect chain before adding a second host — that is the front-door-vs-second-host class this file documents, not a stale entry.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "semgrep.dev",
+      "group": "packages",
+      "reason": "Semgrep rule REGISTRY. security/sast/semgrep.yaml names five community packs (p/typescript, p/react, p/nodejs, p/python, p/owasp-top-ten) which scripts/sast-scan.mjs expands into --config p/... flags, and Semgrep resolves those names from this host AT SCAN TIME — so the packs are a runtime fetch, not something the toolchain image can bake. Without this entry `nx sast` cannot run in the dev container at all: measured 2026-08-22, `curl https://semgrep.dev/` answers `(6) Could not resolve host`, and sast-scan.mjs reports it as its exit>=2 'registry unreachable' case. That made a MERGE-BLOCKING gate CI-only by accident rather than by decision — the failure was only ever seen after a push. NOTE what this does NOT authorise: the scanner runs with --metrics=off --disable-version-check, so Semgrep telemetry stays off BY CONFIGURATION, never by the absence of this rule (see $mustNeverAppearHere); no SEMGREP_APP_TOKEN is involved, the packs are served anonymously; and p/secrets remains deliberately absent from the config (the secret-scan gate owns credential detection). cdnRotating is false because nothing here has been MEASURED to rotate — if pack fetches start timing out after a clean resolve, that is the staleness class and this flag is what should change.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "api.osv.dev",
+      "group": "packages",
+      "reason": "OSV advisory FEED — the vulnerability database `pip-audit` queries, and therefore the Python half of the merge-blocking `guardrails / sast` gate. `scripts/sast-scan.mjs` runs pip-audit as `uv run --with pip-audit pip-audit --format json -s osv`, and that `-s osv` resolves to https://api.osv.dev/v1/query AT SCAN TIME — a runtime fetch no toolchain image can bake, exactly like semgrep.dev's rule packs above. Without this entry the scanner FAILS CLOSED, which is correct and also means the gate cannot be run here at all: measured 2026-09-08, `node scripts/sast-scan.mjs --only pip-audit` reports `pip-audit: NOT RUN — httpx ConnectError: ... Failed to resolve 'api.osv.dev' ([Errno -5] No address associated with hostname)`. The workaround used earlier, `-s pypi`, is a DIFFERENT feed whose equivalence to OSV is asserted rather than guaranteed — it was validated for sensitivity before being trusted, which is work this entry removes the need for. Same shape as semgrep.dev: a merge-blocking gate that became CI-only by accident rather than by decision, its failures only ever visible after a push. This is a QUERY host, not a telemetry one — pip-audit sends the package names and versions it is auditing and receives advisories, so the $mustNeverAppearHere inversion does not apply. No credential is involved; OSV is served anonymously. cdnRotating is false because nothing here has been MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "repo.mongodb.org",
+      "group": "packages",
+      "reason": "MongoDB's apt/yum package repository — Release/Packages indices AND the .deb files themselves (Filename paths are served from this same host). Context: MongoDB 9.0 parked by SERVER-121912 on the homelab's Ubuntu 7.0.0-NN kernel. Needed to test a VENDOR BUILD of mongod against the host's kernel-version check from this shell: the only published container images are ubi9/ubi10/ubuntu2204, so the Ubuntu 26.04 ('resolute') build — the one SERVER-131625 added in 9.0.4 — is reachable only as a .deb or tarball. Measured 2026-10-24: no redirect to a second host (curl -sSIL reports num_redirects=0 for the 9.0.4 .deb and the ubuntu2604 tarball), so no blob-host companion entry is needed. Anonymous downloads, no credential. cdnRotating is false because nothing here has been MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "fastdl.mongodb.org",
+      "group": "packages",
+      "reason": "MongoDB release tarballs (e.g. linux/mongodb-linux-x86_64-ubuntu2604-<ver>.tgz). Context: MongoDB 9.0 parked by SERVER-121912 on the homelab's Ubuntu 7.0.0-NN kernel. Needed to test a VENDOR BUILD of mongod against the host's kernel-version check from this shell: the only published container images are ubi9/ubi10/ubuntu2204, so the Ubuntu 26.04 ('resolute') build — the one SERVER-131625 added in 9.0.4 — is reachable only as a .deb or tarball. Measured 2026-10-24: no redirect to a second host (curl -sSIL reports num_redirects=0 for the 9.0.4 .deb and the ubuntu2604 tarball), so no blob-host companion entry is needed. Anonymous downloads, no credential. cdnRotating is false because nothing here has been MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "downloads.mongodb.org",
+      "group": "packages",
+      "reason": "MongoDB's machine-readable release index (full.json) — which builds exist for which platform, without guessing URLs. Context: MongoDB 9.0 parked by SERVER-121912 on the homelab's Ubuntu 7.0.0-NN kernel. Needed to test a VENDOR BUILD of mongod against the host's kernel-version check from this shell: the only published container images are ubi9/ubi10/ubuntu2204, so the Ubuntu 26.04 ('resolute') build — the one SERVER-131625 added in 9.0.4 — is reachable only as a .deb or tarball. Measured 2026-10-24: no redirect to a second host (curl -sSIL reports num_redirects=0 for the 9.0.4 .deb and the ubuntu2604 tarball), so no blob-host companion entry is needed. Anonymous downloads, no credential. cdnRotating is false because nothing here has been MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "jira.mongodb.org",
+      "group": "agent",
+      "reason": "MongoDB's public issue tracker (SERVER-121912, SERVER-131625, SERVER-125742) — the primary source for what a startup guard checks and which release changes it. Context: MongoDB 9.0 parked by SERVER-121912 on the homelab's Ubuntu 7.0.0-NN kernel. Assistant research tooling, not the build or test path; nothing in CI touches it. Before this entry the assistant could not read the ticket or release notes behind a vendor-imposed startup refusal and had to rely on third-party summaries, one of which (SERVER-131625 'fixes the version check') contradicted a direct measurement. Requested by us on demand and returns documentation, so the $mustNeverAppearHere telemetry inversion does not apply. No credential; anonymous read only.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "www.mongodb.com",
+      "group": "agent",
+      "reason": "MongoDB documentation and release notes (production notes, TCMalloc/rseq guidance, 9.0 patch notes). Context: MongoDB 9.0 parked by SERVER-121912 on the homelab's Ubuntu 7.0.0-NN kernel. Assistant research tooling, not the build or test path; nothing in CI touches it. Before this entry the assistant could not read the ticket or release notes behind a vendor-imposed startup refusal and had to rely on third-party summaries, one of which (SERVER-131625 'fixes the version check') contradicted a direct measurement. Requested by us on demand and returns documentation, so the $mustNeverAppearHere telemetry inversion does not apply. No credential; anonymous read only.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "nvd.nist.gov",
+      "group": "agent",
+      "reason": "Tier 1 (security advisories, the CVE programme): NVD CVE records — CVSS vectors and affected-version ranges behind cargo-audit, pnpm audit, pip-audit and the infra-image scan. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "services.nvd.nist.gov",
+      "group": "agent",
+      "reason": "Tier 1 (security advisories, the CVE programme): NVD's JSON API (a separate FQDN from the nvd.nist.gov site). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "www.cve.org",
+      "group": "agent",
+      "reason": "Tier 1 (security advisories, the CVE programme): CVE program records — the canonical CNA description of a CVE. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "cveawg.mitre.org",
+      "group": "agent",
+      "reason": "Tier 1 (security advisories, the CVE programme): CVE Services API backing www.cve.org (the site's record pages load from it). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "rustsec.org",
+      "group": "agent",
+      "reason": "Tier 1 (security advisories, the CVE programme): RustSec advisory write-ups — the database cargo-audit reports RUSTSEC-* ids from. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "ubuntu.com",
+      "group": "agent",
+      "reason": "Tier 1 (security advisories, the CVE programme): Ubuntu Security Notices (USN) and CVE tracker pages — the homelab CI/prod host runs Ubuntu 26.04. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "security-tracker.debian.org",
+      "group": "agent",
+      "reason": "Tier 1 (security advisories, the CVE programme): Debian security tracker — Debian-based base images in the toolchain and service images. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "launchpad.net",
+      "group": "agent",
+      "reason": "Tier 1 (security advisories, the CVE programme): Launchpad — Ubuntu source packages and kernel SRU history. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "bugs.launchpad.net",
+      "group": "agent",
+      "reason": "Tier 1 (security advisories, the CVE programme): Ubuntu bug tracker (a separate FQDN from launchpad.net). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "changelogs.ubuntu.com",
+      "group": "agent",
+      "reason": "Tier 1 (security advisories, the CVE programme): Ubuntu package changelogs — e.g. which upstream stable release a 7.0.0-NN kernel is based on, answerable BEFORE a reboot (the MongoDB 9.0 investigation had to learn it after). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "kernel.ubuntu.com",
+      "group": "agent",
+      "reason": "Tier 1 (security advisories, the CVE programme): Ubuntu kernel team pages and SRU cadence. Docs only — the mainline kernel builds served here were rejected for prod during the MongoDB 9.0 investigation. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "docs.rs",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Rust crate API docs (a backend service's axum/tokio/mongodb/rustls dependency tree). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "doc.rust-lang.org",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Rust std, Cargo and edition guides. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "blog.rust-lang.org",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Rust release announcements — toolchain upgrade notes. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "nodejs.org",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Node.js API docs, release schedule and security releases. The host also serves Node binaries under /dist; those are NOT the reason for this entry — the toolchain image provides Node. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "docs.expo.dev",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Expo SDK and Expo Router docs (the app). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "expo.dev",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Expo SDK changelogs and upgrade guides (the app), which live on the apex and not on docs.expo.dev, whose upgrade page only links back here. Assistant RESEARCH host (agent group), added 2026-11-04 after the SDK 58 review could read those pages only as search excerpts. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "reactnative.dev",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): React Native docs and upgrade notes (the app). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "tamagui.dev",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Tamagui docs (a design system). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "playwright.dev",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Playwright docs and release notes (web E2E). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "pnpm.io",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): pnpm docs — the only package manager this repo permits. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "nx.dev",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Nx docs — the universal task runner. (cloud.nx.app, Nx's hosted cache, is deliberately NOT allowlisted.) Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "www.npmjs.com",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): npm package pages (changelog/repository links, deprecation notices). The registry itself is registry.npmjs.org, already listed. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "docs.python.org",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Python docs (agent gateway, MCP servers). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "docs.astral.sh",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): uv and ruff docs — the Python toolchain. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "docs.pydantic.dev",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Pydantic docs (agent gateway and MCP servers). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "docs.langchain.com",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): LangChain/LangGraph docs. ALSO the endpoint of the langchain-community plugin's docs MCP server (https://docs.langchain.com/mcp), which failed at session start with ENOTFOUND; like mcp.context7.com that server receives a library question, not repository source. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "langchain-ai.github.io",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): LangGraph API reference (a github.io FQDN, not covered by github.com). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "modelcontextprotocol.io",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): MCP specification — the project's MCP servers. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "ollama.com",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Ollama docs and model library pages (dev/test model provider). Model pulls use registry.ollama.ai, already listed. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "www.keycloak.org",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Keycloak docs and release notes (auth stack). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "redis.io",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Redis docs (the backend-for-frontend session store). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "www.postgresql.org",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): PostgreSQL docs and security pages (Keycloak, Langfuse, Unleash stores). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "developer.hashicorp.com",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Vault docs (dormant prod Vault). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "opentelemetry.io",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): OpenTelemetry docs (tracing across the backend-for-frontend, a backend service and the agent gateway). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "grafana.com",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Grafana/LGTM docs (grafana/otel-lgtm observability stack). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "opensearch.org",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): OpenSearch docs (audit stack). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "langfuse.com",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Langfuse docs (agent tracing). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "clickhouse.com",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): ClickHouse docs (Langfuse's analytics store). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "docs.getunleash.io",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Unleash docs (feature flags). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "www.openpolicyagent.org",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): OPA docs (policy service). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "caddyserver.com",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Caddy docs (reverse proxy / TLS). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "komo.do",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Komodo docs — the production deploy and secrets mechanism (ResourceSync, Variables). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "forgejo.org",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Forgejo docs — the forge and its Actions runner. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "codeberg.org",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Forgejo's OWN issue tracker and source (codeberg.org/forgejo/forgejo) — the primary source for forge API quirks this repo documents. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "docs.renovatebot.com",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Renovate docs (dependency automation, packageRules/allowedVersions). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "www.zaproxy.org",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): OWASP ZAP docs (DAST). Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "docs.docker.com",
+      "group": "agent",
+      "reason": "Tier 2 (docs for a component this repo runs): Docker, Compose and Docker Sandbox (sbx) docs. Assistant RESEARCH host (agent group), added 2026-10-24 after a sweep of ~70 primary sources for this repository's own components found every vendor docs, advisory and issue-tracker host refused at DNS, so WebFetch could only read third-party summaries — one of which contradicted a direct measurement. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path; nothing in CI touches it. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "mcp-proxy.anthropic.com",
+      "group": "agent",
+      "reason": "Tier 3 (assistant connector). The relay through which Claude Code reaches claude.ai-configured connectors (the 'Claude Docs' connector failed at session start on 2026-10-24 with getaddrinfo ENOTFOUND mcp-proxy.anthropic.com). ADDED AS A DELIBERATE DECISION, like mcp.context7.com: unlike a docs fetch, a connector call sends OUR QUESTION TEXT to the connector. The exposure is bounded by which connectors the account has configured; the personal-data connectors (gmail/gcal/microsoft365 .mcp.claude.com) stay excluded under $consideredAndExcluded and are separate FQDNs this entry does not open. Not telemetry — requested on demand — so the $mustNeverAppearHere inversion does not apply. Anthropic-operated, authenticated by the existing Claude login; no new credential. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "docs.claude.com",
+      "group": "agent",
+      "reason": "Anthropic's Claude platform and Claude Code documentation. MEASURED 2026-10-24: both docs hosts now 30x-redirect to https://platform.claude.com/docs/… (already listed), so this entry is the FRONT DOOR that old links and SDK docstrings hit — without it the fetch dies at DNS before the redirect is seen. Previously excluded under $consideredAndExcluded on the premise that 'nothing in the container fetches them'; REVERSED 2026-10-24 because that is no longer true — the assistant's own WebFetch does (the claude-api skill and the claude-code-guide agent both read Anthropic's docs), and the agent gateway's golden/prod model provider is Claude, so API, model and pricing pages are primary sources for this repository. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path. The sibling status/support/marketing hosts stay excluded. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    },
+    {
+      "domain": "docs.anthropic.com",
+      "group": "agent",
+      "reason": "Anthropic's legacy docs host; older links and SDK docstrings still point here, MEASURED 2026-10-24: both docs hosts now 30x-redirect to https://platform.claude.com/docs/… (already listed), so this entry is the FRONT DOOR that old links and SDK docstrings hit — without it the fetch dies at DNS before the redirect is seen. Previously excluded under $consideredAndExcluded on the premise that 'nothing in the container fetches them'; REVERSED 2026-10-24 because that is no longer true — the assistant's own WebFetch does (the claude-api skill and the claude-code-guide agent both read Anthropic's docs), and the agent gateway's golden/prod model provider is Claude, so API, model and pricing pages are primary sources for this repository. Read-only and anonymous: a fetch sends the URL, not prompt text, so the $mustNeverAppearHere telemetry inversion does not apply. Not on the build or test path. The sibling status/support/marketing hosts stay excluded. cdnRotating false: nothing MEASURED to rotate.",
+      "cdnRotating": false
+    }
+  ]
+}

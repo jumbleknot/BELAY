@@ -17,8 +17,19 @@
           "node scripts/secret-scan.mjs --selftest",
           "node scripts/ci-digest-redact.mjs --selftest",
           "node scripts/ci-failure-digest.mjs --selftest",
-          "node scripts/ci-status.mjs --selftest"
+          "node scripts/ci-status.mjs --selftest",
+          "node scripts/gen-egress-policy.mjs --check"
         ]
+      }
+    },
+    "build-devcontainer-image": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "command": "node scripts/build-devcontainer-image.mjs"
+      },
+      "metadata": {
+        "description": "Build the dev-container toolchain image locally as belay-devcontainer (feature 004). Needs an engine with OPEN egress (CI, or a host engine such as Docker Desktop): never run it inside the sandbox, where rustup's hosts are not allowlisted. The normal path is the devcontainer-image workflow, which publishes a digest-pinned image. See docs/runbooks/devcontainer.md."
       }
     },
     "test": {
