@@ -42,6 +42,10 @@ Coding assistants start at [AGENTS.md](AGENTS.md), an index into the knowledge b
 The backlog is this repository's Forgejo issue tracker, worked with `node scripts/backlog.mjs`. See
 [docs/runbooks/backlog.md](docs/runbooks/backlog.md).
 
+To set up a new repository's foundation the same way (Spec Kit, CI guardrails, branch protection,
+the Forgejo backlog, the dev container), follow
+[docs/repo-foundation-setup.md](docs/repo-foundation-setup.md).
+
 ## License
 
 [MIT](LICENSE) © 2026 Jumbleknot
