@@ -235,24 +235,24 @@ file count.
 
 ### Tests for User Story 5 ⚠️
 
-- [ ] T060 [P] [US5] Port `scripts/__tests__/check-override-consistency.test.mjs` from MCM
+- [x] T060 [P] [US5] Port `scripts/__tests__/check-override-consistency.test.mjs` from MCM
   - **Scenarios covered**: US5-AC3
   - **Verify RED**: `node --test scripts/__tests__/check-override-consistency.test.mjs` → expected:
     ≥1 failing, `Cannot find module`
-- [ ] T061 [P] [US5] Write `scripts/__tests__/check-no-inline-secrets.test.mjs` (MCM has none): a
+- [x] T061 [P] [US5] Write `scripts/__tests__/check-no-inline-secrets.test.mjs` (MCM has none): a
   literal credential, a password-bearing URL and an inline `${VAR:-default}` each fail and are named
   without the value; a pure `${VAR}` passes; `*_FILE` keys pass; 0 compose files prints a count of 0
   and exits 0; an unknown flag exits 2
   - **Scenarios covered**: US5-AC1
   - **Verify RED**: `node --test scripts/__tests__/check-no-inline-secrets.test.mjs` → expected: ≥1
     failing, `Cannot find module`
-- [ ] T062 [P] [US5] Write `scripts/__tests__/check-no-argv-secrets.test.mjs` (MCM has none): a
+- [x] T062 [P] [US5] Write `scripts/__tests__/check-no-argv-secrets.test.mjs` (MCM has none): a
   secret-named `--env` to `maestro` fails, including across a backslash continuation; a non-secret
   name passes; the count is printed; an unknown flag exits 2
   - **Scenarios covered**: US5-AC2
   - **Verify RED**: `node --test scripts/__tests__/check-no-argv-secrets.test.mjs` → expected: ≥1
     failing, `Cannot find module`
-- [ ] T063 [P] [US5] Write `scripts/__tests__/check-resource-naming.test.mjs` (MCM has none): a
+- [x] T063 [P] [US5] Write `scripts/__tests__/check-resource-naming.test.mjs` (MCM has none): a
   fixture monorepo with `backend/foo-service/` accepts `foo-service-store-postgres-data` and a
   `foo-service` container, and rejects an unknown context, an underscore-prefixed name, a non-`-network`
   network, and a `container_name` ≠ service key; adding `agents/bar/` admits `bar-*` without a gate
@@ -263,18 +263,18 @@ file count.
 
 ### Implementation for User Story 5
 
-- [ ] T064 [US5] Port `scripts/check-override-consistency.mjs` (MCM names in comments and examples
+- [x] T064 [US5] Port `scripts/check-override-consistency.mjs` (MCM names in comments and examples
   replaced with BELAY's)
   - **Verify GREEN**: the T060 command → 0 failures; scan and `--selftest` exit 0
-- [ ] T065 [US5] Port `scripts/check-no-inline-secrets.mjs`, removing MCM's named allowlist entries
+- [x] T065 [US5] Port `scripts/check-no-inline-secrets.mjs`, removing MCM's named allowlist entries
   and keeping the generic suffix rules (research R8)
   - **Verify GREEN**: the T061 command → 0 failures; scan and `--selftest` exit 0
-- [ ] T066 [US5] Port `scripts/check-no-argv-secrets.mjs`, with MCM's wrapper path (`maestro-run.sh`)
+- [x] T066 [US5] Port `scripts/check-no-argv-secrets.mjs`, with MCM's wrapper path (`maestro-run.sh`)
   generalised and the scope set to BELAY's tree
   - **Verify GREEN**: the T062 command → 0 failures; scan and `--selftest` exit 0
-- [ ] T067 [US5] Port `scripts/check-resource-naming.mjs` with the generic grammar (research R8)
+- [x] T067 [US5] Port `scripts/check-resource-naming.mjs` with the generic grammar (research R8)
   - **Verify GREEN**: the T063 command → 0 failures; scan and `--selftest` exit 0
-- [ ] T068 [US5] Wire the four gates into `scripts/project.json` `lint` (selftest + scan each), and
+- [x] T068 [US5] Wire the four gates into `scripts/project.json` `lint` (selftest + scan each), and
   name them in `docs/runbooks/ci.md` and the wiki gate lists; refresh derived pages with
   `wiki-refresh.mjs --record`
   - **Done when**: `pnpm nx run scripts:lint` passes every line, and `wiki-refresh.mjs --stale` exits 0

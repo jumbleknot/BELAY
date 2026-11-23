@@ -4,8 +4,8 @@ title: CI guardrails, the failure digest, and the PR loop
 description: The single guardrails Forgejo Actions workflow required on main — what it runs and how to reproduce it locally, how a failure is read back from the redacted digest and its package bundle with ci-status.mjs, the dedicated repository runner and the one exception to it (the dev-container image job, which never runs pull-request code), the report-only registry-retention job, branch protection, the terminal PR loop through forge-pr.mjs, and the rule every new job must follow.
 tags: [ci, forgejo, pull-requests, runbook]
 resource: docs/runbooks/ci.md
-resource-sha256: 25a93411d8ba330d3001e2a03a7ee4308ba41030796731e169930acc36de69d4
-timestamp: 2026-11-23T13:28:58.433Z
+resource-sha256: a8ac5adac9d804b0f80ae0e487d5b7a0cca64d7851103bb0a385884eefa3b296
+timestamp: 2026-11-23T14:27:32.783Z
 ---
 
 # CI guardrails, the failure digest, and the PR loop
@@ -16,8 +16,8 @@ reports which old package versions would be deleted. Guardrails runs on every pu
 every push to `main` and manual dispatch, and branch protection on `main` requires its
 `guardrails / guardrails (pull_request)` context. Its one job installs Node and the pinned pnpm, then
 runs `pnpm nx run scripts:lint` (every gate: Spec Kit overrides, digest coverage, egress allowlist,
-secret scan, topology scrub, toolchain consistency, OpenWiki OKF and governance, each after its
-selftest) and `pnpm nx run scripts:test`. So **those two commands, run locally,
+secret scan, topology scrub, toolchain consistency, inline and argv secrets, override floors,
+resource naming, OpenWiki OKF and governance, each after its selftest) and `pnpm nx run scripts:test`. So **those two commands, run locally,
 reproduce the required check**. A failure-digest step always runs last and never changes the result.
 Full detail is in [docs/runbooks/ci.md](../../docs/runbooks/ci.md).
 

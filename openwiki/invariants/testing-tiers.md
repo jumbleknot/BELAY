@@ -17,7 +17,7 @@ uses the Verify RED / Verify GREEN format (see
 
 | Tier | What it is | Run with | Gates a merge? |
 | --- | --- | --- | --- |
-| **Gates** | Repository checks that scan the tree and fail on drift: the Spec Kit override gate, the CI digest-coverage gate, the egress allowlist check, the secret scan, the topology scrub, toolchain consistency, and the OpenWiki OKF and governance gates | `pnpm nx run scripts:lint` | **Yes**, through the required `guardrails` check |
+| **Gates** | Repository checks that scan the tree and fail on drift: the Spec Kit override gate, the CI digest-coverage gate, the egress allowlist check, the secret scan, the topology scrub, toolchain consistency, the inline-secret, argv-secret, override-floor and resource-naming gates (which guard compose files, Maestro and overrides ahead of their arrival), and the OpenWiki OKF and governance gates | `pnpm nx run scripts:lint` | **Yes**, through the required `guardrails` check |
 | **Selftests** | Each gate's `--selftest`, plus the secret-scan, redactor, digest and `ci-status` selftests. They prove a detector still detects, so a gate cannot pass vacuously | `pnpm nx run scripts:lint` | **Yes** |
 | **Unit** | `node:test` files in `scripts/__tests__/*.test.mjs`. Forge calls are made against fakes and fixtures, never the real forge | `pnpm nx run scripts:test` | **Yes** |
 
