@@ -416,7 +416,7 @@ function writeReport(path, text) {
 }
 
 /** Every git-tracked file matching `pathspec` under `root`, repo-relative and sorted. */
-function trackedFiles(pathspecs, root, scanner) {
+export function trackedFiles(pathspecs, root, scanner) {
   const r = run('git', ['ls-files', '-z', '--', ...pathspecs], { cwd: root });
   if (r.status !== 0) throw new Error(`[${scanner}] git ls-files failed — cannot discover lockfiles: ${(r.stderr || '').slice(-300)}`);
   return (r.stdout || '').split('\0').filter(Boolean).sort();

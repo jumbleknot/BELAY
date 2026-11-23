@@ -86,8 +86,9 @@ jobs:
   # range blocks in any scope (the dependency-downgrade step, feature 007).
   # SCA runs FULL every time: a newly published advisory can hit an unchanged dependency.
   # Semgrep is changed-files on PRs and full on push. The enabled scanners are a list in
-  # security/sast/scan.yaml: cargo-audit (stage 2) and pip-audit (stage 3) add a list entry and a
-  # toolchain step here, nothing else. A separate job, so `guardrails / guardrails` keeps its time.
+  # security/sast/scan.yaml: cargo-audit (stage 2) and pip-audit (stage 3) are a list entry there, nothing
+  # else; their toolchain steps are already below, dormant until a lockfile is tracked (feature 008).
+  # A separate job, so `guardrails / guardrails` keeps its time.
   sast:
     runs-on: belay
     timeout-minutes: 15
@@ -118,6 +119,17 @@ jobs:
           CI_LOG_STEP
       - name: Install workspace dependencies (frozen lockfile; pnpm audit reads it)
         run: bash scripts/ci-log-step.sh sast-install-deps pnpm install --frozen-lockfile
+      # Stages 2 and 3, prepared and DORMANT (feature 008; items #39, #40). Each step installs only when
+      # its lockfile is tracked (a Cargo.lock; a uv.lock under a project directory), discovered exactly
+      # as the scanners discover them, so today both say "nothing to prepare" and exit 0. Unconditional
+      # here on purpose: the decision is the tracked files, which an `if:` cannot see. Rust arrives from
+      # a version-pinned, sha256-verified rustup-init and the prebuilt cargo-audit, never a piped
+      # installer and never a compile; the pins live in scripts/sast-prepare.mjs. After the workspace
+      # install because the script imports sast-scan.mjs, and after uv because python runs `uv sync`.
+      - name: Prepare the Rust toolchain and cargo-audit (only when a Cargo.lock is tracked)
+        run: bash scripts/ci-log-step.sh sast-prepare-rust node scripts/sast-prepare.mjs rust
+      - name: Sync each Python project's env (only when a project uv.lock is tracked)
+        run: bash scripts/ci-log-step.sh sast-prepare-python node scripts/sast-prepare.mjs python
       - name: Gate selftest (prove the fail, suppress and expiry paths before the real scan)
         run: bash scripts/ci-log-step.sh sast-gate-selftest node scripts/check-sast-findings.mjs --selftest
       - name: Custom-rule fixtures (semgrep --test; a rule with no fixture fails)

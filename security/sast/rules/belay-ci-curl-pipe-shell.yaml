@@ -33,9 +33,11 @@
 #     `astral.sh/uv/install.sh` is deliberately NOT accepted: MCM nearly merged exactly that line,
 #     heredoc-wrapped, and the blinded rule would not have objected.
 #
-# NOT ACCEPTED YET (MCM accepted both): `sh.rustup.rs` arrives with stage 2 (the Rust toolchain for
-# cargo-audit) and `get.maestro.mobile.dev` with a mobile E2E surface. Each is added here, with its
-# reason, in the change that needs it.
+# NOT ACCEPTED (MCM accepted both): `sh.rustup.rs` and `get.maestro.mobile.dev`. Stage 2's Rust
+# toolchain does NOT need the piped rustup installer: scripts/sast-prepare.mjs downloads a
+# version-pinned rustup-init binary to a file and checks its sha256 before running it (feature 008).
+# `get.maestro.mobile.dev` waits for a mobile E2E surface, and is added here, with its reason, in the
+# change that needs it.
 rules:
   - id: belay-ci-curl-pipe-shell
     languages: [yaml]

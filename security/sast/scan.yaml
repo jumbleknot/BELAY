@@ -11,7 +11,10 @@
 # Stage 1 (item #37): code patterns (Semgrep) and the JavaScript dependency audit (pnpm audit).
 # Stage 2 adds `cargo-audit` with the first Rust crate (a committed Cargo.lock); stage 3 adds
 # `pip-audit` with the first Python project (a committed uv.lock under a project directory). Each is
-# a list entry here plus its toolchain step in the `sast` job.
+# now ONLY a list entry here: the toolchain steps are already in the `sast` job, dormant until the
+# lockfile is tracked (scripts/sast-prepare.mjs, feature 008). scripts/__tests__/sast-prepare.test.mjs
+# fails while a tracked lockfile's scanner is missing from this list, so the first crate's or
+# project's PR cannot go green unaudited.
 scanners:
   - semgrep
   - pnpm-audit

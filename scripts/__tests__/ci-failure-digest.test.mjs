@@ -1084,18 +1084,43 @@ test('(mm4) an UNKNOWN job status still publishes nothing — counts is not a lo
   }
 });
 
-test('(mm5) counts mode with NO counts sources publishes nothing at all', async () => {
-  // Self-limiting by construction rather than by a job allowlist: every job other than e2e has
-  // no e2e-result-gate / e2e-contention-tally step log, so nothing is uploaded and the package
-  // registry does not grow a version per green job per run. An allowlist would be a second place to
-  // forget to update.
-  const { selectCountsSources } = await digestModule();
+test('(mm5) counts mode with NO counts sources publishes the step durations ALONE, or nothing', async () => {
+  // Updated at the cause by feature 008. The old premise was "a non-e2e green job publishes nothing",
+  // so the registry would not grow a version per green job per run. That left `ci-status durations`
+  // with no sample for any job that had never failed (`sast`, measured 2026-11-23), and item #41's
+  // trigger unmeasurable. The new premise: such a job publishes its few-hundred-byte
+  // step-durations.tsv and NOTHING else (no bundle, no comment, no status), pruned at RETENTION_DAYS
+  // like every other version (mm7). The counts SOURCES stay self-limiting exactly as before.
+  const { selectCountsSources, countsPublication } = await digestModule();
   assert.deepEqual(selectCountsSources([]), []);
   assert.deepEqual(
     selectCountsSources([{ source: 'step:affected-nx', text: 'nx output' }]),
     [],
     'an unrelated step log was mistaken for a counts source',
   );
+  const rows = '# step\tseconds\texit\tceiling\nsast-gate\t1\t0\t\n';
+  assert.equal(countsPublication({ sources: [], durations: rows }), 'durations-only');
+  assert.equal(countsPublication({ sources: [], durations: null }), 'nothing');
+  assert.equal(countsPublication({ sources: [{ source: 'step:e2e-result-gate', text: 'x' }], durations: rows }), 'bundle');
+  assert.equal(countsPublication({ sources: [{ source: 'step:e2e-result-gate', text: 'x' }], durations: null }), 'bundle');
+});
+
+test('(mm5b) a green job with only a durations file tries to publish it, and exits 0 when the transport dies', () => {
+  // The REAL process, offline: the forge base is unroutable, so the upload fails. A measurement must
+  // never change a job's result (FR-008), and the job log must say what it tried and why it failed.
+  const dir = mkdtempSync(join(tmpdir(), 'durations-only-'));
+  const jobDir = join(dir, '90103', 'sast');
+  mkdirSync(jobDir, { recursive: true });
+  writeFileSync(join(jobDir, '_step-durations.tsv'), '# step\tseconds\texit\tceiling\nsast-static-scan\t9\t0\t\n');
+  const r = runDigest({
+    GITHUB_RUN_ID: '90103', GITHUB_WORKFLOW: 'guardrails', GITHUB_JOB: 'sast',
+    GITHUB_EVENT_NAME: 'pull_request', CI_DIGEST_JOB_STATUS: 'success',
+    CI_STEP_LOG_ROOT: dir,
+    CI_DIGEST_TOKEN: 'not-a-real-token-just-a-shape',
+  });
+  assert.equal(r.code, 0, `a durations publication failure changed the job outcome:\n${r.out}`);
+  assert.match(r.out, /step durations NOT published/, `the failed upload was not reported:\n${r.out}`);
+  assert.doesNotMatch(r.out, /bundle uploaded/, 'a durations-only publication must not upload a bundle');
 });
 
 test('(mm6) counts mode collects ONLY the counts sources, not the whole job log', async () => {

@@ -134,7 +134,26 @@ test('the reports are uploaded whatever the outcome, and the digest is the last 
   assert.equal(digest['continue-on-error'], true);
 });
 
-test('stage 1 only: no Rust toolchain, cargo-audit or Python env sync in the sast job', () => {
+// Feature 008 updated this guard at the cause. Its premise was "stage 1 only: no Rust toolchain,
+// cargo-audit or Python env sync in the job". The stage-2/3 toolchains are now IN the job, dormant,
+// behind scripts/sast-prepare.mjs, which installs only from pinned, digest-verified files when a
+// lockfile is tracked. So the new premise: the job itself still never compiles cargo-audit, never pipes
+// rustup, and never syncs Python inline. Every one of those lives in the prepare script, or nowhere.
+test('Rust and Python toolchains arrive only through sast-prepare.mjs, never inline in the job', () => {
   const text = JSON.stringify(sastJob());
-  assert.doesNotMatch(text, /rustup|cargo install|uv sync/);
+  assert.doesNotMatch(text, /rustup|sh\.rustup\.rs|cargo install|uv sync/);
+});
+
+test('the dormant stage-2/3 prepare steps run through ci-log-step.sh, after uv, before the scan', () => {
+  const runs = sastJob().steps.map((st) => (st.run ?? '').trim());
+  const uv = runs.findIndex((r) => r.includes('ci-log-step.sh sast-install-uv'));
+  const rust = runs.indexOf('bash scripts/ci-log-step.sh sast-prepare-rust node scripts/sast-prepare.mjs rust');
+  const python = runs.indexOf('bash scripts/ci-log-step.sh sast-prepare-python node scripts/sast-prepare.mjs python');
+  const scan = runs.findIndex((r) => r.includes('node scripts/sast-scan.mjs --scope'));
+  assert.ok(rust > 0 && python > 0, 'a prepare step is gone — update this guard rather than deleting it');
+  assert.ok(uv > 0 && rust > uv && python > uv, `uv ${uv} must precede both prepare steps (rust ${rust}, python ${python}): python needs uv`);
+  assert.ok(rust < scan && python < scan, `both must precede the scan (${scan}), which needs what they install`);
+  // Unconditional on purpose: each step decides from the TRACKED lockfiles, which a workflow `if:`
+  // cannot see. A condition here would be a second, drifting copy of that decision.
+  for (const at of [rust, python]) assert.equal(sastJob().steps[at].if, undefined);
 });

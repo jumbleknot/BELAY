@@ -256,7 +256,7 @@ Copy and adapt:
 | `.forgejo/workflows/guardrails.yml` | One job: checkout, `setup-node` (exact version), install pnpm, frozen install, `scripts:lint`, `scripts:test`, then the failure digest. Triggers are `pull_request`, `push` to `main` only, and `workflow_dispatch`. Concurrency is keyed on the ref |
 | `scripts/install-pnpm.sh` | Installs pnpm at exactly `packageManager` (Node 26 has no corepack) |
 | `scripts/ci-log-step.sh` | Wraps every `run:` step: keeps its exit code and mirrors its output for the digest |
-| `scripts/ci-failure-digest.mjs`, `scripts/ci-digest-redact.mjs` | On failure, publishes a redacted digest: a PR comment on pull requests, a commit status on `main`, and a full bundle in the generic package `<repo>-ci-failures` |
+| `scripts/ci-failure-digest.mjs`, `scripts/ci-digest-redact.mjs` | On failure, publishes a redacted digest: a PR comment on pull requests, a commit status on `main`, and a full bundle in the generic package `<repo>-ci-failures`. On success, publishes only the job's step durations there, for `ci-status durations` |
 | `scripts/check-ci-digest-coverage.mjs` | A gate: every job must end with the digest step |
 | `scripts/secret-scan.mjs` | Secret-scan rules. Its selftest runs in `scripts:lint`; the tree scan joins in step 13 |
 | `scripts/__tests__/guardrails-workflow.test.mjs` | Pins the workflow's shape, including `runs-on` |
