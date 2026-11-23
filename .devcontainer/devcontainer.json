@@ -128,6 +128,11 @@
     // Code replaces the file by write-then-rename, which would silently swap the symlink back.
     "CLAUDE_CONFIG_DIR": "/home/coder/.claude",
 
+    // The same fix for the GitHub CLI: gh keeps its login in ~/.config/gh, on the ephemeral
+    // overlay, so a recreate logged gh out while Claude Code stayed logged in (measured
+    // 2026-11-23). Its config root goes on the belay-claude volume, beside Claude's.
+    "GH_CONFIG_DIR": "/home/coder/.claude/gh",
+
     // Topology, not a secret, and never committed: injected from the VM shell's environment.
     "FORGE_REGISTRY_HOST": "${localEnv:FORGE_REGISTRY_HOST}"
   },

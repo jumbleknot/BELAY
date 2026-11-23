@@ -73,7 +73,11 @@ test('containerEnv holds exactly the non-secret keys: no credential, no ANTHROPI
     'DOCKER_CONFIG',
     'DOCKER_HOST',
     'FORGE_REGISTRY_HOST',
+    'GH_CONFIG_DIR',
   ]);
+  // gh keeps its login in ~/.config/gh, on the ephemeral overlay: measured 2026-11-23, a recreate
+  // logged gh out while Claude Code stayed logged in. Put it on the belay-claude volume.
+  assert.equal(env.GH_CONFIG_DIR, '/home/coder/.claude/gh');
   assert.equal(env.DOCKER_HOST, 'unix:///var/run/docker-host.sock');
   assert.equal(env.DOCKER_CONFIG, '/home/coder/.docker-sandbox');
   assert.equal(env.CLAUDE_CONFIG_DIR, '/home/coder/.claude');

@@ -82,3 +82,5 @@ They survive a container recreate, but not `sbx rm`.
 | `BELAY_DEVCONTAINER` | `1` | the guard tests, and scripts that need to know they run in the container |
 | `BELAY_DEVCONTAINER_PLATFORM` | `sandbox` | the egress check's messages |
 | `DEVCONTAINER_PERSONAL_LAYER` | `1` | the `mcm-dotfiles` guard, once generalised |
+
+`GH_CONFIG_DIR=/home/coder/.claude/gh` (not a marker) puts the GitHub CLI login on the `belay-claude` volume, like `CLAUDE_CONFIG_DIR` does for Claude Code.
