@@ -84,7 +84,7 @@ missing module, then GREEN.
 - [x] T023 Close-out re-search: re-run T002's searches
 - [x] T024 Quickstart steps 1–4; final `scripts:lint`, `scripts:test` (skip count), `scripts:sast`;
   `semgrep-native.json` `.errors` lists only the two known files
-- [ ] T025 **Open the PR** (branch `007-dependency-downgrade-gate`) from a real branch:
+- [x] T025 **Open the PR** (branch `007-dependency-downgrade-gate`, PR #44) from a real branch:
   `git push origin HEAD:007-dependency-downgrade-gate`; `node scripts/forge-pr.mjs open …`;
   `node scripts/ci-status.mjs watch --pr <n>`; merge with
   `node scripts/forge-pr.mjs merge <n> --expect-head <sha>` only on the maintainer's approval.
