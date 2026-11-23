@@ -242,7 +242,7 @@ files (`scripts/project.json`, the runbooks, `AGENTS.md`) are integrated in the 
   `openwiki/runbooks/ci.md`: gate lists updated; derived pages refreshed with `wiki-refresh.mjs
   --record` after their sources change
   - **Done when**: `node scripts/wiki-refresh.mjs --stale` exits 0
-- [ ] T048 File the SAST backlog item (research R6), and comment the outcome on items #1, #2, #28 and
+- [ ] T048 File the SAST backlog item (research R6; filed as item #37), and comment the outcome on items #1, #2, #28 and
   #32: the per-candidate disposition table from plan.md, and how each criterion was verified
   - **Done when**: the new item exists, and each of the four items has a comment
 - [x] T049 **Close-out re-search**: re-run T002's searches. Every remaining hit in a doc that states

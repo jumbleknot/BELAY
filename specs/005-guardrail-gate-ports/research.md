@@ -84,7 +84,7 @@ and `.devcontainer/toolchain.Dockerfile` (`FROM node:`).
 
 ## R6 — SAST deferred {#r6}
 
-- **Decision**: do not port. File a new backlog item carrying item #1's SAST candidate.
+- **Decision**: do not port. Filed as item #37, carrying item #1's SAST candidate.
 - **Rationale**: the MCM orchestrator needs Semgrep (via `uvx`), pip-audit and cargo-audit on the
   runner. Adding toolchains to `node:26-bookworm` is a structural decision the maintainer takes first.
   BELAY also has no Python, Rust or application JS yet, so the scan would protect almost nothing today.
