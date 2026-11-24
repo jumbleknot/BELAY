@@ -208,10 +208,63 @@ export function formatVerdict(v) {
   return lines;
 }
 
-// ── not yet implemented (its tests come first: T015) ────────────────────────────────────────────
+// ── --selftest ──────────────────────────────────────────────────────────────────────────────────
+// Judges synthetic reports against a synthetic policy, with no test run, before CI trusts a real
+// measurement. A gate that has silently stopped failing anything would otherwise read as a pass.
+// `deps` lets the tests break one stage and watch the selftest name it.
 
-export function coverageSelftest() {
-  throw new Error('not implemented');
+const ST_TODAY = '2026-11-24';
+const ST_POLICY = { version: 1, floor: 70, include: ['scripts/*.mjs'], exceptions: [] };
+const ST_EXCEPTION = { module: 'scripts/thin.mjs', floor: 55, reason: 'selftest', addedBy: 'selftest', expiry: '2027-06-30' };
+const stRec = (path, found, hit) => `SF:${path}\nLF:${found}\nLH:${hit}\nend_of_record\n`;
+
+export function coverageSelftest(deps = {}) {
+  const d = { parseLcov, validatePolicy, judgeCoverage, ...deps };
+  const failures = [];
+  const judgeOf = (lcov, modules, policy = ST_POLICY) =>
+    d.judgeCoverage({ records: d.parseLcov(lcov), modules, policy: d.validatePolicy(policy, { modules }), today: ST_TODAY });
+  const expect = (name, lcov, modules, policy, check) => {
+    try {
+      const v = judgeOf(lcov, modules, policy);
+      const problem = check(v);
+      if (problem) failures.push(`${name}: ${problem}`);
+    } catch (e) {
+      failures.push(`${name}: threw ${e.message}`);
+    }
+  };
+  const expectRefused = (name, policy, modules) => {
+    try {
+      d.validatePolicy(policy, { modules });
+      failures.push(`${name}: the policy was accepted, expected a refusal (exit 2)`);
+    } catch (e) {
+      if (e.exitCode !== 2) failures.push(`${name}: refused with exit ${e.exitCode}, expected 2`);
+    }
+  };
+  const statusOf = (v, module) => v.modules.find((m) => m.module === module)?.status;
+
+  expect('a passing report', stRec('scripts/a.mjs', 10, 8), ['scripts/a.mjs'], ST_POLICY,
+    (v) => (v.ok ? null : 'judged as failing'));
+  expect('a module below the floor', stRec('scripts/a.mjs', 10, 6) + stRec('scripts/b.mjs', 10, 10), ['scripts/a.mjs', 'scripts/b.mjs'], ST_POLICY,
+    (v) => (!v.ok && statusOf(v, 'scripts/a.mjs') === 'below-floor' ? null : 'a module below the floor passed'));
+  expect('a source module missing from the report', stRec('scripts/a.mjs', 10, 10), ['scripts/a.mjs', 'scripts/new.mjs'], ST_POLICY,
+    (v) => (!v.ok && statusOf(v, 'scripts/new.mjs') === 'no-coverage-data' ? null : 'a module with no coverage data passed'));
+  expect('a total below the floor through an exception', stRec('scripts/thin.mjs', 100, 56) + stRec('scripts/a.mjs', 10, 10),
+    ['scripts/thin.mjs', 'scripts/a.mjs'], { ...ST_POLICY, exceptions: [ST_EXCEPTION] },
+    (v) => (!v.ok && v.failures.some((f) => f.startsWith('total ')) ? null : 'a total below the floor passed'));
+  expect('an empty report', '', ['scripts/a.mjs'], ST_POLICY,
+    (v) => (!v.ok && v.failures.length > 0 ? null : 'an empty report passed (it must fail closed)'));
+  expect('an active exception', stRec('scripts/thin.mjs', 10, 6) + stRec('scripts/a.mjs', 90, 90),
+    ['scripts/thin.mjs', 'scripts/a.mjs'], { ...ST_POLICY, exceptions: [ST_EXCEPTION] },
+    (v) => (v.ok ? null : 'a module at its exception floor failed'));
+  expect('an expired exception', stRec('scripts/thin.mjs', 10, 6) + stRec('scripts/a.mjs', 90, 90),
+    ['scripts/thin.mjs', 'scripts/a.mjs'], { ...ST_POLICY, exceptions: [{ ...ST_EXCEPTION, expiry: '2026-11-01' }] },
+    (v) => (!v.ok && statusOf(v, 'scripts/thin.mjs') === 'below-floor' ? null : 'an expired exception still applied'));
+  expect('a record outside the include set', stRec('scripts/a.mjs', 10, 10) + stRec('scripts/__tests__/a.test.mjs', 100, 0),
+    ['scripts/a.mjs'], ST_POLICY,
+    (v) => (v.ok ? null : 'a test-file record was judged'));
+  expectRefused('an exception floor below 50', { ...ST_POLICY, exceptions: [{ ...ST_EXCEPTION, floor: 40 }] }, ['scripts/thin.mjs']);
+  expectRefused('an exception for a missing module', { ...ST_POLICY, exceptions: [ST_EXCEPTION] }, ['scripts/a.mjs']);
+  return { failures };
 }
 
 // ── CLI ─────────────────────────────────────────────────────────────────────────────────────────
@@ -288,7 +341,13 @@ export async function main(argv, { root = process.cwd(), today = new Date().toIS
   try {
     const args = parseArgs(argv);
     if (args.help) { console.log(USAGE); return 0; }
-    if (args.selftest) throw new Error('not implemented');
+    if (args.selftest) {
+      const { failures } = coverageSelftest();
+      for (const f of failures) console.error(`✗ check-coverage --selftest: ${f}`);
+      if (failures.length) return 1;
+      console.log('✓ check-coverage --selftest passed (pass, below floor, no coverage data, total below floor through an exception, empty report fails closed, active and expired exceptions, out-of-scope record ignored, exception floor below 50 and stale exception refused)');
+      return 0;
+    }
     const { policy, modules } = await loadPolicy(root);
     if (!args.run) return gate({ root, reportPath: args.report, policy, modules, today });
     const testStatus = runTests({ root, policy, reportPath: REPORT_PATH });

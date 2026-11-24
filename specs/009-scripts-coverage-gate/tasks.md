@@ -236,7 +236,7 @@ wrongly (FR-007, SC-005).
 
 ### Tests for User Story 3 (REQUIRED, TDD checkpoint format) ⚠️
 
-- [ ] T015 [US3] Add self-test tests to `scripts/__tests__/check-coverage.test.mjs`:
+- [x] T015 [US3] Add self-test tests to `scripts/__tests__/check-coverage.test.mjs`:
   - `node scripts/check-coverage.mjs --selftest` exits 0 with `✓ check-coverage --selftest passed`;
   - `coverageSelftest({ judgeCoverage: <a judge that never reports below-floor> })` returns failures naming the below-floor
     scenario;
@@ -249,18 +249,22 @@ wrongly (FR-007, SC-005).
 
 ### Implementation for User Story 3
 
-- [ ] T016 [US3] Implement `coverageSelftest(deps)` and `--selftest` in `scripts/check-coverage.mjs`, with every scenario listed
+- [x] T016 [US3] Implement `coverageSelftest(deps)` and `--selftest` in `scripts/check-coverage.mjs`, with every scenario listed
   in `contracts/check-coverage-cli.md` → `--selftest`. `deps` exists so tests can inject a broken stage, as in
   `sast-scan.mjs`'s selftest (prerequisite: T015 verified RED)
   - **Verify GREEN**: the T015 command → 0 failures. Then `node scripts/check-coverage.mjs --selftest` exits 0
-- [ ] T017 [US3] Add `node scripts/check-coverage.mjs --selftest` to `scripts/project.json`'s `lint` commands, after
+- [x] T017 [US3] Add `node scripts/check-coverage.mjs --selftest` to `scripts/project.json`'s `lint` commands, after
   `check-sast-findings.mjs --selftest`
   - **Verify GREEN**: `pnpm nx run scripts:lint --skip-nx-cache --output-style=static` exits 0, and its output shows the
     `✓ check-coverage --selftest passed` line. `node --test scripts/__tests__/allowlist-expiry-wiring.guard.test.mjs` →
     0 failures
-- [ ] T018 [US3] **SC-005 mutation**. In the source, make the per-module comparison always pass (for example, `percent >= 0`),
+- [x] T018 [US3] **SC-005 mutation**. In the source, make the per-module comparison always pass (for example, `percent >= 0`),
   then run `node scripts/check-coverage.mjs --selftest`. Revert
   - **Done when**: it exited 1 naming the below-floor scenario, and that output is recorded here. `git diff` shows the revert
+  - **Recorded 2026-11-24**: with `status: percent < 0 ? …` in place of `percent < appliedFloor`, the selftest exited 1:
+    `✗ check-coverage --selftest: a module below the floor: a module below the floor passed` and
+    `✗ check-coverage --selftest: an expired exception: an expired exception still applied`. Reverted
+    (`percent < appliedFloor` is back)
 
 **Checkpoint**: the gate cannot pass vacuously.
 

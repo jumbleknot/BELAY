@@ -318,3 +318,59 @@ test('an invalid policy exits 2 before anything runs', () => {
     assert.equal(existsSync(join(root, 'coverage', 'scripts.lcov')), false);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+// ── --selftest ──────────────────────────────────────────────────────────────────────────────────
+// Each broken judge wraps the real one and switches off exactly ONE rule, so each test proves the
+// selftest notices that rule going missing.
+import { coverageSelftest } from '../check-coverage.mjs';
+
+const recompute = (v) => ({ ...v, ok: v.failures.length === 0 && v.modules.every((m) => m.status === 'ok') });
+
+const neverBelowFloor = (args) => {
+  const v = judgeCoverage(args);
+  return recompute({ ...v, modules: v.modules.map((m) => (m.status === 'below-floor' ? { ...m, status: 'ok' } : m)) });
+};
+const ignoresMissing = (args) => {
+  const v = judgeCoverage(args);
+  return recompute({ ...v, modules: v.modules.filter((m) => m.status !== 'no-coverage-data') });
+};
+const ignoresTotal = (args) => {
+  const v = judgeCoverage(args);
+  return recompute({ ...v, failures: v.failures.filter((f) => !f.startsWith('total ')) });
+};
+const passesEmpty = (args) => {
+  const v = judgeCoverage(args);
+  return recompute({ ...v, failures: v.failures.filter((f) => !f.includes('no record for any source module')) });
+};
+
+test('selftest: the real gate passes its own selftest, and the CLI says so', () => {
+  assert.deepEqual(coverageSelftest().failures, []);
+  const r = spawnSync(process.execPath, [CLI, '--selftest'], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /✓ check-coverage --selftest passed/);
+});
+
+test('selftest: a judge that never reports below-floor is caught', () => {
+  const { failures } = coverageSelftest({ judgeCoverage: neverBelowFloor });
+  assert.ok(failures.some((f) => /below the floor/.test(f)), failures.join('\n'));
+});
+
+test('selftest: a judge that ignores missing modules is caught (no coverage data)', () => {
+  const { failures } = coverageSelftest({ judgeCoverage: ignoresMissing });
+  assert.ok(failures.some((f) => /no coverage data/.test(f)), failures.join('\n'));
+});
+
+test('selftest: a judge that ignores the total is caught', () => {
+  const { failures } = coverageSelftest({ judgeCoverage: ignoresTotal });
+  assert.ok(failures.some((f) => /total/.test(f)), failures.join('\n'));
+});
+
+test('selftest: a judge that passes an empty report is caught (fail closed)', () => {
+  const { failures } = coverageSelftest({ judgeCoverage: passesEmpty });
+  assert.ok(failures.some((f) => /fail closed|empty report/.test(f)), failures.join('\n'));
+});
+
+test('selftest: a policy validator that accepts anything is caught', () => {
+  const { failures } = coverageSelftest({ validatePolicy: (raw) => raw });
+  assert.ok(failures.some((f) => /exception floor below 50|missing module/.test(f)), failures.join('\n'));
+});
