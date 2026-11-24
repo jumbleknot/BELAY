@@ -12,8 +12,10 @@
   "prConcurrentLimit": 6,
   "labels": ["dependencies"],
   "rebaseWhen": "conflicted",
-  "dependencyDashboard": true,
-  "dependencyDashboardLabels": ["status/bot-managed"],
+  "dependencyDashboard": {
+    "enabled": true,
+    "labels": ["status/bot-managed"]
+  },
   "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": {
     "description": "Security fixes ignore the window and arrive on the six-hourly cron. The 12-hour cooling-off keeps the worst case near 18h (research R4).",

@@ -464,11 +464,19 @@ const RULES = {
   },
 
   // C9 — one dashboard, labelled so `backlog.mjs ready` hides it (FR-014, SC-005).
+  // renovate@44 takes the dashboard as ONE object, { enabled, labels }. The older pair,
+  // dependencyDashboard: true plus dependencyDashboardLabels, is a "Config migration necessary" that
+  // --strict refuses (measured in PR #63's first sast run), so the legacy shape fails here too, offline.
   C9({ config }) {
     const v = [];
-    if (config.dependencyDashboard !== true) v.push({ file: 'renovate.json', detail: 'dependencyDashboard must be true' });
-    if (JSON.stringify(config.dependencyDashboardLabels) !== JSON.stringify([DASHBOARD_LABEL])) {
-      v.push({ file: 'renovate.json', detail: `dependencyDashboardLabels must be ["${DASHBOARD_LABEL}"], the label backlog.mjs ready excludes` });
+    const d = config.dependencyDashboard;
+    if (typeof d !== 'object' || d === null || config.dependencyDashboardLabels !== undefined) {
+      v.push({ file: 'renovate.json', detail: 'dependencyDashboard must be the object { enabled, labels }: the legacy true + dependencyDashboardLabels shape is a config migration renovate@44 --strict refuses' });
+      return v;
+    }
+    if (d.enabled !== true) v.push({ file: 'renovate.json', detail: 'dependencyDashboard.enabled must be true' });
+    if (JSON.stringify(d.labels) !== JSON.stringify([DASHBOARD_LABEL])) {
+      v.push({ file: 'renovate.json', detail: `dependencyDashboard.labels must be ["${DASHBOARD_LABEL}"], the label backlog.mjs ready excludes` });
     }
     return v;
   },
@@ -585,7 +593,7 @@ function selftestFixture() {
   const config = {
     timezone: 'UTC', schedule: [window], prHourlyLimit: 4, prConcurrentLimit: 6, osvVulnerabilityAlerts: true,
     vulnerabilityAlerts: { schedule: [], minimumReleaseAge: '12 hours' }, lockFileMaintenance: { enabled: true, schedule: [window] },
-    dependencyDashboard: true, dependencyDashboardLabels: [DASHBOARD_LABEL],
+    dependencyDashboard: { enabled: true, labels: [DASHBOARD_LABEL] },
     customManagers: [{ customType: 'regex', managerFilePatterns: ['/^scripts\\/tool\\.mjs$/'], matchStrings: ["SEMGREP_PIN = '(?<currentValue>[\\d.]+)'"], depNameTemplate: 'semgrep', datasourceTemplate: 'pypi' }],
     packageRules: [
       { matchPackageNames: ['*'], minimumReleaseAge: '3 days' },
@@ -616,7 +624,7 @@ const BREAKS = {
   C6: (c) => { c.config.customManagers = []; },
   C7: (c) => { c.config.packageRules = c.config.packageRules.filter((r) => JSON.stringify(r.matchUpdateTypes) !== '["major"]'); },
   C8: (c) => { c.config.packageRules = c.config.packageRules.filter((r) => !r.postUpgradeTasks); },
-  C9: (c) => { c.config.dependencyDashboardLabels = ['renovate']; },
+  C9: (c) => { c.config.dependencyDashboard.labels = ['renovate']; },
   C10: (c) => { c.config.packageRules = c.config.packageRules.filter((r) => r.groupName !== 'nx'); },
   C11: (c) => { writeFileSync(join(c.root, 'openwiki/x.md'), '---\nresource: package.json\n---\n'); },
 };

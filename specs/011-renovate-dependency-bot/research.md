@@ -243,7 +243,9 @@ The built-in `github-actions` manager extracts `actions/setup-node`'s `node-vers
 ## R10 — Dashboard, labels and the backlog (FR-014)
 
 **Decision**:
-- `dependencyDashboard: true`, with `dependencyDashboardLabels: ["status/bot-managed"]`.
+- `dependencyDashboard: { "enabled": true, "labels": ["status/bot-managed"] }`. Renovate 44 takes this one object. The
+  older `dependencyDashboard: true` plus `dependencyDashboardLabels` pair is a config migration that `--strict` refuses
+  (measured on PR #63's first `sast` run), so rule C9 fails the legacy shape offline.
 - `backlog.mjs ready` **excludes** any item carrying `status/bot-managed`.
 - The label joins the taxonomy that `backlog.mjs labels` creates, together with `dependencies` and `security`, the labels
   bot PRs carry.

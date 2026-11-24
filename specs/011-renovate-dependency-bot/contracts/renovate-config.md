@@ -14,7 +14,7 @@ the requirement it holds up. A failure prints the rule ID, the file and the offe
 | **C6** | Every detected pin is managed or excluded (data-model, Managed pin). Every custom manager uses `managerFilePatterns`, never `fileMatch`, and captures at least one pin. Every exclusion matches at least one pin. | FR-008, SC-002 |
 | **C7** | Every hold carries `Why:`, `item #N` and `Re-check:`. Every approval rule carries `Why:` and `Re-check:`. One rule sets `dependencyDashboardApproval: true` for `matchUpdateTypes: ["major"]`, and no rule sets it on a `patch` or `minor` track except the `spec kit` group. | FR-010, FR-011 |
 | **C8** | Each version-and-checksum pair has a `packageRules` entry whose `postUpgradeTasks.commands` is exactly `node scripts/refresh-pin-checksum.mjs <pin>`, with `fileFilters` naming the pin's file. Each such command matches the workflow's `RENOVATE_ALLOWED_COMMANDS`. | FR-009 |
-| **C9** | `dependencyDashboard` is `true`, and `dependencyDashboardLabels` is `["status/bot-managed"]`. | FR-014, SC-005 |
+| **C9** | `dependencyDashboard` is the object `{ "enabled": true, "labels": ["status/bot-managed"] }`. The legacy `dependencyDashboard: true` + `dependencyDashboardLabels` pair fails: renovate@44 `--strict` refuses it as a config migration (measured on PR #63). | FR-014, SC-005 |
 | **C10** | Every lockstep group in data-model.md is one `groupName`, whose matchers cover every member (for example `matchManagers` lists both `npm` and `custom.regex` for `nx`). The cooling-off holds too: the `*` rule's `minimumReleaseAge` is "3 days", and docker `pinDigest`/`digest` updates are `timestamp-optional`. | FR-006, FR-007 |
 | **C11** | No `openwiki/**/*.md` page's `resource` is a file any manager rewrites. | ADR-0002, spec edge case |
 
@@ -30,8 +30,7 @@ the requirement it holds up. A failure prints the rule ID, the file and the offe
   "prConcurrentLimit": 6,
   "labels": ["dependencies"],
   "rebaseWhen": "conflicted",
-  "dependencyDashboard": true,
-  "dependencyDashboardLabels": ["status/bot-managed"],
+  "dependencyDashboard": { "enabled": true, "labels": ["status/bot-managed"] },
   "osvVulnerabilityAlerts": true,
   "vulnerabilityAlerts": { "labels": ["security"], "schedule": [], "minimumReleaseAge": "12 hours" },
   "lockFileMaintenance": { "enabled": true, "schedule": ["* 5-6 * * 3"] },

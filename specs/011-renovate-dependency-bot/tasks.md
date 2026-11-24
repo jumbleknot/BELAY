@@ -403,7 +403,8 @@ the forge.
   - **Scenarios covered**: US5-AC2, FR-014, SC-005
   - **Verify RED**: `node --test --test-name-pattern "bot-managed" scripts/__tests__/backlog.test.mjs` → expected: ≥3 failing — the item is listed
 - [X] T043 [P] [US5] Tests in `RC` for rule **C9**: `dependencyDashboard` false or absent fails, and
-  `dependencyDashboardLabels` other than `["status/bot-managed"]` fails.
+  `dependencyDashboardLabels` other than `["status/bot-managed"]` fails. (Amended after PR #63's first CI run: renovate@44
+  takes `dependencyDashboard: { enabled, labels }`, so C9 now requires that object and fails the legacy pair.)
   - **Scenarios covered**: US5-AC1, US5-AC2
   - **Verify RED**: `node --test --test-name-pattern "C9" scripts/__tests__/check-renovate-config.test.mjs` → expected: ≥2 failing — `not implemented`
 

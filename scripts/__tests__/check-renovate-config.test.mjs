@@ -127,8 +127,7 @@ function goodConfig() {
     osvVulnerabilityAlerts: true,
     vulnerabilityAlerts: { labels: ['security'], schedule: [], minimumReleaseAge: '12 hours' },
     lockFileMaintenance: { enabled: true, schedule: [WINDOW] },
-    dependencyDashboard: true,
-    dependencyDashboardLabels: ['status/bot-managed'],
+    dependencyDashboard: { enabled: true, labels: ['status/bot-managed'] },
     customManagers: [],
     packageRules: [
       { matchPackageNames: ['*'], minimumReleaseAge: '3 days' },
@@ -387,11 +386,15 @@ test('C11 passes a page citing a runbook', () => {
 // ── C9: the dashboard ───────────────────────────────────────────────────────────────────────────
 
 test('C9 passes the planned dashboard', () => assert.deepEqual(run('C9'), []));
-test('C9 fails dependencyDashboard false or absent', () => {
-  assert.equal(run('C9', (c) => { c.config.dependencyDashboard = false; }).length, 1);
+test('C9 fails a dashboard that is disabled or absent', () => {
+  assert.equal(run('C9', (c) => { c.config.dependencyDashboard.enabled = false; }).length, 1);
   assert.equal(run('C9', (c) => { delete c.config.dependencyDashboard; }).length, 1);
 });
-test('C9 fails a dashboard label other than status/bot-managed', () => assert.equal(run('C9', (c) => { c.config.dependencyDashboardLabels = ['renovate']; }).length, 1));
+test('C9 fails a dashboard label other than status/bot-managed', () => assert.equal(run('C9', (c) => { c.config.dependencyDashboard.labels = ['renovate']; }).length, 1));
+test('C9 fails the legacy dependencyDashboard: true + dependencyDashboardLabels shape (renovate@44 --strict refuses it as a migration)', () => {
+  const v = run('C9', (c) => { c.config.dependencyDashboard = true; c.config.dependencyDashboardLabels = ['status/bot-managed']; });
+  assert.ok(v.some((x) => /migration|object/.test(x.detail)));
+});
 
 // ── selftest ────────────────────────────────────────────────────────────────────────────────────
 
