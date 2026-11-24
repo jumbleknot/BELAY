@@ -1,0 +1,128 @@
+# The dependency bot (feature 011, ADR-0004, backlog item 47). Renovate runs against this repository as
+# the dedicated `belay-renovate` account and PROPOSES updates as pull requests. It never merges:
+# automerge is off everywhere (renovate.json, held by scripts/check-renovate-config.mjs rule C1). CI
+# judges every bot PR like any other, and a human merges.
+#
+# TWO CRONS, TWO JOBS (research R2, R4). Both are in UTC, and renovate.json's timezone is UTC too, so
+# daylight saving can never move the window off its trigger. That was MCM's worst silent failure:
+# four weekly windows were lost.
+#   - 01:17, 07:17, 13:17 and 19:17 every day: the SECURITY channel. These times fall outside the
+#     window, so routine updates defer (`not-scheduled`), while vulnerability fixes, which ignore the
+#     schedule, land within about 18 hours of a fixed release.
+#   - Wednesday 05:00: the routine WINDOW (`* 5-6 * * 3`), after Tuesday's image sweep, with at most
+#     prHourlyLimit (4) new PRs, lock files first.
+# check-renovate-config.mjs rules C2 and C3 hold both relations, so an edit here that breaks them
+# fails scripts:test.
+#
+# A DISPATCH DEFAULTS TO A DRY RUN (FR-016). A dispatch that opens PRs by accident is the worse
+# failure. This forge cannot show a step's resolved expression or its log through the API, so the
+# 'Publish dispatch mode' step records the resolved mode as the commit status renovate/mode.
+#
+# A RUN THAT DID NOTHING IS NOT GREEN (FR-015, research R11). The preflight fails by name on a
+# missing or refused token. The verdict step then judges Renovate's own JSON log: an ERROR, a refused
+# lookup, or a repository that never finished `done` fails the run. It posts renovate/verdict on the
+# commit, because a scheduled run has no other readable record.
+#
+# The belay runner, never kvm: the bot runs no PR code, but it holds a token that can push branches.
+#
+# OPERATOR PREREQUISITES (one time, never in git): the Actions secret RENOVATE_TOKEN (the bot account's
+# token) and, optionally, RENOVATE_GITHUB_COM_TOKEN (a github.com read token). See docs/runbooks/renovate.md.
+name: renovate
+
+on:
+  schedule:
+    - cron: '17 1,7,13,19 * * *'
+    - cron: '0 5 * * 3'
+  workflow_dispatch:
+    inputs:
+      dryRun:
+        description: 'Dry run (log the PRs it would open, create nothing)'
+        type: boolean
+        default: true
+
+concurrency:
+  group: renovate
+  cancel-in-progress: false
+
+jobs:
+  renovate:
+    runs-on: belay
+    timeout-minutes: 45
+    env:
+      # THE ONE assignment of the run's mode, at job level, so the mode status and the run read the same
+      # value. A schedule is always live; a dispatch is a dry run unless dryRun is false.
+      RENOVATE_DRY_RUN: ${{ (github.event_name == 'workflow_dispatch' && inputs.dryRun) && 'full' || '' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # BEFORE the pnpm install: install-pnpm.sh installs into whichever Node is on PATH, and Renovate's
+      # engines.node must be met by the runtime that runs it (MCM measured both orders failing).
+      - name: Set up Node (constitution pin)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 26.13.1
+      # Renovate regenerates pnpm-lock.yaml with the pnpm on PATH. Without it the lock-file channel dies
+      # silently (rule C5).
+      - name: Install pnpm (version from package.json packageManager)
+        run: bash scripts/ci-log-step.sh renovate-install-pnpm bash scripts/install-pnpm.sh
+      # check-renovate-config.mjs imports `yaml` (workflow-deps-installed.guard.test.mjs).
+      - name: Install workspace dependencies (frozen lockfile)
+        run: bash scripts/ci-log-step.sh renovate-install-deps pnpm install --frozen-lockfile
+      - name: Publish dispatch mode (renovate/mode)
+        if: ${{ always() && github.event_name == 'workflow_dispatch' }}
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/ci-log-step.sh renovate-publish-mode node scripts/check-renovate-config.mjs --publish-mode
+      - name: Preflight the bot credential
+        env:
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+        run: bash scripts/ci-log-step.sh renovate-preflight node scripts/check-renovate-config.mjs --preflight
+      # Blocking: a config this Renovate rejects is a bot already silently mismanaging the repository.
+      # This catches a release that changes the meaning of an unchanged config, which no PR would run.
+      # `--before` = three days ago: the bot, which holds a write token, is held to the same cooling-off
+      # as what it proposes, and a just-published tarball cannot 404 the run (MCM measured both).
+      - name: Validate renovate.json (strict, at the pinned version)
+        run: bash scripts/ci-log-step.sh renovate-validate-config npx --yes --before="$(node -e 'process.stdout.write(new Date(Date.now()-3*864e5).toISOString())')" --package renovate@$(node scripts/check-renovate-config.mjs --print-renovate-version) -- renovate-config-validator --strict --no-global renovate.json
+      - name: Run Renovate
+        env:
+          RENOVATE_PLATFORM: gitea
+          RENOVATE_ENDPOINT: ${{ github.server_url }}/api/v1/
+          RENOVATE_REPOSITORIES: ${{ github.repository }}
+          RENOVATE_AUTODISCOVER: 'false'
+          # A missing renovate.json fails the run; the bot never opens an onboarding PR of its own.
+          RENOVATE_ONBOARDING: 'false'
+          RENOVATE_REQUIRE_CONFIG: required
+          RENOVATE_TOKEN: ${{ secrets.RENOVATE_TOKEN }}
+          # Optional; an empty no-op until the secret exists. RENOVATE_-prefixed: Forgejo reserves GITHUB_.
+          RENOVATE_GITHUB_COM_TOKEN: ${{ secrets.RENOVATE_GITHUB_COM_TOKEN }}
+          # Docker Hub answers 403 to anonymous requests from page 11; past it every image update shows
+          # "pending" for ever (MCM). It is a global-only option, so it can only be set here.
+          RENOVATE_DOCKER_MAX_PAGES: '10'
+          # The only post-upgrade task: the checksum refresh for a version-and-sha256 pair (rule C8).
+          RENOVATE_ALLOWED_COMMANDS: '["^node scripts/refresh-pin-checksum\\.mjs (trivy|rustup-init|cargo-audit)$"]'
+          LOG_FORMAT: json
+          LOG_LEVEL: info
+          RENOVATE_LOG_FILE: renovate-log.ndjson
+          RENOVATE_LOG_FILE_LEVEL: debug
+          COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+        run: bash scripts/ci-log-step.sh renovate npx --yes --before="$(node -e 'process.stdout.write(new Date(Date.now()-3*864e5).toISOString())')" renovate@$(node scripts/check-renovate-config.mjs --print-renovate-version)
+      - name: Judge the run and publish renovate/verdict
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/ci-log-step.sh renovate-verdict node scripts/check-renovate-config.mjs --run-verdict renovate-log.ndjson --publish-verdict
+      - name: Upload the Renovate log
+        if: always()
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3
+        with:
+          name: renovate-log
+          path: renovate-log.ndjson
+          retention-days: 7
+      - name: Publish failure digest
+        if: always()
+        continue-on-error: true
+        env:
+          CI_DIGEST_TOKEN: ${{ secrets.CI_DIGEST_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_DIGEST_JOB_STATUS: ${{ job.status }}
+        run: node scripts/ci-failure-digest.mjs

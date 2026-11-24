@@ -47,17 +47,18 @@ test('setup-node pins 26.13.1 and comes before the pnpm install', () => {
   assert.ok(node < idx(/install-pnpm\.sh/), 'setup-node must precede install-pnpm.sh');
 });
 
-test('the preflight names RENOVATE_TOKEN, calls GET /user, and never echoes the token', () => {
-  const pre = steps()[idx(/preflight/i)];
-  assert.ok(pre, 'no preflight step');
-  assert.match(pre.run, /RENOVATE_TOKEN/);
-  assert.match(pre.run, /\/api\/v1\/user/);
-  assert.doesNotMatch(pre.run, /echo[^\n]*\$\{?RENOVATE_TOKEN/);
+test('the preflight checks RENOVATE_TOKEN from the environment, never on argv, before Renovate runs', () => {
+  const at = idx(/--preflight/);
+  assert.ok(at >= 0, 'no preflight step');
+  const pre = steps()[at];
+  assert.equal(pre.env.RENOVATE_TOKEN, '${{ secrets.RENOVATE_TOKEN }}');
+  assert.doesNotMatch(pre.run, /curl|RENOVATE_TOKEN/, 'the token must not be on a command line');
+  assert.ok(at < idx(/^Run Renovate /), 'the preflight must precede the run');
 });
 
 test('the validator and the run use the same version expression, installed --before', () => {
   const version = /\$\(node scripts\/check-renovate-config\.mjs --print-renovate-version\)/;
-  for (const re of [/renovate-config-validator --strict --no-global renovate\.json/, /npx[^\n]*renovate@/]) {
+  for (const re of [/renovate-config-validator --strict --no-global renovate\.json/, /^Run Renovate /]) {
     const s = steps()[idx(re)];
     assert.ok(s, String(re));
     assert.match(s.run, version);
@@ -66,7 +67,7 @@ test('the validator and the run use the same version expression, installed --bef
 });
 
 test('the run environment: platform, endpoint, no autodiscover, no onboarding, docker pages, allowed commands, JSON log', () => {
-  const env = stepEnv(/npx[^\n]*renovate@/);
+  const env = stepEnv(/^Run Renovate /);
   assert.equal(env.RENOVATE_PLATFORM, 'gitea');
   assert.equal(env.RENOVATE_ENDPOINT, '${{ github.server_url }}/api/v1/');
   assert.equal(env.RENOVATE_REPOSITORIES, '${{ github.repository }}');
@@ -92,6 +93,8 @@ test('a dispatch publishes its resolved mode as renovate/mode, never failing the
   const m = steps()[idx(/renovate\/mode/)];
   assert.ok(m, 'no mode step');
   assert.match(String(m.if), /always\(\).*workflow_dispatch/);
+  assert.match(m.run, /check-renovate-config\.mjs --publish-mode/);
+  assert.equal(m.env.GITHUB_TOKEN, '${{ github.token }}');
   assert.equal(m['continue-on-error'], true);
 });
 

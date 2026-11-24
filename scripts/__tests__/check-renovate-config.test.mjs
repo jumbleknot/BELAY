@@ -403,3 +403,37 @@ test('selftest: every rule can fail, and the selftest passes', () => {
 
 test.after(() => { /* temp trees are left to the OS temp cleaner, as in the other suites */ });
 void rmSync;
+
+// ── the workflow's preflight and dispatch-mode steps (tokens from the environment, never argv) ──
+
+import { preflightToken, publishMode } from '../check-renovate-config.mjs';
+const FENV = { GITHUB_SERVER_URL: 'https://forge.example', GITHUB_REPOSITORY: 'o/r', GITHUB_SHA: 'c'.repeat(40), GITHUB_TOKEN: 'run-token' };
+
+test('preflight: an empty RENOVATE_TOKEN fails, naming the secret', async () => {
+  const r = await preflightToken({ env: { ...FENV, RENOVATE_TOKEN: '' }, fetch: async () => { throw new Error('must not call'); } });
+  assert.equal(r.ok, false);
+  assert.match(r.line, /RENOVATE_TOKEN is empty/);
+});
+test('preflight: GET /api/v1/user refused fails with the status, and never prints the token', async () => {
+  const calls = [];
+  const r = await preflightToken({ env: { ...FENV, RENOVATE_TOKEN: 'sekrit-123' }, fetch: async (url, init) => { calls.push({ url, init }); return { ok: false, status: 401 }; } });
+  assert.equal(r.ok, false);
+  assert.match(r.line, /401/);
+  assert.doesNotMatch(r.line, /sekrit-123/);
+  assert.equal(calls[0].url, 'https://forge.example/api/v1/user');
+  assert.equal(calls[0].init.headers.Authorization, 'token sekrit-123');
+});
+test('preflight: an accepted token passes', async () => {
+  const r = await preflightToken({ env: { ...FENV, RENOVATE_TOKEN: 't' }, fetch: async () => ({ ok: true, status: 200 }) });
+  assert.equal(r.ok, true);
+});
+test('publishMode: posts renovate/mode as DRY RUN or LIVE, with the run token', async () => {
+  for (const [dry, want] of [['full', /DRY RUN/], ['', /LIVE/]]) {
+    const calls = [];
+    await publishMode({ env: { ...FENV, RENOVATE_DRY_RUN: dry }, fetch: async (url, init) => { calls.push({ url, init }); return { ok: true, status: 201 }; }, log: () => {} });
+    const body = JSON.parse(calls[0].init.body);
+    assert.equal(body.context, 'renovate/mode');
+    assert.match(body.description, want);
+    assert.equal(calls[0].init.headers.Authorization, 'token run-token');
+  }
+});

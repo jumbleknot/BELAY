@@ -16,6 +16,7 @@
 //   node scripts/check-renovate-config.mjs --selftest              # prove every rule can fail; exit 0 / 1
 //   node scripts/check-renovate-config.mjs --print-renovate-version
 //   node scripts/check-renovate-config.mjs --run-verdict <log.ndjson> [--publish-verdict]
+//   node scripts/check-renovate-config.mjs --preflight | --publish-mode   # the workflow's credential and mode steps
 //   node scripts/check-renovate-config.mjs --root <dir>            # another root (tests)
 //
 // Exit codes: 0 pass · 1 a violation, a failed run or a broken selftest · 2 bad arguments or unreadable input.
@@ -39,7 +40,7 @@ export const RENOVATE_VERSION = '44.257.6';
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_REPOSITORY = 'jumbleknot/BELAY';
 const DASHBOARD_LABEL = 'status/bot-managed';
-const USAGE = 'Usage: check-renovate-config.mjs [--root <dir>] | --selftest | --print-renovate-version | --run-verdict <log> [--publish-verdict]';
+const USAGE = 'Usage: check-renovate-config.mjs [--root <dir>] | --selftest | --print-renovate-version | --run-verdict <log> [--publish-verdict] | --preflight | --publish-mode';
 export const RULE_IDS = ['C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'C7', 'C8', 'C9', 'C10', 'C11'];
 
 // ── the pin inventory (research R8, data-model.md "Managed pin") ─────────────────────────────────
@@ -638,6 +639,39 @@ export function renovateConfigSelftest() {
 
 // ── CLI ──────────────────────────────────────────────────────────────────────────────────────────
 
+// ── the workflow's preflight and dispatch-mode steps ─────────────────────────────────────────────
+// Here rather than as `curl -H "Authorization: token $X"` in the workflow, which would put a credential
+// on a process's argv (scripts/check-no-argv-secrets.mjs exists for exactly that).
+
+/** Fail the run by name, before Renovate starts, when its credential is missing or refused (FR-015). */
+export async function preflightToken({ env = process.env, fetch: doFetch = fetch } = {}) {
+  if (!env.RENOVATE_TOKEN?.trim()) {
+    return { ok: false, line: '❌ RENOVATE_TOKEN is empty: add the bot account\'s token as the repository Actions secret RENOVATE_TOKEN (docs/runbooks/renovate.md)' };
+  }
+  let status;
+  try {
+    const res = await doFetch(`${env.GITHUB_SERVER_URL}/api/v1/user`, { headers: { Authorization: `token ${env.RENOVATE_TOKEN}` }, signal: AbortSignal.timeout(30_000) });
+    status = res.status;
+    if (res.ok) return { ok: true, line: '✅ RENOVATE_TOKEN accepted (GET /api/v1/user → 200)' };
+  } catch (e) { return { ok: false, line: `❌ GET /api/v1/user failed before an answer: ${e.message}` }; }
+  return { ok: false, line: `❌ GET /api/v1/user with RENOVATE_TOKEN answered HTTP ${status}: the token is expired, revoked or lacks read:user` };
+}
+
+/** On a dispatch, record the RESOLVED mode as renovate/mode: this forge shows no step's resolved expression. */
+export async function publishMode({ env = process.env, fetch: doFetch = fetch, log = console.log, error = console.error } = {}) {
+  const mode = env.RENOVATE_DRY_RUN ? 'DRY RUN (creates nothing)' : 'LIVE';
+  log(`[renovate] resolved mode: ${mode}`);
+  try {
+    const res = await doFetch(`${env.GITHUB_SERVER_URL}/api/v1/repos/${env.GITHUB_REPOSITORY}/statuses/${env.GITHUB_SHA}`, {
+      method: 'POST',
+      headers: { Authorization: `token ${env.GITHUB_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ context: 'renovate/mode', state: 'success', description: mode }),
+    });
+    if (!res.ok) { error(`[renovate] ✗ the renovate/mode POST was refused: HTTP ${res.status}`); return 1; }
+  } catch (e) { error(`[renovate] ✗ the renovate/mode POST failed: ${e.message}`); return 1; }
+  return 0;
+}
+
 export async function main(argv = process.argv.slice(2), { env = process.env, log = console.log, error = console.error } = {}) {
   if (argv.includes('--help')) { log(USAGE); return 0; }
   if (argv[0] === '--print-renovate-version') { log(RENOVATE_VERSION); return 0; }
@@ -648,6 +682,12 @@ export async function main(argv = process.argv.slice(2), { env = process.env, lo
     log(`[renovate-config] ✅ selftest: ${proved.join(', ')} each fail a broken fixture and pass a compliant one`);
     return 0;
   }
+  if (argv[0] === '--preflight') {
+    const r = await preflightToken({ env });
+    (r.ok ? log : error)(`[renovate] ${r.line}`);
+    return r.ok ? 0 : 1;
+  }
+  if (argv[0] === '--publish-mode') return publishMode({ env, log, error });
   if (argv[0] === '--run-verdict') {
     if (!argv[1]) { error(USAGE); return 2; }
     const verdict = judgeRun(readLog(argv[1]), { repository: env.GITHUB_REPOSITORY || DEFAULT_REPOSITORY });
