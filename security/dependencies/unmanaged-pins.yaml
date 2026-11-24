@@ -1,0 +1,34 @@
+# Pins the dependency bot deliberately does not manage (feature 011, data-model.md "Exclusion").
+#
+# scripts/check-renovate-config.mjs (rule C6) fails on any pinned version or digest in the tree that is
+# neither managed by renovate.json nor listed here. It also fails an entry here that matches no pin, so
+# a stale exclusion is noticed. An exclusion is a property of the file, not a waiver of a finding: it
+# has no expiry.
+#
+# Fields: file (repository-relative), match (a regex the pinned line must match), reason (≥ 20
+# characters), addedBy.
+
+- file: '.devcontainer/devcontainer-lock.json'
+  match: 'docker-outside-of-docker@sha256'
+  reason: 'Written by the devcontainer CLI when a feature is resolved. No Renovate manager refreshes it, and the bot job has no devcontainer CLI (research R6).'
+  addedBy: 'claude (feature 011, T035)'
+- file: 'security/images/allowlist.yaml'
+  match: "image: 'node:26-bookworm@sha256"
+  reason: 'An image-scan allowlist key, not an install. The base re-pin PR deletes it by hand, because its key no longer matches (docs/runbooks/renovate.md).'
+  addedBy: 'claude (feature 011, T035)'
+- file: 'security/sast/rules/belay-ci-curl-pipe-shell.test.yml'
+  match: 'astral\.sh/uv/'
+  reason: 'A test fixture that proves the curl-pipe-shell rule accepts the pinned uv installer. It installs nothing.'
+  addedBy: 'claude (feature 011, T035)'
+- file: '.specify/extensions/agent-context/extension.yml'
+  match: 'speckit_version'
+  reason: 'A compatibility range owned by Spec Kit and rewritten by `specify integration upgrade`, not a pin.'
+  addedBy: 'claude (feature 011, T035)'
+- file: '.specify/extensions/git/extension.yml'
+  match: 'speckit_version'
+  reason: 'A compatibility range owned by Spec Kit and rewritten by `specify integration upgrade`, not a pin.'
+  addedBy: 'claude (feature 011, T035)'
+- file: '.specify/workflows/speckit/workflow.yml'
+  match: 'speckit_version'
+  reason: 'A compatibility range owned by Spec Kit and rewritten by `specify integration upgrade`, not a pin.'
+  addedBy: 'claude (feature 011, T035)'

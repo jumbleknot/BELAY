@@ -36,6 +36,7 @@ import {
   describeTruncation,
   resolveNames,
   selectReadyItems,
+  excludedNote,
   distillItem,
   readBodyFrom,
   findDuplicateOpenItem,
@@ -500,11 +501,15 @@ test('the taxonomy covers type, priority and status families', () => {
     'priority/p3',
     'status/blocked',
     'status/needs-spec',
+    // Feature 011: the dependency bot's dashboard and PR labels (BELAY now runs Renovate too).
+    'status/bot-managed',
+    'dependencies',
+    'security',
   ]) {
     assert.ok(names.includes(n), `taxonomy missing ${n}`);
   }
-  // MovieCollectionManager's `status/bot-managed` (its Renovate dashboard) has no BELAY counterpart.
-  assert.equal(names.length, 9, `expected exactly the nine BELAY labels, got: ${names.join(', ')}`);
+  // Still exact, so an unplanned label fails here rather than appearing on the forge unannounced.
+  assert.equal(names.length, 12, `expected exactly the twelve BELAY labels, got: ${names.join(', ')}`);
 });
 
 test('form validation is driven by the ENUMERATED templates, not by issue_config/validate', () => {
@@ -734,4 +739,32 @@ test('(dep-cmd) a valid dep is recorded with exactly one POST, and --remove with
   assert.equal(remove.code, 0);
   assert.equal(remove.writes.length, 1);
   assert.match(remove.writes[0], /^DELETE .*\/issues\/1\/dependencies$/);
+});
+
+// ── feature 011: the dependency bot's labels, and its dashboard kept out of `ready` ────────────────
+
+test('bot labels: the taxonomy creates status/bot-managed, dependencies and security, each described', () => {
+  for (const name of ['status/bot-managed', 'dependencies', 'security']) {
+    const l = TAXONOMY.find((x) => x.name === name);
+    assert.ok(l, `${name} missing from the taxonomy`);
+    assert.ok(l.description && l.color, `${name} needs a description and a colour`);
+  }
+});
+
+const botItem = (number, labels) => ({ number, title: `item ${number}`, labels: labels.map((name) => ({ name })) });
+
+test('bot-managed: selectReadyItems drops the dashboard even when unblocked and labelled priority/p1', () => {
+  const { ready, excluded } = selectReadyItems([botItem(7, ['status/bot-managed', 'priority/p1']), botItem(8, ['priority/p2'])], { 8: [] });
+  assert.deepEqual(ready.map((i) => i.number), [8]);
+  assert.deepEqual(excluded, [{ number: 7, reason: 'status/bot-managed' }]);
+});
+
+test('bot-managed: the text note counts what was not listed', () => {
+  assert.equal(excludedNote([{ number: 7, reason: 'status/bot-managed' }]), '(1 bot-managed item(s) not listed)');
+  assert.equal(excludedNote([]), null);
+});
+
+test('bot-managed: an ordinary item is still listed, and nothing is excluded', () => {
+  const { ready, excluded } = selectReadyItems([botItem(9, ['priority/p1'])], { 9: [] });
+  assert.deepEqual([ready.length, excluded.length], [1, 0]);
 });
