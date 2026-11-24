@@ -18,7 +18,9 @@ whenever its trigger is in the diff, even outside a Spec Kit feature.
       or justified in `tasks.md` (constitution, **Documentation**; see
       [doc drift](../runbooks/doc-drift.md)).
 - [ ] `pnpm nx run scripts:lint`: every gate and selftest passes.
-- [ ] `pnpm nx run scripts:test`: every script test passes, **with a skip count you can explain**.
+- [ ] `pnpm nx run scripts:test`: every script test passes, **with a skip count you can explain**, and
+      the last line is `[coverage] ✅`. On `✗`, add tests or delete code nobody needs. Never lower the
+      floor in `scripts/coverage-policy.yaml` to get a change through.
 - [ ] **If the diff touches `.specify/`, `.claude/skills/speckit-*` or `docs/runbooks/spec-kit.md`:**
       `node scripts/check-speckit-overrides.mjs` passes. It also runs inside `scripts:lint`. Run it
       on its own first, because its failure codes name the fix.

@@ -276,17 +276,17 @@ wrongly (FR-007, SC-005).
 
 - [x] T019 [US4] (done in the spec commit `2e2dbc2`) The register's spec-before-code row records the item 54 decision
   - **Done when**: `openwiki/invariants/unenforced-rules.md` says "decided not to build" with the reason, and names no open item
-- [ ] T020 [US4] `openwiki/invariants/unenforced-rules.md`: **remove** the coverage row, because `scripts/` is now gated and no other
+- [x] T020 [US4] `openwiki/invariants/unenforced-rules.md`: **remove** the coverage row, because `scripts/` is now gated and no other
   project exists yet. Add under Gotchas that a new project with tests adds its own coverage gate, or a row here, in the PR
   that adds it. Update the page's `description` and the matching line in `openwiki/invariants/index.md`
   - **Done when**: no row claims nothing measures coverage, and the OKF gate passes
-- [ ] T021 [P] [US4] `openwiki/invariants/testing-tiers.md`: add a **Coverage** row to "What exists today" (70% of lines per
+- [x] T021 [P] [US4] `openwiki/invariants/testing-tiers.md`: add a **Coverage** row to "What exists today" (70% of lines per
   module and in total, a missing module fails, run by `scripts:test`, gates a merge) and adjust the Unit row's command
   - **Done when**: the row exists, and the page states the floor's one home (`scripts/coverage-policy.yaml`)
-- [ ] T022 [P] [US4] `openwiki/invariants/nx-task-runner.md:21`: the `scripts:test` row reads
+- [x] T022 [P] [US4] `openwiki/invariants/nx-task-runner.md:21`: the `scripts:test` row reads
   `node scripts/check-coverage.mjs --run`: the tests under coverage, then the gate. Add `check-coverage` to the `scripts:lint` row
   - **Done when**: both rows match `scripts/project.json`
-- [ ] T023 [P] [US4] `openwiki/invariants/feature-validation-checklist.md:21`: the `scripts:test` item also requires the
+- [x] T023 [P] [US4] `openwiki/invariants/feature-validation-checklist.md:21`: the `scripts:test` item also requires the
   `[coverage] ✅` line, saying what to do on `✗`: add tests or delete dead code, never lower the floor
   - **Done when**: the item names the coverage verdict
 
@@ -294,25 +294,44 @@ wrongly (FR-007, SC-005).
 
 ## Phase 7: Polish & Cross-Cutting Concerns
 
-- [ ] T024 [P] `docs/runbooks/ci.md:46,56`: `scripts:test` runs every test under coverage, then the 70% line gate
+- [x] T024 [P] `docs/runbooks/ci.md:46,56`: `scripts:test` runs every test under coverage, then the 70% line gate
   (`check-coverage.mjs`), with its verdict last. Then refresh `openwiki/runbooks/ci.md` with `node scripts/wiki-refresh.mjs --diff`
   / `--record` (V17)
   - **Done when**: both lines are true, and `wiki-refresh.mjs --stale` is empty
-- [ ] T025 [P] `docs/repo-foundation-setup.md:218` (the `test` target's command) and `README.md:31` (`# script unit tests and the
+- [x] T025 [P] `docs/repo-foundation-setup.md:218` (the `test` target's command) and `README.md:31` (`# script unit tests and the
   coverage gate`)
-  - **Done when**: both name the gate
-- [ ] T026 **Close-out re-search**: re-run T002's searches. Every hit that states current procedure and is now untrue is fixed,
+  - **Done when**: `README.md:31` names the gate. `docs/repo-foundation-setup.md:218` → **no change**: it is a founding
+    playbook, and that line describes the `test` target as created at that step, which is still true there. The coverage
+    gate is a later addition, and writing it into that step would misdate it
+- [x] T026 **Close-out re-search**: re-run T002's searches. Every hit that states current procedure and is now untrue is fixed,
   or justified here
   - **Done when**: the result is recorded here
-- [ ] T027 Run [quickstart.md](quickstart.md) §1, §2, §4 and §6 locally. Revert every deliberate break. §3 (local against CI,
+  - **Recorded 2026-11-24**: the old command text `node --test "scripts/__tests__/*.test.mjs"` remains only at
+    `docs/repo-foundation-setup.md:218`, justified in T025. `docs/runbooks/ci.md:46` matches only because its rewritten
+    text now names the gate. No document says coverage is unmeasured
+- [x] T027 Run [quickstart.md](quickstart.md) §1, §2, §4 and §6 locally. Revert every deliberate break. §3 (local against CI,
   SC-003) and §5 (durations, SC-004) need the PR's CI run, so they are recorded with T029
   - **Done when**: each scenario's observed result is recorded here, including SC-001's three failure shapes and SC-005 (T018)
-- [ ] T028 Final validation, per `openwiki/invariants/feature-validation-checklist.md`:
+  - **Recorded 2026-11-24**:
+    - §1: T013. 1185 passed, 0 skipped, `✅ 39 modules`.
+    - §2, an untested new module (`scripts/zz-untested.mjs`): exit 1,
+      `✗ scripts/zz-untested.mjs — no coverage data …`, `❌ 1 of 40`.
+    - §2, a module below the floor: T014, `✗ scripts/sast-scan.mjs — 68.01%`.
+    - §2, a truncated report: **found a bug**. `--report <absolute path>` read as "missing" (`join` instead of `resolve`).
+      A test was added RED first, then fixed; it now fails closed with
+      `✗ malformed lcov record for scripts/backlog.mjs: no end_of_record`, exit 1.
+    - §2, a deleted report: `✗ coverage report coverage/scripts.lcov is missing …`, exit 1.
+    - §4: T018. §6: the register has no coverage row and records the item 54 decision; testing-tiers,
+      the checklist and the Nx page name the gate.
+- [x] T028 Final validation, per `openwiki/invariants/feature-validation-checklist.md`:
   - `pnpm nx run scripts:lint --skip-nx-cache`;
   - `pnpm nx run scripts:test --skip-nx-cache`, with `skipped 0` and `[coverage] ✅`;
   - `node scripts/wiki-refresh.mjs --stale`, which must be empty;
   - `node scripts/sast-scan.mjs --scope full` followed by `node scripts/check-sast-findings.mjs`, with 0 blocking.
   - **Done when**: all exit 0, recorded with their summary lines
+  - **Recorded 2026-11-24**: lint exit 0; test 1192 passed, 0 failed, 0 skipped, last line `[coverage] ✅ 39 modules ≥ 70% lines;
+    total 92.10% lines (81.11% branches, not gated); lowest: scripts/sast-scan.mjs 75.00%`; `--stale` empty; SAST full scan
+    0 blocking (the same 3 Semgrep and 1 pnpm-audit Medium findings as on `main`); the Spec Kit gate passes
 - [ ] T029 After the PR's first green run, record quickstart §3 and §5:
   - SC-003: the CI `[coverage]` summary line against the local one from T013, within 0.1 points;
   - SC-004: `node scripts/ci-status.mjs durations --job guardrails`, the `guardrails-test` step against the last runs on `main`.

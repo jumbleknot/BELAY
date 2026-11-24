@@ -374,3 +374,19 @@ test('selftest: a policy validator that accepts anything is caught', () => {
   const { failures } = coverageSelftest({ validatePolicy: (raw) => raw });
   assert.ok(failures.some((f) => /exception floor below 50|missing module/.test(f)), failures.join('\n'));
 });
+
+test('the gate alone: --report takes an ABSOLUTE path as given, and a truncated report fails closed', () => {
+  const root = project({ files: { 'scripts/full.mjs': FULL } });
+  const elsewhere = mkdtempSync(join(tmpdir(), 'belay-coverage-report-'));
+  try {
+    const abs = join(elsewhere, 'cut.lcov');
+    writeFileSync(abs, 'SF:scripts/full.mjs\nLF:5\nLH:');          // cut off mid-record
+    const r = cli(root, ['--report', abs]);
+    assert.equal(r.status, 1, r.out);
+    assert.doesNotMatch(r.out, /is missing/);
+    assert.match(r.out, /malformed lcov record for scripts\/full\.mjs/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+    rmSync(elsewhere, { recursive: true, force: true });
+  }
+});

@@ -43,7 +43,10 @@ A push to a branch with an open PR runs once, through the `pull_request` event. 
      - `check-openwiki-governance.mjs`: `AGENTS.md` stays an index within its size budget, `CLAUDE.md` stays the shim, and every concept is either derived or listed in `openwiki/protected.yaml`.
 
    Every gate exits 0 when clean, 1 on a finding or a broken selftest, and 2 on bad arguments or unreadable input. Fix a finding in the file it names; never weaken the gate to pass.
-6. `pnpm nx run scripts:test`, which runs every `scripts/__tests__/*.test.mjs`.
+6. `pnpm nx run scripts:test`, which runs every `scripts/__tests__/*.test.mjs` under Node's built-in coverage, then
+   the coverage gate (`scripts/check-coverage.mjs`). It fails if any source module or the total is below 70% of
+   lines, or a source module is missing from the report. The verdict is the step's last line, so the digest's
+   tail carries it. The floor and any exceptions live in `scripts/coverage-policy.yaml` (feature 009).
 7. The failure digest. It always runs and never changes the job's result.
 
 Steps 3 to 6 run through `scripts/ci-log-step.sh`. That script keeps each step's exit code and mirrors its output to the per-step log the digest reads.
@@ -53,7 +56,7 @@ Steps 3 to 6 run through `scripts/ci-log-step.sh`. That script keeps each step's
 ```bash
 pnpm install --frozen-lockfile     # once, and after any lockfile change
 pnpm nx run scripts:lint           # gates and selftests
-pnpm nx run scripts:test           # script unit tests
+pnpm nx run scripts:test           # script unit tests, then the 70% line-coverage gate
 node scripts/check-speckit-overrides.mjs   # the Spec Kit gate alone; needs no install
 ```
 

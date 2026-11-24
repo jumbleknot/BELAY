@@ -15,7 +15,7 @@
 // out), so the rules are unit-tested without running anything.
 import { spawnSync } from 'node:child_process';
 import { existsSync, globSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
-import { dirname, join, matchesGlob } from 'node:path';
+import { dirname, join, matchesGlob, resolve } from 'node:path';
 import { classifyExpiry, daysUntil, WARNING_WINDOW_DAYS } from './allowlist-expiry.mjs';
 import { isMain } from './lib/is-main.mjs';
 
@@ -312,7 +312,8 @@ async function loadPolicy(root) {
 }
 
 function gate({ root, reportPath, policy, modules, today }) {
-  const full = join(root, reportPath);
+  // resolve, not join: an absolute --report path is used as given (found by quickstart §2).
+  const full = resolve(root, reportPath);
   if (!existsSync(full)) throw new CoverageReportError(`coverage report ${reportPath} is missing: nothing was measured, so nothing passes`);
   const text = readFileSync(full, 'utf8');
   const verdict = judgeCoverage({ records: parseLcov(text), modules, policy, today });
