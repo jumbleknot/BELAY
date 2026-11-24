@@ -62,3 +62,9 @@ test('reaper: dispatch defaults to a dry run, and the apply decision goes throug
   assert.match(reap.run, /REAPER_APPLY/);
   assert.ok(at(s, /reap-merged-branches\.mjs --selftest/) < s.indexOf(reap));
 });
+
+test('reaper: the reap step carries CI_DIGEST_TOKEN, which reads branch protection (the run token gets 403)', () => {
+  const s = steps(load('branch-reaper.yml').wf, 'branch-reaper');
+  const reap = s[at(s, /reap-merged-branches\.mjs "\$@"/)];
+  assert.equal(reap.env.CI_DIGEST_TOKEN, '${{ secrets.CI_DIGEST_TOKEN }}');
+});

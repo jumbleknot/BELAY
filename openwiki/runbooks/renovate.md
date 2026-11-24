@@ -4,8 +4,8 @@ title: The dependency bot (Renovate) — what it proposes, when, and how it fail
 description: BELAY's self-hosted Renovate on the belay runner, as the restricted belay-renovate account — it proposes and never merges; a security channel four times a day and a Wednesday window in UTC; every pin managed or excluded, held to rules C1–C11 by check-renovate-config.mjs; version-and-sha256 pairs moved together and verified on every PR; the dashboard kept out of backlog ready; and a run judged from its own log, never its exit code.
 tags: [renovate, dependencies, supply-chain, ci, runbook]
 resource: docs/runbooks/renovate.md
-resource-sha256: 6b2cef4542e6e7bc6f13f67376c23dff02e9082a9261fa121f0340295d0557a3
-timestamp: 2026-11-24T12:34:46.728Z
+resource-sha256: fff74f78b6aa1b7fe9570a336c017ec4d93630b557a026bd8265f21884a0e722
+timestamp: 2026-11-24T12:44:11.104Z
 ---
 
 # The dependency bot (Renovate)
@@ -35,6 +35,8 @@ pull requests; CI judges them like any other, and a human merges. Automerge is o
     reports`: one line when healthy.
   - The bot's own run fails its verdict when that report is more than 8 days old.
   - A daily reaper deletes merged, unused branches, so the bot never reuses one.
+  - The run token gets 403 on `/branch_protections`, so that one read uses `CI_DIGEST_TOKEN`; without it the reaper
+    deletes nothing.
 
 ## Gotchas
 

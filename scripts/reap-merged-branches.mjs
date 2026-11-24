@@ -57,8 +57,11 @@ export function decideBranch({ name, date, inMain, onFirstParent, openPrHeads, p
 
 const defaultGit = (args) => spawnSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8' });
 
+// The run token is refused on /branch_protections (HTTP 403, measured 2026-11-24, branch-reaper run #95), so the
+// repository owner's CI_DIGEST_TOKEN (read:repository) reads it. Every other call keeps the run token.
 async function readProtections(env, doFetch) {
-  const res = await doFetch(`${env.GITHUB_SERVER_URL}/api/v1/repos/${env.GITHUB_REPOSITORY}/branch_protections`, { headers: { Authorization: `token ${env.GITHUB_TOKEN}` } });
+  const token = env.CI_DIGEST_TOKEN || env.GITHUB_TOKEN;
+  const res = await doFetch(`${env.GITHUB_SERVER_URL}/api/v1/repos/${env.GITHUB_REPOSITORY}/branch_protections`, { headers: { Authorization: `token ${token}` } });
   if (!res.ok) throw new Error(`GET /branch_protections: HTTP ${res.status}`);
   const list = await res.json();
   if (!Array.isArray(list)) throw new Error('GET /branch_protections: not a list');

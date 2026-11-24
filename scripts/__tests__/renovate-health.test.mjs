@@ -141,3 +141,12 @@ test('health main: --check-freshness --out writes stale, no-report-yet and missi
   assert.equal(readFileSync(out, 'utf8').trim(), 'missing');
 });
 test('health main: --selftest passes', async () => assert.equal(await main(['--selftest'], deps(world())), 0));
+
+test('health main: branch protection is read with CI_DIGEST_TOKEN, other reads with GITHUB_TOKEN (run token 403, measured 2026-11-24)', async () => {
+  const w = world();
+  const seen = {};
+  const f = w.fetch;
+  const spy = async (url, init = {}) => { const k = url.includes('/branch_protections') ? 'protections' : url.includes('/branches') ? 'branches' : null; if (k) seen[k] = init.headers?.Authorization; return f(url, init); };
+  await main(['--dry-run'], { ...deps(w), fetch: spy });
+  assert.deepEqual(seen, { protections: 'token write', branches: 'token read' });
+});

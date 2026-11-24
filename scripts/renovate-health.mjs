@@ -121,9 +121,12 @@ function forge(env, doFetch) {
   const auth = (t) => ({ Authorization: `token ${t}` });
   return {
     base,
+    protectionsToken: env.CI_DIGEST_TOKEN || read,
     list: (path, opts = {}) => listAll(path, { fetch: doFetch, token: read, base, ...opts }),
-    async get(path) {
-      const res = await doFetch(`${base}${path}`, { headers: auth(read) });
+    // `as` picks the token: the run token is refused on /branch_protections (403, measured 2026-11-24, run #94),
+    // so that one read uses the owner's CI_DIGEST_TOKEN (read:repository).
+    async get(path, as = read) {
+      const res = await doFetch(`${base}${path}`, { headers: auth(as) });
       if (!res.ok) throw new Error(`GET ${path}: HTTP ${res.status}`);
       return res.json();
     },
@@ -151,7 +154,7 @@ async function readFacts(f, git, config) {
   const branches = (await f.list('/branches')).filter((b) => b.name.startsWith('renovate/'));
   const botPrs = (await f.list('/pulls?state=open')).filter((p) => (p.head?.ref ?? '').startsWith('renovate/'));
   let globs = null;
-  try { globs = parseRequiredGlobs(await f.get('/branch_protections'), 'main'); } catch { globs = null; }
+  try { globs = parseRequiredGlobs(await f.get('/branch_protections', f.protectionsToken), 'main'); } catch { globs = null; }
   const classified = branches.map((b) => {
     const sha = b.commit?.id;
     const pr = botPrs.find((p) => p.head.ref === b.name) ?? null;

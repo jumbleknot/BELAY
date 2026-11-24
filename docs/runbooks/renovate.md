@@ -213,7 +213,12 @@ stale <N>d`. A tracking issue deleted after reports existed reads `missing`, whi
 - its tip is at least 6 hours old.
 
 A short or unreadable listing deletes nothing. A scheduled run deletes; a dispatch is a dry run unless `apply` is
-ticked:
+ticked.
+
+**Tokens.** The run's own token does every read and the delete, which is a leased `git push`. The one exception is
+`/branch_protections`: the run token gets HTTP 403 there (measured 2026-11-24), so both the reaper and the health
+report read it with `CI_DIGEST_TOKEN`. Without that secret, the reaper deletes nothing and fails, and the report shows
+`branch protection unreadable`.
 
 ```bash
 node scripts/forge-pr.mjs dispatch branch-reaper.yml --ref main                     # dry run: lists keep / would reap
