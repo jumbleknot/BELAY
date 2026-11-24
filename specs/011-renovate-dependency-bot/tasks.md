@@ -494,7 +494,7 @@ the forge.
   need `renovate.json` on `main`, so they run **after the merge**, and their results go on item #47 (SC-006). Item #47
   stays open until §4 is recorded.
   - **Done when**: the offline commands pass, and the post-merge steps are listed in the PR body.
-- [ ] T062 **Open the PR** from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
+- [X] T062 **Open the PR** from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
   1. `git push origin HEAD:011-renovate-dependency-bot`
   2. `node scripts/forge-pr.mjs open --head 011-renovate-dependency-bot --title "Feature 011: a self-hosted dependency bot (item #47)" --body-file <file>`
   3. `node scripts/ci-status.mjs watch --pr <n>`, until it exits 0
@@ -503,6 +503,7 @@ the forge.
   Tick this task in the branch's LAST commit and quote the branch and the PR number. **CI evidence is never recorded
   here**: a file cannot hold the CI result of the commit that contains it. The run ids, the CI verdict and the merge sha
   go in the PR's closing comment and in item #47's.
+  - **Done**: branch `011-renovate-dependency-bot`, PR #63. CI evidence goes in the PR's closing comment and item #47's.
 
 ---
 
