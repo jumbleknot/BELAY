@@ -119,6 +119,20 @@ jobs:
           CI_LOG_STEP
       - name: Install workspace dependencies (frozen lockfile; pnpm audit reads it)
         run: bash scripts/ci-log-step.sh sast-install-deps pnpm install --frozen-lockfile
+      # Feature 011, the dependency bot's two PR checks.
+      # (1) renovate.json is validated STRICTLY at the bot's pinned version on every PR, so an invalid
+      #     edit cannot merge. A bot PR that bumps RENOVATE_VERSION validates the config with the NEW
+      #     version here, before anything runs it. `--no-global` is load-bearing: without it the file is
+      #     read as a global config and a stale key exits 0 (MCM measured this).
+      # (2) A version-and-checksum pair (Trivy, rustup-init, cargo-audit) that moved must agree with its
+      #     release, cross-checked against the publisher's checksum. A PR that moved the version alone
+      #     cannot merge. It downloads only when a pair moved (research R7).
+      - name: Validate renovate.json (strict, at the pinned version)
+        run: bash scripts/ci-log-step.sh sast-renovate-config npx --yes --before="$(node -e 'process.stdout.write(new Date(Date.now()-3*864e5).toISOString())')" --package renovate@$(node scripts/check-renovate-config.mjs --print-renovate-version) -- renovate-config-validator --strict --no-global renovate.json
+      - name: Verify version-and-checksum pairs (only those that moved)
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: bash scripts/ci-log-step.sh sast-pin-checksums node scripts/refresh-pin-checksum.mjs --verify-changed --base "origin/$BASE_REF"
       # Stages 2 and 3, prepared and DORMANT (feature 008; items #39, #40). Each step installs only when
       # its lockfile is tracked (a Cargo.lock; a uv.lock under a project directory), discovered exactly
       # as the scanners discover them, so today both say "nothing to prepare" and exit 0. Unconditional

@@ -4,8 +4,8 @@ title: "Spec Kit: this repository's customisations, and upgrading it"
 description: The one inventory of every way BELAY changes or adds to GitHub Spec Kit — the tasks-template override (doc-impact sweep, required RED/GREEN tests, the Open the PR task), the registered local edits to /speckit-tasks and /speckit-converge, the git and agent-context extensions and their hooks, the project-owned /speckit-taskstoissues — with who owns which file, the gate and its failure codes, and the upgrade procedure.
 tags: [spec-kit, sdd, gates, upgrade, runbook]
 resource: docs/runbooks/spec-kit.md
-resource-sha256: cbf424c5b5eb19a6ee7b5574e5a55b56e5c6dcde469bcf2605804e58ea2922bb
-timestamp: 2026-11-23T13:26:41.480Z
+resource-sha256: ab1060c4e459dbced18a446906726dc5e6a31d10bc81bdf0cb93f5fe93f82d3e
+timestamp: 2026-11-24T11:26:01.735Z
 ---
 
 # Spec Kit: this repository's customisations, and upgrading it
@@ -47,3 +47,5 @@ owns `.specify/templates/overrides/` and the constitution. In order of preferenc
   in the upgrade PR.
 - **`/speckit-constitution` checks the core tasks template, not the override.** After an amendment,
   check the override by hand.
+- **A Spec Kit bump from the dependency bot is never a raw merge.** It opens only after approval on
+  the dashboard, and the upgrade procedure runs on its branch before it merges ([dependency bot](renovate.md)).

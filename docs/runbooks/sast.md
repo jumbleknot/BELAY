@@ -113,11 +113,15 @@ console in the BFF; authentication before authorization) wait until BELAY has th
 - **uv:** the version in the installer URL in the `sast` job (`astral.sh/uv/<x.y.z>/install.sh`).
   The custom curl rule accepts only that pinned form. The dev container's toolchain image pins uv
   separately; keep the two equal.
-- **Semgrep:** `SEMGREP_PIN` in `scripts/sast-scan.mjs`.
+- **Semgrep:** `SEMGREP_PIN` in `scripts/sast-scan.mjs`. The dependency bot proposes its bumps.
 - **Rust and cargo-audit (stage 2):** the constants at the top of `scripts/sast-prepare.mjs`: the
   Rust toolchain (equal to `.devcontainer/toolchain.Dockerfile`'s `--default-toolchain`, enforced by
-  a test), the `rustup-init` version and sha256, and the cargo-audit release and sha256. Bump a
-  version and its digest together; a mismatch fails the step before anything runs. The
+  a test), the `rustup-init` version and sha256, and the cargo-audit release and sha256. The dependency
+  bot proposes these bumps ([renovate.md](renovate.md)), and moves each sha256 with
+  `scripts/refresh-pin-checksum.mjs <pin>`, which needs the publisher's checksum to agree. The
+  `sast` job's `--verify-changed` step fails a PR whose pair disagrees. To bump by hand, change the
+  version and run `node scripts/refresh-pin-checksum.mjs rustup-init` (or `cargo-audit`); a mismatch
+  fails the step before anything runs. The
   `rustup-init` digest was derived from the dev container's baked `rustup` and confirmed on the
   runner, because `static.rust-lang.org` is deliberately not on the dev container's egress list.
 - **Rule packs:** `security/sast/semgrep.yaml`. `p/secrets` is never enabled, because

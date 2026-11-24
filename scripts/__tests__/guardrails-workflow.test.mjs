@@ -157,3 +157,30 @@ test('the dormant stage-2/3 prepare steps run through ci-log-step.sh, after uv, 
   // cannot see. A condition here would be a second, drifting copy of that decision.
   for (const at of [rust, python]) assert.equal(sastJob().steps[at].if, undefined);
 });
+
+// ── feature 011: the dependency bot's two PR checks, in the supply-chain (sast) job ──────────────
+
+const sastSteps = () => load().jobs.sast.steps;
+const sastIdx = (re) => sastSteps().findIndex((s) => re.test(`${s.name ?? ''} ${s.run ?? ''}`));
+
+test('validate renovate: sast runs the strict validator at the pinned version, after the install', () => {
+  const at = sastIdx(/renovate-config-validator --strict --no-global renovate\.json/);
+  assert.ok(at >= 0, 'no Validate renovate.json step');
+  const run = sastSteps()[at].run;
+  assert.match(run, /^bash scripts\/ci-log-step\.sh /);
+  assert.match(run, /\$\(node scripts\/check-renovate-config\.mjs --print-renovate-version\)/);
+  assert.match(run, /--before=/);
+  assert.ok(at > sastIdx(/pnpm install --frozen-lockfile/), 'after the dependency install');
+});
+
+test('checksum pairs: sast verifies every version-and-checksum pair that moved against the PR base', () => {
+  const at = sastIdx(/refresh-pin-checksum\.mjs --verify-changed/);
+  assert.ok(at >= 0, 'no Verify version-and-checksum pairs step');
+  const run = sastSteps()[at].run;
+  assert.match(run, /^bash scripts\/ci-log-step\.sh /);
+  // Through env, never `${{ }}` inside run: (semgrep run-shell-injection, measured on PR #63).
+  assert.doesNotMatch(run, /\$\{\{/);
+  assert.match(run, /--base "origin\/\$BASE_REF"/);
+  assert.equal(sastSteps()[at].env.BASE_REF, "${{ github.base_ref || 'main' }}");
+  assert.ok(at > sastIdx(/PR base ref is available/), 'after the base ref is fetched');
+});

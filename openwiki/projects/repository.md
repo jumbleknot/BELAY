@@ -43,9 +43,12 @@ Most top-level folders are still empty placeholders.
 | `packages/` | Shared packages and libraries |
 | `infrastructure-as-code/` | Infrastructure as code |
 | `assets/` | Static assets |
-| `security/` | Security tooling and policy |
+| `security/` | Security tooling and policy: `sast/`, `images/`, and `dependencies/` (the pins the dependency bot deliberately does not manage) |
 | `tools/` | Developer tools |
 | `target/` | Build output. Ignored by Git and never committed |
+
+At the root beside the manifests, `renovate.json` is the dependency bot's configuration
+([ADR-0004](../decisions/adr-0004-renovate-dependency-bot.md), [dependency bot](../runbooks/renovate.md)).
 
 ## File conventions
 

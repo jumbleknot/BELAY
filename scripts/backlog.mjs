@@ -57,9 +57,22 @@ export const TAXONOMY = [
   { name: 'priority/p3', color: '#f9d0c4', description: 'Do eventually' },
   { name: 'status/blocked', color: '#5319e7', description: 'Waiting on another item — graph is truth' },
   { name: 'status/needs-spec', color: '#1d76db', description: 'Too large to implement without spec→plan→tasks' },
+  // Feature 011: the dependency bot's labels. Not backlog-type labels: the bot's dashboard carries
+  // status/bot-managed, which `ready` excludes, and its PRs carry dependencies / security.
+  { name: 'status/bot-managed', color: '#bfdadc', description: 'Owned by the dependency bot; never listed as ready work' },
+  { name: 'dependencies', color: '#0366d6', description: 'A dependency-bot PR' },
+  { name: 'security', color: '#ee0701', description: 'A dependency-bot PR fixing a published advisory' },
 ];
 
 const PRIORITY_ORDER = ['priority/p1', 'priority/p2', 'priority/p3'];
+
+/** The dependency bot's dashboard label (feature 011). Its issue is the bot's state, never ready work. */
+export const BOT_MANAGED_LABEL = 'status/bot-managed';
+
+/** The one-line note `ready` prints for what it deliberately did not list, or null. */
+export function excludedNote(excluded) {
+  return excluded.length ? `(${excluded.length} bot-managed item(s) not listed)` : null;
+}
 
 // ── Credentials (,) ───────────────────────────────────────────────────────────────────
 
@@ -309,8 +322,11 @@ const labelNames = (item) => (item.labels ?? []).map((l) => l.name);
 export function selectReadyItems(items, blockers = {}) {
   const warnings = [];
   const candidates = [];
+  const excluded = [];
   for (const item of items) {
     const names = labelNames(item);
+    // The bot's dashboard is an issue, but it is the bot's state, not work (feature 011, FR-014).
+    if (names.includes(BOT_MANAGED_LABEL)) { excluded.push({ number: item.number, reason: BOT_MANAGED_LABEL }); continue; }
     const labelled = names.includes('status/blocked');
     const consulted = Object.prototype.hasOwnProperty.call(blockers, item.number);
     const openBlockers = consulted
@@ -331,7 +347,7 @@ export function selectReadyItems(items, blockers = {}) {
     return i === -1 ? PRIORITY_ORDER.length : PRIORITY_ORDER.indexOf(labelNames(item)[i]);
   };
   candidates.sort((a, b) => rank(a) - rank(b) || a.number - b.number);
-  return { ready: candidates, warnings };
+  return { ready: candidates, warnings, excluded };
 }
 
 // ── Distillation () ──────────────────────────────────────────────────────────────────────────
@@ -646,11 +662,11 @@ const COMMANDS = {
     // exactly the question where a silently partial answer is worse than no answer.
     const truncated = describeTruncation(total, items.length);
     // The label is the cheap pre-filter; only the survivors cost a dependency call.
-    const preFiltered = items.filter((i) => !labelNames(i).includes('status/blocked'));
+    const preFiltered = items.filter((i) => !labelNames(i).includes('status/blocked') && !labelNames(i).includes(BOT_MANAGED_LABEL));
     const blockers = await blockersFor(c, preFiltered);
-    const { ready, warnings } = selectReadyItems(items, blockers);
+    const { ready, warnings, excluded } = selectReadyItems(items, blockers);
     if (opts.json) {
-      return void emit(JSON.stringify({ truncated: truncated ?? null, ready: ready.map((i) => distillItem(i)) }, null, 2));
+      return void emit(JSON.stringify({ truncated: truncated ?? null, ready: ready.map((i) => distillItem(i)), excluded }, null, 2));
     }
     if (truncated) {
       emit(`${truncated}  ⚠ this answer is drawn from those rows only — the top priority may be outside it.`);
@@ -659,6 +675,8 @@ const COMMANDS = {
     warnings.forEach(emit);
     if (warnings.length) emit('');
     renderTable(ready);
+    const note = excludedNote(excluded);
+    if (note) emit(note);
   },
 
   async show(opts) {
