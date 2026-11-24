@@ -187,6 +187,10 @@ concept that covers the subject:
 3. **No concept covers the subject?** Add one. If the subject has a canonical document, write the
    detail there and cite it from the new concept. Never append prose to an index instead.
 
+The [learnings ledger](../docs/BELAY-Learnings.md) is not a fourth answer. It indexes lessons and links each one to
+its home; a new learning still goes to its home by the steps above, and enters the ledger at the next quarterly
+refresh.
+
 **Do not write prose into `AGENTS.md`.** It is the index every assistant reads. An entry there keeps
 its rule, its trap and a link, and the story behind it goes in the linked page. `CLAUDE.md` is only a
 shim that imports `AGENTS.md`, so anything written there reaches Claude alone.

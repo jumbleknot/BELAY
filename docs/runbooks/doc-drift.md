@@ -13,8 +13,8 @@ other documents that named what they changed.
 | Layer | When | What it is | Status |
 | --- | --- | --- | --- |
 | 1. Doc-impact sweep | every SDD feature, at `/speckit-tasks` and at close-out | a required task in the project's tasks template: search the docs for every identifier the feature changes | **live** |
-| 2. Mechanical per-PR check | every PR | `describes:` front matter on runbooks, plus a guardrail | **not built**; triggered by check 4 of the audit |
-| 3. Drift audit | quarterly | one session reads the procedure docs against the tree | **live**, procedure below |
+| 2. Mechanical per-PR check | every PR | `describes:` front matter on runbooks, plus a guardrail | **not built**; triggered by step 9 of the audit |
+| 3. Drift audit | quarterly | one session reads the procedure docs against the tree, then refreshes the [learnings ledger](../BELAY-Learnings.md) | **live**, procedure below |
 
 ## The doc-impact sweep (layer 1)
 
@@ -77,7 +77,15 @@ Those describe the past and stay as written.
 10. **Re-read the register of unenforced rules**
     ([`openwiki/invariants/unenforced-rules.md`](../../openwiki/invariants/unenforced-rules.md)).
     Remove each entry whose gate has landed, and add every rule the audit found stated but unchecked.
-11. **File the next audit, then close this one.** Use `node scripts/backlog.mjs create`, with the
+11. **Refresh the learnings ledger** ([`docs/BELAY-Learnings.md`](../BELAY-Learnings.md), following its
+    [How to update](../BELAY-Learnings.md#how-to-update)). Rewrite Part 1, the story, in place. Append any lesson
+    the audit paid for to Part 2, changing only the status of a lesson it reversed. Then, **from a full clone** (a
+    shallow one cannot count commits), append a column to Part 3:
+    `node scripts/count-repo-metrics.mjs --rev <the commit you read against> --append-log docs/BELAY-Learnings.md`.
+    Never type a number into that table, and never edit an earlier column or lesson. That table is the
+    repository's size and shape over time; it is a different table from this runbook's own **Audit log** below,
+    which records drift rates.
+12. **File the next audit, then close this one.** Use `node scripts/backlog.mjs create`, with the
     title `Drift audit YYYY-MM (quarterly, layer 3 of doc-drift prevention)` about three months on,
     labels `type/chore` and `priority/p2`, and this procedure as its acceptance criteria. Then close
     the current item.

@@ -32,7 +32,7 @@ from `/workspaces/belay`.
 
 **Purpose**: the module boundary exists, so every RED fails on an assertion, not on a missing import.
 
-- [ ] T001 Create `scripts/count-repo-metrics.mjs` as a **stub**:
+- [x] T001 Create `scripts/count-repo-metrics.mjs` as a **stub**:
   - the header comment (why it exists: MCM's 4.5% hand-count gap, research R5's transcription gap), usage and exit
     codes from contracts/cli.md;
   - exports `classifyPath`, `countNonBlankLines`, `countTestDeclarations`, `countGateScripts`,
@@ -67,7 +67,7 @@ from `/workspaces/belay`.
 
 **Purpose**: a fixture-repository helper that every US1 test shares.
 
-- [ ] T003 Write the fixture builder at the top of `scripts/__tests__/count-repo-metrics.test.mjs`: `makeRepo(files, { commits })`.
+- [x] T003 Write the fixture builder at the top of `scripts/__tests__/count-repo-metrics.test.mjs`: `makeRepo(files, { commits })`.
   - It creates a temporary directory, runs `git init -q -b main` with a local `user.name` and `user.email`, writes
     `files` (a path → content map), and commits each listed batch.
   - It returns `{ dir, shas }`, and cleans up in `after()`.
@@ -88,7 +88,7 @@ documented exit codes.
 
 ### Tests for User Story 1 (REQUIRED — TDD checkpoint format) ⚠️
 
-- [ ] T004 [P] [US1] Table-driven test of `classifyPath` in `scripts/__tests__/count-repo-metrics.test.mjs`, with
+- [x] T004 [P] [US1] Table-driven test of `classifyPath` in `scripts/__tests__/count-repo-metrics.test.mjs`, with
   one row per rule in research R2:
   - excluded: `.specify/x.md`, `.claude/skills/speckit-plan/SKILL.md`, `scripts/__tests__/fixtures/a.md`,
     `security/sast/rules/r.py`, `security/sast/reports/f.json`, `pnpm-lock.yaml`;
@@ -99,14 +99,14 @@ documented exit codes.
   - not counted: `renovate.json`, `security/sast/allowlist.yaml`, `LICENSE`, `.gitkeep`.
   - **Scenarios covered**: FR-005; spec edge cases "A file that could fall in two categories", "Vendored files"
   - **Verify RED**: `node --test --test-name-pattern "classifyPath" scripts/__tests__/count-repo-metrics.test.mjs` → expected: failing — `not implemented`
-- [ ] T005 [P] [US1] Unit tests of `countNonBlankLines` (blank and whitespace-only lines skipped, no trailing newline,
+- [x] T005 [P] [US1] Unit tests of `countNonBlankLines` (blank and whitespace-only lines skipped, no trailing newline,
   CRLF; a buffer with a NUL byte → 0), `countTestDeclarations` (`test(`, `test.skip(`, `it(`, `t.test(` counted;
   `// test(` in a comment, `retest(` and `describe(` not), and `countGateScripts` (a `commands` list naming one
   script twice, `--selftest` and a real run, counts 1; a single `command` string; no lint target → 0; not JSON →
   throws). All in the same test file.
   - **Scenarios covered**: FR-002 (test declarations, gate scripts), research R3, spec edge case "A binary file"
   - **Verify RED**: `node --test --test-name-pattern "countNonBlankLines|countTestDeclarations|countGateScripts" scripts/__tests__/count-repo-metrics.test.mjs` → expected: failing — `not implemented`
-- [ ] T006 [US1] Fixture-repository tests of `measureCommit({ cwd, rev })` in the same file. The fixture's tree has
+- [x] T006 [US1] Fixture-repository tests of `measureCommit({ cwd, rev })` in the same file. The fixture's tree has
   hand-counted contents covering every metric in data-model.md `MetricSnapshot.metrics.*`:
   - 2 features, one with a `Verify RED` tasks.md and one with a tasks.md without it, and a third `specs/` directory
     lacking spec.md;
@@ -127,7 +127,7 @@ documented exit codes.
     `+dirty`) or `untracked` (data-model.md `MetricSnapshot.scriptCommit`).
   - **Scenarios covered**: US1-AC1, US1-AC2, US1-AC3, US1-AC4, US1-AC5; FR-001, FR-002, FR-003, FR-006, FR-007; SC-001, SC-002
   - **Verify RED**: `node --test --test-name-pattern "measureCommit" scripts/__tests__/count-repo-metrics.test.mjs` → expected: failing — `not implemented`
-- [ ] T007 [US1] CLI tests in the same file. They spawn `node scripts/count-repo-metrics.mjs` with `cwd` set to a fixture
+- [x] T007 [US1] CLI tests in the same file. They spawn `node scripts/count-repo-metrics.mjs` with `cwd` set to a fixture
   repository, and assert:
   - `--json` parses to the snapshot;
   - the text form has the header line and the 11 labels from contracts/cli.md;
@@ -141,14 +141,14 @@ documented exit codes.
 
 ### Implementation for User Story 1
 
-- [ ] T008 [US1] Implement `classifyPath`, `countNonBlankLines`, `countTestDeclarations` and `countGateScripts` in
+- [x] T008 [US1] Implement `classifyPath`, `countNonBlankLines`, `countTestDeclarations` and `countGateScripts` in
   `scripts/count-repo-metrics.mjs` (research R2, R3) (prerequisite: T004 and T005 verified RED)
   - **Test approval checkpoint** (constitution TDD: tests written → user approval → tests fail): the US1 test list
     (T004–T007) is approved by the maintainer before any implementation. Approval given 2026-11-24 with the
     instruction "apply all fixes, then implement, work CI to green, then merge"; the PR description lists the tests
     for review.
   - **Verify GREEN**: `node --test --test-name-pattern "classifyPath|countNonBlankLines|countTestDeclarations|countGateScripts" scripts/__tests__/count-repo-metrics.test.mjs` → expected: 0 failures
-- [ ] T009 [US1] Implement `measureCommit` in `scripts/count-repo-metrics.mjs`, filling data-model.md
+- [x] T009 [US1] Implement `measureCommit` in `scripts/count-repo-metrics.mjs`, filling data-model.md
   `MetricSnapshot.rev`, `.commitDate`, `.scriptCommit`, `.metrics.*` and `.allowlists` (prerequisite: T006 verified
   RED):
   - `rev-parse --verify <rev>^{commit}`, then `ls-tree -r -z --full-tree`, skipping modes `120000` and `160000`;
@@ -156,7 +156,7 @@ documented exit codes.
   - `rev-list --count`, unless `rev-parse --is-shallow-repository` is `true` (R4);
   - `yaml` for the allowlists.
   - **Verify GREEN**: `node --test --test-name-pattern "measureCommit" scripts/__tests__/count-repo-metrics.test.mjs` → expected: 0 failures
-- [ ] T010 [US1] Implement `formatText` and the CLI in `scripts/count-repo-metrics.mjs` (contracts/cli.md): parse with
+- [x] T010 [US1] Implement `formatText` and the CLI in `scripts/count-repo-metrics.mjs` (contracts/cli.md): parse with
   `partitionArgsWithValues` and `wantsHelp` from `lib/argv-contract.mjs`, print nothing to stdout on exit 1 or 2,
   and include the R2 and R3 rules in `--help` (prerequisite: T007 verified RED)
   - **Verify GREEN**: `node --test scripts/__tests__/count-repo-metrics.test.mjs` → expected: 0 failures; then
@@ -175,7 +175,7 @@ to FR-012).
 
 ### Tests for User Story 2 (REQUIRED — TDD checkpoint format) ⚠️
 
-- [ ] T011 [P] [US2] Unit tests of `mergeLogColumn(markdown, snapshot)` in `scripts/__tests__/count-repo-metrics.test.mjs`
+- [x] T011 [P] [US2] Unit tests of `mergeLogColumn(markdown, snapshot)` in `scripts/__tests__/count-repo-metrics.test.mjs`
   (data-model.md "Log table"). They cover:
   - a document with empty markers gets the header, the `Script commit` row and the 11 metric rows;
   - a second, later snapshot appends a column to the right;
@@ -188,7 +188,7 @@ to FR-012).
   - every byte outside the markers is unchanged.
   - **Scenarios covered**: US2-AC5, US3-AC3; FR-012; SC-003; data-model.md log-table invariants
   - **Verify RED**: `node --test --test-name-pattern "mergeLogColumn" scripts/__tests__/count-repo-metrics.test.mjs` → expected: failing — `not implemented`
-- [ ] T012 [US2] CLI test of `--append-log` in the same file, on a fixture repository and a temporary markdown file:
+- [x] T012 [US2] CLI test of `--append-log` in the same file, on a fixture repository and a temporary markdown file:
   - the file gains the column and the command exits 0;
   - a second run exits 1 and leaves the file byte-identical;
   - a file without markers exits 1, unchanged.
@@ -197,13 +197,13 @@ to FR-012).
 
 ### Implementation for User Story 2
 
-- [ ] T013 [US2] Implement `mergeLogColumn` and the `--append-log` path in `scripts/count-repo-metrics.mjs` (research
+- [x] T013 [US2] Implement `mergeLogColumn` and the `--append-log` path in `scripts/count-repo-metrics.mjs` (research
   R5): read the file, merge, and write only on success. The script commit comes from
   `git log -1 --format=%h HEAD -- scripts/count-repo-metrics.mjs` run in the **script's own repository**, plus
   `+dirty` when `git status --porcelain -- <that file>` is non-empty, or `untracked` when the log is empty (data-model.md `MetricSnapshot.scriptCommit`) (prerequisite:
   T011 and T012 verified RED; the same approval checkpoint as T008 covers T011, T012 and T014's link test)
   - **Verify GREEN**: `node --test scripts/__tests__/count-repo-metrics.test.mjs` → expected: 0 failures
-- [ ] T014 [US2] Write `docs/BELAY-Learnings.md`. The opening says it is a narrative, not a source of truth: where it
+- [x] T014 [US2] Write `docs/BELAY-Learnings.md`. The opening says it is a narrative, not a source of truth: where it
   conflicts with a linked page, the page wins. Then:
   - **Part 1 — The story so far**: features 001–012 in a few paragraphs, rewritten in place at each refresh.
   - **Part 2 — The ledger**: append-only; seed it with the lessons in research R6, each in the data-model.md
@@ -217,7 +217,7 @@ to FR-012).
     stripped). **Verify RED**: `node --test --test-name-pattern "links resolve" scripts/__tests__/count-repo-metrics.test.mjs` → expected: failing — `ENOENT` on the missing document.
   - **Done when**: every rule mention has a link, the link test passes (**Verify GREEN**: same command → 0 failures),
     and each lesson has all six fields.
-- [ ] T015 [US2] Fill Part 3 with the script, never by hand (research R7):
+- [x] T015 [US2] Fill Part 3 with the script, never by hand (research R7):
   `node scripts/count-repo-metrics.mjs --rev cf9b694 --append-log docs/BELAY-Learnings.md`, then
   `node scripts/count-repo-metrics.mjs --rev c74bc25 --append-log docs/BELAY-Learnings.md`. Commit the script
   (T013) **before** this, so the `Script commit` cell is a real commit and not `+dirty`.
@@ -234,7 +234,7 @@ to FR-012).
 
 **Independent Test**: read the audit procedure. It names the command and the append-only rule.
 
-- [ ] T016 [US3] Add the step to the quarterly drift audit procedure in `docs/runbooks/doc-drift.md`, after step 10
+- [x] T016 [US3] Add the step to the quarterly drift audit procedure in `docs/runbooks/doc-drift.md`, after step 10
   (before "File the next audit", so only that step is renumbered). In the same edit, correct the layer table's
   "triggered by check 4 of the audit" to name the actual layer-2 step (step 9). The step:
   - refresh Part 1 of `docs/BELAY-Learnings.md`;
@@ -250,44 +250,55 @@ to FR-012).
 
 ## Phase 6: Polish & Cross-Cutting Concerns
 
-- [ ] T017 [P] Add the wiki concept `openwiki/projects/learnings-ledger.md`: `resource: docs/BELAY-Learnings.md`, a
+- [x] T017 [P] Add the wiki concept `openwiki/projects/learnings-ledger.md`: `resource: docs/BELAY-Learnings.md`, a
   summary of what the document is and isn't, and gotchas (a narrative, not a source; never hand-type a log number;
   shallow clones). List it in `openwiki/projects/index.md`. Record its fingerprint with
   `node scripts/wiki-refresh.mjs --record openwiki/projects/learnings-ledger.md`.
   - **Done when**: `node scripts/check-openwiki-okf.mjs` and `node scripts/check-openwiki-governance.mjs` pass.
-- [ ] T018 [P] Add one line to AGENTS.md's Knowledge index under **Projects**, linking the new concept page (FR-014,
+- [x] T018 [P] Add one line to AGENTS.md's Knowledge index under **Projects**, linking the new concept page (FR-014,
   SC-005).
   - **Done when**: the line exists, and the OKF gate passes.
-- [ ] T019 Write the counting rules into the help text and the document consistently. The categories in `--help`
+- [x] T019 Write the counting rules into the help text and the document consistently. The categories in `--help`
   (T010) and those named in Part 3's preamble (T014) say the same thing; the document links to `--help` rather
   than restating the table.
   - **Done when**: `docs/BELAY-Learnings.md` contains no copy of the R2 rule list.
-- [ ] T020 *(merged into T016 by the analysis, R1)*: the sweep's hit on `docs/runbooks/doc-drift.md:48` is done by
+- [x] T020 *(merged into T016 by the analysis, R1)*: the sweep's hit on `docs/runbooks/doc-drift.md:48` is done by
   T016. Tick with T016.
-- [ ] T021 *(merged into T016 by the analysis, R2)*: the layer-3 description check is T016's "Done when". Tick with
+- [x] T021 *(merged into T016 by the analysis, R2)*: the layer-3 description check is T016's "Done when". Tick with
   T016.
-- [ ] T022 Refresh `openwiki/runbooks/doc-drift.md` for the changed resource (V17): `node scripts/wiki-refresh.mjs --stale`,
+- [x] T022 Refresh `openwiki/runbooks/doc-drift.md` for the changed resource (V17): `node scripts/wiki-refresh.mjs --stale`,
   then `--diff` and an edit to the summary (its step list gains the ledger refresh), then `--record`.
   - **Done when**: `node scripts/wiki-refresh.mjs --stale` lists nothing.
-- [ ] T023 Note under the coverage gate: no change to `scripts/coverage-policy.yaml`. The module matches `scripts/*.mjs`.
+- [x] T023 Note under the coverage gate: no change to `scripts/coverage-policy.yaml`. The module matches `scripts/*.mjs`.
   - **Done when**: `pnpm nx run scripts:test` lists `count-repo-metrics.mjs` at ≥ 70% lines.
-- [ ] T024 [P] Doc task from the sweep: `openwiki/INSTRUCTIONS.md` near line 194 ("Where a new learning goes"). Add one
+- [x] T024 [P] Doc task from the sweep: `openwiki/INSTRUCTIONS.md` near line 194 ("Where a new learning goes"). Add one
   sentence: the learnings ledger (`docs/BELAY-Learnings.md`) indexes lessons and links to their homes; a new
   learning still goes to its home, and the ledger gains the entry at the next quarterly refresh.
   - **Done when**: the sentence is there, and the OKF gate passes.
-- [ ] T025 [P] Doc task from the sweep: `docs/repo-foundation-setup.md:410–411`. The description of
+- [x] T025 [P] Doc task from the sweep: `docs/repo-foundation-setup.md:410–411`. The description of
   `docs/runbooks/doc-drift.md` gains "and the refresh of a learnings ledger whose measurement log is written by a
   counting script". If any `openwiki/` page cites this playbook as its `resource`, refresh it (V17).
   - **Done when**: the clause is there, and `node scripts/wiki-refresh.mjs --stale` lists nothing.
-- [ ] T026 **Close-out re-search**: re-run T002's searches. This feature renames nothing, so the check is that every
+- [x] T026 **Close-out re-search**: re-run T002's searches. This feature renames nothing, so the check is that every
   new hit for `count-repo-metrics` and `BELAY-Learnings` is intended: the runbook, the playbook, the wiki concept,
   INSTRUCTIONS.md and AGENTS.md. Record the hit list here.
-- [ ] T027 Run the CI targets, plus the checks this diff touches, in the worktree. That needs a real install, not the
+  - **Result** (2026-11-24, after `git add`; `git grep` searches only tracked files, so the new files are invisible
+    until staged, an instrument trap worth naming): `count-repo-metrics` → `AGENTS.md`, `docs/BELAY-Learnings.md`,
+    `docs/repo-foundation-setup.md`, `docs/runbooks/doc-drift.md`, `openwiki/projects/index.md`,
+    `openwiki/projects/learnings-ledger.md`, `openwiki/runbooks/doc-drift.md`. `BELAY-Learnings` →
+    `docs/repo-foundation-setup.md`, `docs/runbooks/doc-drift.md`, `openwiki/INSTRUCTIONS.md`,
+    `openwiki/projects/index.md`, `openwiki/projects/learnings-ledger.md`. Every hit is intended; no old identifier
+    exists to re-search.
+- [x] T027 Run the CI targets, plus the checks this diff touches, in the worktree. That needs a real install, not the
   symlink: `rm node_modules && CI=true pnpm install --frozen-lockfile`. Then run:
   `pnpm nx run scripts:lint`, `pnpm nx run scripts:test`, `node scripts/check-openwiki-okf.mjs` and
   `node scripts/check-topology-scrub.mjs`.
   - **Done when**: all exit 0, and the test summary shows **0 skipped**: watch the skip count.
-- [ ] T028 Run quickstart.md §1–§5 and tick its §5 boxes.
+  - **Result** (2026-11-24): `scripts:lint` exit 0; `scripts:test` exit 0. Run directly with
+    `node scripts/check-coverage.mjs --run`: 1494 tests, 1494 pass, 0 fail, **0 skipped**;
+    `count-repo-metrics.mjs` 98.78% lines; total 92.74%. OKF, governance and topology-scrub gates pass;
+    `wiki-refresh.mjs --stale` lists nothing.
+- [x] T028 Run quickstart.md §1–§5 and tick its §5 boxes.
 - [ ] T029 **Open the PR** from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
   1. `git push origin HEAD:013-learnings-ledger`
   2. `node scripts/forge-pr.mjs open --head 013-learnings-ledger --title "Feature 013: the learnings ledger and its scripted measurement log (item #51)" --body-file <file>`

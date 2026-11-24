@@ -40,9 +40,9 @@ identical whenever the column's script commit is the current one.
 
 ## 5. The document
 
-- [ ] It has Part 1, Part 2, Part 3 and the "How to update" section, plus the "narrative, not a source of truth"
+- [x] It has Part 1, Part 2, Part 3 and the "How to update" section, plus the "narrative, not a source of truth"
       statement at the top.
-- [ ] Every rule links to its home: `node --test --test-name-pattern "links resolve" scripts/__tests__/count-repo-metrics.test.mjs`
+- [x] Every rule links to its home: `node --test --test-name-pattern "links resolve" scripts/__tests__/count-repo-metrics.test.mjs`
       passes, and so does `node scripts/check-openwiki-okf.mjs`.
-- [ ] `docs/runbooks/doc-drift.md` has the ledger-and-log step, naming `count-repo-metrics.mjs --append-log`.
-- [ ] `openwiki/projects/learnings-ledger.md` is listed in AGENTS.md's knowledge index.
+- [x] `docs/runbooks/doc-drift.md` has the ledger-and-log step, naming `count-repo-metrics.mjs --append-log`.
+- [x] `openwiki/projects/learnings-ledger.md` is listed in AGENTS.md's knowledge index.
