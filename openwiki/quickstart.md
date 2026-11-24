@@ -4,8 +4,8 @@ title: OpenWiki quickstart — BELAY
 description: The root entry point to BELAY's OpenWiki bundle — what the bundle is and is not, how to query it by type, tag, resource or directory, a task-routing map to the concept areas, and how the derived-versus-authoritative split decides where a new learning belongs.
 tags: [openwiki, navigation, quickstart]
 resource: openwiki/INSTRUCTIONS.md
-resource-sha256: 687c64f39604ab78ab135f7e4b58ceb277fe9041bde884c97709028fd7577048
-timestamp: 2026-11-24T14:02:08.071Z
+resource-sha256: 23c983cecc27cb64ab540d78b27353a1bd274f84a1ea0db7d33509748c520420
+timestamp: 2026-11-24T23:13:54.072Z
 ---
 
 # OpenWiki quickstart — BELAY
@@ -64,4 +64,4 @@ with none is *authoritative*: canonical in its own right, and listed under `auth
 
 Every document under `docs/runbooks/` and `docs/decisions/` has a concept that cites it. A runbook or
 decision record without one is a gap to fix, not a sign that the subject is undocumented.
-`docs/proposals/`, `docs/superpowers/` and `specs/` are deliberately not covered (see [the brief](./INSTRUCTIONS.md), §2).
+`docs/proposals/` and `specs/` are deliberately not covered (see [the brief](./INSTRUCTIONS.md), §2).

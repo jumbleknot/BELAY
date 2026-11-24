@@ -4,8 +4,8 @@ title: "Doc drift: the doc-impact sweep and the quarterly audit"
 description: How BELAY keeps its procedure documents in step with the code — the doc-impact sweep every SDD feature runs at task generation and close-out, carried by a Spec Kit tasks-template override and required by the constitution; the three layers and which are live; and the quarterly drift audit that measures the result and files its own successor.
 tags: [documentation, drift, spec-kit, sdd, audit, runbook]
 resource: docs/runbooks/doc-drift.md
-resource-sha256: 6ae3ced09606762c2430b56ac25483a98b8a0665464e6b3d38ef0839a7a913ae
-timestamp: 2026-11-24T15:48:12.191Z
+resource-sha256: 5103925a7d4b11326bd5870a4a6b9604a42d9147579234b9e7f4261d1f1a50de
+timestamp: 2026-11-24T23:13:54.164Z
 ---
 
 # Doc drift: the doc-impact sweep and the quarterly audit

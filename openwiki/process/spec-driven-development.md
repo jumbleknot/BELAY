@@ -15,7 +15,7 @@ customisations, is on [the Spec Kit page](../runbooks/spec-kit.md).
 
 ```mermaid
 flowchart LR
-  P["Proposal or design record\n(docs/proposals/, docs/superpowers/)"] --> S["spec.md\nWHAT + WHY"]
+  P["Proposal or design record\n(docs/proposals/, specs/000-new-repo-setup/)"] --> S["spec.md\nWHAT + WHY"]
   S --> Pl["plan.md\nHOW"]
   Pl --> T["tasks.md\nexecutable tasks"]
   T --> I["Implementation\n(specs/NNN-feature/)"]
@@ -23,7 +23,7 @@ flowchart LR
   I -. "constitution conflict" .-> C["Human approval required"]
 ```
 
-1. **Proposal** (`docs/proposals/**`, or a design record under `docs/superpowers/`): an idea or
+1. **Proposal** (`docs/proposals/**`, or the pre-Spec-Kit design record and plan in `specs/000-new-repo-setup/`): an idea or
    design captured before it has a feature number. Once a numbered `specs/NNN-feature-name/` folder
    exists, the proposal is superseded.
 2. **`spec.md`**: WHAT and WHY only, meaning user stories, functional requirements and domain terms.
@@ -64,7 +64,7 @@ format. `/speckit-taskstoissues` mirrors `tasks.md` into the Forgejo backlog (se
 ## Gotchas
 
 - **A proposal is not a source of truth once a spec exists.** Treat any detail that survives in it as
-  history. That is why `docs/proposals/**` and `docs/superpowers/**` are excluded from this wiki.
+  history. That is why `docs/proposals/**` and `specs/` are excluded from this wiki.
 - **A spec records a decision at the time, not the current state.** Specs are not updated when later
   work supersedes them. When a spec disagrees with a runbook or the code, the later source wins.
 - **agent-context owns a region of `AGENTS.md`.** After `/speckit-specify` and `/speckit-plan`, the

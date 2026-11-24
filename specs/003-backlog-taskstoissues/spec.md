@@ -6,7 +6,7 @@
 
 **Status**: Draft
 
-**Input**: User description: "Feature 003: Forgejo backlog tooling and /speckit-taskstoissues for BELAY. Source of truth: docs/superpowers/specs/2026-11-22-speckit-forgejo-parity-design.md, section 'Feature 003', plus the user's direction to reuse MovieCollectionManager's implementation as much as possible, stripping only MCM coupling.
+**Input**: User description: "Feature 003: Forgejo backlog tooling and /speckit-taskstoissues for BELAY. Source of truth: specs/000-new-repo-setup/2026-11-22-speckit-forgejo-parity-design.md, section 'Feature 003', plus the user's direction to reuse MovieCollectionManager's implementation as much as possible, stripping only MCM coupling.
 
 Scope:
 - a backlog tool with reads (list, ready, show, validate-form) and writes (create refusing a duplicate open title unless asked, update, comment, dep with a cycle check, setup-labels with a dry run, setup-milestone);

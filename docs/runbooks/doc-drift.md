@@ -37,8 +37,8 @@ files stay excluded. This is the exact command in the tasks-template override. K
 override is recorded with `node scripts/check-speckit-overrides.mjs --record`.
 
 Each hit becomes a named doc task, or gets a one-line reason it needs no change. Dated records
-("measured on …", incident logs, version history) are history and need no change. A hit in a
-`docs/superpowers/` design record is history too. The search covers
+("measured on …", incident logs, version history) are history and need no change.
+The search covers
 `openwiki/` and `AGENTS.md` too, so a renamed path or flag is also caught in the wiki and the index.
 
 ## Upgrading Spec Kit
@@ -54,7 +54,7 @@ cadence needs no scheduler and no standing owner. The session that closes one au
 
 **Scope**: every doc that states current procedure: `docs/runbooks/**`, `docs/templates/**`,
 `openwiki/**`, `AGENTS.md`, the root `README.md` and any project README. **Not**: decision records
-(`docs/decisions/`), `specs/`, `docs/proposals/`, `docs/superpowers/`, or dated records inside any doc.
+(`docs/decisions/`), `specs/`, `docs/proposals/`, or dated records inside any doc.
 Those describe the past and stay as written.
 
 **Procedure**:

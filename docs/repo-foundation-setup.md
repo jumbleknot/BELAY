@@ -177,7 +177,7 @@ node --test scripts/__tests__/check-speckit-overrides.test.mjs
 ## Step 4: Spec Kit extensions and the hook gate
 
 BELAY wrote this step up as a design record first,
-[docs/superpowers/specs/2026-11-22-speckit-forgejo-parity-design.md](superpowers/specs/2026-11-22-speckit-forgejo-parity-design.md).
+[specs/000-new-repo-setup/2026-11-22-speckit-forgejo-parity-design.md](../specs/000-new-repo-setup/2026-11-22-speckit-forgejo-parity-design.md).
 That record also planned steps 5 to 10.
 
 1. **Install the extensions:**
@@ -865,7 +865,7 @@ aren't true of the new repository until you measure them there.
 ## Where BELAY's history is recorded
 
 - The design record behind steps 4 to 10:
-  [docs/superpowers/specs/2026-11-22-speckit-forgejo-parity-design.md](superpowers/specs/2026-11-22-speckit-forgejo-parity-design.md).
+  [specs/000-new-repo-setup/2026-11-22-speckit-forgejo-parity-design.md](../specs/000-new-repo-setup/2026-11-22-speckit-forgejo-parity-design.md).
 - Each feature's spec, plan, research and tasks: [specs/001-guardrails-ci](../specs/001-guardrails-ci/spec.md),
   [002-pr-ci-tooling](../specs/002-pr-ci-tooling/spec.md),
   [003-backlog-taskstoissues](../specs/003-backlog-taskstoissues/spec.md),

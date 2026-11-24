@@ -51,7 +51,7 @@ Skip entirely:
 - Lock files: `pnpm-lock.yaml`, `Cargo.lock`, `package-lock.json`
 - Binary and generated assets, and `.git/` internals
 
-**Also exclude `docs/proposals/**` and `docs/superpowers/**`.** Both hold ideation and design
+**Also exclude `docs/proposals/**`.** It holds ideation and design
 records from before a spec existed. They are superseded once a spec or an implementation exists, so
 documenting them would fill retrieval with dead ideas. The single
 [spec-driven development page](process/spec-driven-development.md) describes the lifecycle and links
