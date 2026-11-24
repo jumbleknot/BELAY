@@ -4,8 +4,8 @@ title: CI guardrails, the failure digest, and the PR loop
 description: The single guardrails Forgejo Actions workflow required on main — what it runs and how to reproduce it locally, how a failure is read back from the redacted digest and its package bundle with ci-status.mjs, the dedicated repository runner and the one exception to it (the dev-container image job, which never runs pull-request code), the sast job beside guardrails, the report-only registry-retention job, branch protection, the terminal PR loop through forge-pr.mjs, and the rule every new job must follow.
 tags: [ci, forgejo, pull-requests, runbook]
 resource: docs/runbooks/ci.md
-resource-sha256: bf378c7e8e570eb2f451d82ecd3b6b02e0e6a3a169f409cdcabb05b87c92d55f
-timestamp: 2026-11-24T12:34:46.639Z
+resource-sha256: bb2dcb266c3b9f894bc6a17fff8dffbe5f6d483dba8599378e28b200748a8313
+timestamp: 2026-11-24T12:44:11.188Z
 ---
 
 # CI guardrails, the failure digest, and the PR loop

@@ -50,6 +50,8 @@ jobs:
       - name: Reap merged branches
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # Read-only here: the run token gets 403 on /branch_protections, the owner's token does not.
+          CI_DIGEST_TOKEN: ${{ secrets.CI_DIGEST_TOKEN }}
           REAPER_APPLY: ${{ github.event_name == 'schedule' || inputs.apply == true }}
         run: |
           bash scripts/ci-log-step.sh branch-reaper bash -e /dev/stdin <<'CI_LOG_STEP'

@@ -20,7 +20,7 @@ variable or a gitignored file, and its template is an `*.example` file.
 | `FORGE_TOKEN` | user environment variable | read-only (`read:repository`, `read:issue`, `read:package`) | `ci-status.mjs`; read fallback for `backlog.mjs` |
 | `FORGE_ISSUE_TOKEN` | user environment variable | `write:issue` + `read:repository` | `backlog.mjs` and `taskstoissues.mjs` writes |
 | the git credential for `origin` | the git credential helper | the account's push access | `forge-pr.mjs` (open, merge, dispatch), through `git credential fill` |
-| `CI_DIGEST_TOKEN` | repository Actions secret | `write:issue`, `write:package`, `read:repository` | the CI failure-digest step, and the weekly dependency-bot health report |
+| `CI_DIGEST_TOKEN` | repository Actions secret | `write:issue`, `write:package`, `read:repository` | the CI failure-digest step, the weekly dependency-bot health report, and (read-only) the branch-protection read for that report and the branch reaper, where the run token gets 403 |
 | `RENOVATE_TOKEN` | repository Actions secret, never the dev container | `read:user`, `read:organization`, `write:repository`, `write:issue`, on the dedicated restricted `belay-renovate` account | the dependency bot's `renovate` workflow only ([runbook](../../docs/runbooks/renovate.md#the-token)) |
 | `RENOVATE_GITHUB_COM_TOKEN` | repository Actions secret (optional) | a github.com fine-grained token: public-repository read, no permissions | release lookups in the `renovate` run, past github.com's anonymous rate limit |
 

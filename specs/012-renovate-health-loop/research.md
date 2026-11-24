@@ -38,7 +38,10 @@ Two workflows on the `belay` runner:
 ## R2 — Tokens: the run token reads and deletes, `CI_DIGEST_TOKEN` writes the report
 
 **Decision**:
-- **Reads** (branches, PRs, statuses, branch protections, Actions runs) use `GITHUB_TOKEN`, the run's own token.
+- **Reads** (branches, PRs, statuses, Actions runs) use `GITHUB_TOKEN`, the run's own token. **Branch protections are
+  the exception.** The run token is refused on `/branch_protections` (HTTP 403, measured 2026-11-24 on the first
+  post-merge runs, #94 and #95), so that one read uses `CI_DIGEST_TOKEN` (the owner's `read:repository`). Planning had
+  assumed the run token could read it, and only the live run showed otherwise.
 - **Branch deletion** uses `git push --force-with-lease=refs/heads/<b>:<sha> origin :refs/heads/<b>`, with the
   checkout's persisted run token. This is MCM's measured mechanism. The lease ties the delete to the sha that was
   classified, which the forge's DELETE endpoint cannot do.

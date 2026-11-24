@@ -177,7 +177,7 @@ registry. It is not a merge check.
 
 | Name | Where | Scopes | Used by |
 | --- | --- | --- | --- |
-| `CI_DIGEST_TOKEN` | Repository **Settings → Actions → Secrets** | `write:issue`, `write:package`, `read:repository` | The failure-digest step, and the weekly dependency-bot health report (`renovate-health.yml`, which also creates its tracking issue) |
+| `CI_DIGEST_TOKEN` | Repository **Settings → Actions → Secrets** | `write:issue`, `write:package`, `read:repository` | The failure-digest step; the weekly dependency-bot health report (`renovate-health.yml`, which also creates its tracking issue); and, read-only, `/branch_protections` for that report and `branch-reaper.yml`, because the run token gets 403 there |
 | `REGISTRY_TOKEN` | Repository **Settings → Actions → Secrets** | `write:package` | The `devcontainer-image` push step only |
 | `REGISTRY_CLEANUP_TOKEN` | Repository **Settings → Actions → Secrets** | `write:package` | The `registry-retention` report step only. Without it, the job fails loudly rather than reporting an empty registry |
 | `RENOVATE_TOKEN` | Repository **Settings → Actions → Secrets** | `read:user`, `read:organization`, `write:repository`, `write:issue`, on the restricted `belay-renovate` account | The `renovate` workflow's preflight and run steps only. Without it, the preflight fails the run by name ([renovate.md](renovate.md#the-token)) |

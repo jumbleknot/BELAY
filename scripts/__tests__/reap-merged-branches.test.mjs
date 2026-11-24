@@ -81,3 +81,12 @@ test('reaper main: a failed delete exits 1', async () => {
   assert.equal(await run(['--apply'], world({ pushFails: true })), 1);
 });
 test('reaper main: --selftest passes', async () => assert.equal(await run(['--selftest'], world()), 0));
+
+test('reaper main: branch protection is read with CI_DIGEST_TOKEN (the run token gets 403 on this forge, measured 2026-11-24)', async () => {
+  const w = world();
+  const seen = [];
+  const f = w.fetch;
+  w.fetch = async (url, init) => { if (url.includes('/branch_protections')) seen.push(init.headers.Authorization); return f(url, init); };
+  await main([], { env: { GITHUB_SERVER_URL: 'https://forge.example', GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 'run', CI_DIGEST_TOKEN: 'owner' }, git: w.git, fetch: w.fetch, now: NOW, log: () => {}, error: () => {} });
+  assert.deepEqual(seen, ['token owner']);
+});
