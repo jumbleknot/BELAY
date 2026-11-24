@@ -66,7 +66,8 @@ Each entry needs every field: `image`, `id`, `justification`, `addedBy` and `exp
   `node:latest`) is refused. It would match every future version, so the entry could never end, and it would silently
   suppress every later advisory too.
 - **A re-pin discharges the entry.** Its key no longer matches, the finding blocks again if it is still there, and
-  the gate reports the entry `UNMATCHED`. Re-key or delete it then.
+  the gate reports the entry `UNMATCHED`. Re-key or delete it then. When the dependency bot proposes the re-pin, its PR
+  must also delete the entry before it merges ([renovate.md](renovate.md#a-base-image-re-pin-that-discharges-an-allowlist-entry)).
 - Expiry uses `scripts/allowlist-expiry.mjs`: a warning 14 days ahead, and an expired entry stops suppressing.
 
 ## The pins
@@ -77,7 +78,10 @@ and they move together.
   checksum catches corruption, not tampering.
 - The piped installer is never used. MovieCollectionManager measured it resolving a version, then downloading nothing,
   without an error.
-- Renovate tracks `TRIVY_PIN` once it is adopted (item 47).
+- The dependency bot proposes `TRIVY_PIN` bumps. Its post-upgrade task, `scripts/refresh-pin-checksum.mjs trivy`,
+  re-derives the sha256 from the new release and requires `checksums.txt` to agree, and the `sast` job verifies the
+  pair on every PR ([renovate.md](renovate.md#version-and-checksum-pairs)). That agreement is same-origin too, so the
+  sha256 line in the bot's PR is reviewed like any other.
 
 ## Measured traps
 
@@ -91,7 +95,8 @@ and they move together.
   re-pin could clear it.
   - The sweep allowlists it until 2026-12-24.
   - `toolchain.Dockerfile` upgrades the package, so the image BELAY publishes is clean.
-  - Delete both once upstream rebuilds and the base is re-pinned.
+  - Delete both once upstream rebuilds and the base is re-pinned. The dependency bot proposes that re-pin, and its PR
+    carries both deletions ([renovate.md](renovate.md#a-base-image-re-pin-that-discharges-an-allowlist-entry)).
 
 ## Not a required check
 

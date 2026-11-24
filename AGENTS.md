@@ -49,7 +49,7 @@ BELAY is a polyglot monorepo of tooling that other repositories share, so every 
 - [Nx as the universal task runner](openwiki/invariants/nx-task-runner.md) **[canonical]** — `scripts:lint` / `scripts:test`, and the operator-CLI exception
 - [Package-manager enforcement (pnpm only)](openwiki/invariants/package-manager-enforcement.md) **[canonical]** — `preinstall`, `packageManager`, `allowBuilds`
 - [RTK (Rust Token Killer) token compression](openwiki/invariants/rtk-token-compression.md) **[canonical]**
-- [Secrets management posture](openwiki/invariants/secrets-management.md) **[canonical]** — the three forge credentials and their scopes
+- [Secrets management posture](openwiki/invariants/secrets-management.md) **[canonical]** — the forge credentials, the bot's tokens and their scopes
 - [Testing tiers and what gates a merge](openwiki/invariants/testing-tiers.md) **[canonical]**
 - [Rules stated but not mechanically enforced](openwiki/invariants/unenforced-rules.md) **[canonical]** — where enforcement is soft, and what would close it
 
@@ -74,6 +74,7 @@ BELAY is a polyglot monorepo of tooling that other repositories share, so every 
 - [Image CVE scanning (Trivy)](openwiki/runbooks/image-scanning.md) — the builder gate before push, the Tue/Fri sweep, version-keyed allowlist
 - [SAST and SCA — the static security gate](openwiki/runbooks/sast.md) — `pnpm nx run scripts:sast`, the allowlist, outage vs finding
 - [Spec Kit: this repository's customisations, and upgrading it](openwiki/runbooks/spec-kit.md) — the override gate and its failure codes
+- [The dependency bot (Renovate)](openwiki/runbooks/renovate.md) — `renovate.yml`, `check-renovate-config.mjs`; never hand-close a bot PR
 
 ### Process
 

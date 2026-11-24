@@ -12,6 +12,8 @@ input. Every script exports its functions so that tests can inject `fetch` and t
 | `--print-renovate-version` | Prints `RENOVATE_VERSION`, the one source of truth for both workflows. |
 | `--run-verdict <log.ndjson>` | Reads Renovate's JSON log and applies the RunVerdict rules ([data-model.md](../data-model.md#run-verdict)). It prints `✅ renovate run: <result>, N branches, M PRs` or `❌ renovate run: <reason>`, and exits `0` or `1`. An unreadable or empty log exits `1` with "the run produced no log", never `0`. |
 | `--run-verdict <log> --publish-verdict` | As above, then posts the verdict as the commit status `renovate/verdict` (state `success` or `failure`, with the printed line as its description) on `$GITHUB_SHA`. It uses `GITHUB_TOKEN`, never `RENOVATE_TOKEN`. A failed post is reported but never changes the exit code. |
+| `--preflight` | Reads `RENOVATE_TOKEN` from the environment and calls `GET /api/v1/user`. It exits `1` naming the empty secret or the HTTP status, and never prints the token. |
+| `--publish-mode` | Posts `renovate/mode` (`DRY RUN (creates nothing)` or `LIVE`, from `RENOVATE_DRY_RUN`) with `GITHUB_TOKEN`. |
 | `--root <dir>` | Scans another root (tests). |
 
 Exports:
@@ -39,7 +41,7 @@ importing a second copy.
 
 - `ready` excludes every item labelled `status/bot-managed`. When it excludes one, it prints one line: `(n bot-managed
   item(s) not listed)`. With `--json`, it adds `excluded: [{ number, reason: 'status/bot-managed' }]`.
-- `labels` (the taxonomy) gains `status/bot-managed`, `dependencies` and `security`.
+- The taxonomy that `setup-labels` creates gains `status/bot-managed`, `dependencies` and `security`.
 
 ## `scripts/registry-retention.mjs` / `infrastructure-as-code/forgejo/registry-retention.yaml` (changed)
 

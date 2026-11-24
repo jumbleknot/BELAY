@@ -122,6 +122,11 @@ override's first line records the fork point:
 
 The procedure, all in one PR:
 
+**When the dependency bot opens it.** The bot tracks `SPECKIT_VERSION` and `.specify/init-options.json`'s
+`speckit_version` as one group, and opens that PR only after the box is ticked under "Pending Approval" on its
+dashboard ([renovate.md](renovate.md#approving-a-held-major)). Its PR moves only the two version pins, so run step 1
+below on the bot's branch before it merges. Never merge the raw bump.
+
 1. **Run the upgrade.** Install the new CLI release (`uv tool install specify-cli --force` with the
    new version), then run `specify integration upgrade claude --force`. It rewrites the files
    listed in `.specify/integrations/*.manifest.json`, but not `overrides/` or the constitution. It

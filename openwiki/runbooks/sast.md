@@ -4,8 +4,8 @@ title: SAST and SCA — the static security gate
 description: BELAY's keyless static security gate, stage 1 of backlog item #37 — the sast job in guardrails.yml running Semgrep over the whole tree and pnpm audit over the lockfile, how a finding is normalized and gated against the allowlist (High/Critical in code or a runtime dependency blocks, everything else warns), the PR-only dependency-downgrade check that blocks a package moved INTO an advisory in any scope, how to run it locally, how to tell an outage from a finding, the custom rules and their fixtures, the pins, and what stages 2 to 4 add.
 tags: [security, sast, sca, ci, runbook]
 resource: docs/runbooks/sast.md
-resource-sha256: f6a163f550816845ed8b4f99763ef322a8b757e00714819727b5dd0e0f7ddc8f
-timestamp: 2026-11-23T23:53:09.155Z
+resource-sha256: 6fedb64ace841cc6e95154cd51a335a7e89249d49e8be44fcc92e36e2667e2b7
+timestamp: 2026-11-24T11:26:01.649Z
 ---
 
 # SAST and SCA — the static security gate
@@ -51,3 +51,6 @@ The `sast` job in `.forgejo/workflows/guardrails.yml` runs on every pull request
 - **`p/secrets` stays off:** `secret-scan.mjs` owns credential detection.
 - **`guardrails / sast (pull_request)` is a required context on `main`**, so a red `sast` blocks
   the merge.
+- **The pins are bot-proposed.** Semgrep, rustup-init and cargo-audit arrive as dependency-bot PRs. A
+  version-and-sha256 pair is moved together by `refresh-pin-checksum.mjs`, and `--verify-changed` in
+  this job fails a PR whose pair disagrees ([dependency bot](renovate.md)).

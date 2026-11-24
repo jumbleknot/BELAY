@@ -83,8 +83,8 @@ non-`done` result fails: `disabled`, `blocked`, `uninitiated`, any `*-error`, or
 
 | Pin | Sites | Where | Managed by |
 | --- | --- | --- | --- |
-| `actions/checkout`, `actions/setup-node`, `actions/upload-artifact` SHAs | 13 | `.forgejo/workflows/*.yml` | `builtin:github-actions`; `upload-artifact` held at `<4` |
-| `node-version: 26.13.1` | 5 | `.forgejo/workflows/*.yml` | `builtin:github-actions` (dependency `node`), group `node toolchain` |
+| `actions/checkout`, `actions/setup-node`, `actions/upload-artifact` SHAs | 16 | `.forgejo/workflows/*.yml` | `builtin:github-actions`; `upload-artifact` held at `<4` |
+| `node-version: 26.13.1` | 6 | `.forgejo/workflows/*.yml` | `builtin:github-actions` (dependency `node`), group `node toolchain` |
 | `node:26-bookworm@sha256:…` | 1 | `.devcontainer/toolchain.Dockerfile` | `builtin:dockerfile`, group `node toolchain` / `docker digest pins` |
 | `packageManager: pnpm@12.21.0`, `nx`, `yaml` | 3 | `package.json` | `builtin:npm` |
 | `engines.node: >=24` | 1 | `package.json` | `builtin:npm`, held (the toolchain floor) |
@@ -99,11 +99,11 @@ non-`done` result fails: `disabled`, `blocked`, `uninitiated`, any `*-error`, or
 | `RENOVATE_VERSION` (new) | 1 | `scripts/check-renovate-config.mjs` | custom (npm `renovate`) |
 | `docker-outside-of-docker@sha256:…` | 1 | `.devcontainer/devcontainer-lock.json` | **excluded**: the lock file is written by the devcontainer CLI, which the bot's job does not have (research R6) |
 | `node:26-bookworm@sha256:…` allowlist key | 1 | `security/images/allowlist.yaml` | **excluded**: a finding key that the re-pin PR deletes by hand (spec edge case) |
-| `astral.sh/uv/0.13.9` in the SAST rule's test fixture and comment | 2 | `security/sast/rules/belay-ci-curl-pipe-shell.*` | **excluded**: fixtures that test the rule, not installs |
+| `astral.sh/uv/0.13.9` in the SAST rule's test fixture (the rule's comment line is a comment, so not a pin) | 1 | `security/sast/rules/belay-ci-curl-pipe-shell.*` | **excluded**: fixtures that test the rule, not installs |
 | `speckit_version: ">=…"` in `.specify/extensions/*` and `.specify/workflows/*` | 3 | Spec Kit-owned files | **excluded**: compatibility ranges owned by Spec Kit, rewritten by `specify integration upgrade` |
 | `ARG BASE_IMAGE=belay-devcontainer` | — | `.devcontainer/Dockerfile` | not a detected pin: Renovate extracts it, and a hold disables it (`belay-devcontainer` is built here) |
 
-**Site total**: 38 managed sites and 7 excluded sites; the `—` row is not counted. A site is one pinned value on one
+**Site total**, measured by the implementation: 42 managed sites and 6 excluded sites (the new `renovate.yml` adds three action SHAs and one `node-version`); the `—` row is not counted. A site is one pinned value on one
 line. `check-renovate-config.mjs` prints N managed and M excluded, and N + M equals the site total. Implementation
 re-measures the inventory, and the guard is the authority: if the tree has more sites, this table is updated in the
 same change.

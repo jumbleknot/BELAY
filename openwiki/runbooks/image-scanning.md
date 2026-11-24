@@ -4,8 +4,8 @@ title: Image CVE scanning — the builder gate and the scheduled sweep
 description: How BELAY scans container images with a pinned, sha256-verified Trivy — the dev-container build scans before push and publishes nothing on a fixable Critical, a Tuesday and Friday sweep covers every third-party image the tree names, the verdict line always counts the images scanned, the sweep/verdict status is the only readable record of a green run, and allowlist entries must be version- or digest-keyed and expiring so a re-pin discharges them.
 tags: [security, trivy, images, cve, ci, runbook]
 resource: docs/runbooks/image-scanning.md
-resource-sha256: d31f1a9b4eec7fd7d199a63a5cef3adad0b1ac2e6579492d549d0b654f5786b7
-timestamp: 2026-11-24T01:30:25.597Z
+resource-sha256: aa8f823daa1f04afecd34a5606665f5f73f3c343854157acc8bd9e88f8a4f8f9
+timestamp: 2026-11-24T11:26:01.561Z
 ---
 
 # Image CVE scanning
@@ -35,3 +35,6 @@ procedure is in [the runbook](../../docs/runbooks/image-scanning.md).
   from the release.
 - **Not a required check**: the builder is the hard gate. The soft spot is in the
   [register of unenforced rules](../invariants/unenforced-rules.md).
+- **The dependency bot proposes both re-pins**, the base image and `TRIVY_PIN`. A base re-pin PR must also delete the
+  allowlist entry it discharges, and the Trivy sha256 is re-derived and cross-checked by
+  `refresh-pin-checksum.mjs` ([dependency bot](renovate.md)).

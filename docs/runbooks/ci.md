@@ -16,7 +16,7 @@ BELAY's required CI is one Forgejo Actions workflow, [`.forgejo/workflows/guardr
 
 A push to a branch with an open PR runs once, through the `pull_request` event. A newer run for the same ref cancels an older one.
 
-**Jobs.** Two jobs run side by side: `guardrails`, below, and `sast`, the static security scan (see [the SAST runbook](sast.md)). `sast` installs uv, scans with Semgrep and `pnpm audit`, and gates the result against `security/sast/allowlist.yaml`.
+**Jobs.** Two jobs run side by side: `guardrails`, below, and `sast`, the static security scan (see [the SAST runbook](sast.md)). `sast` installs uv, scans with Semgrep and `pnpm audit`, and gates the result against `security/sast/allowlist.yaml`. It also runs the dependency bot's two PR checks (feature 011): `renovate.json` against Renovate's strict validator at the bot's pinned version, and `refresh-pin-checksum.mjs --verify-changed`, which fails a PR whose version-and-checksum pair disagrees with its release ([the dependency-bot runbook](renovate.md)).
 
 **Steps.** The `guardrails` job runs:
 
@@ -125,6 +125,14 @@ The repository is private, and Forgejo gives no secrets (`CI_DIGEST_TOKEN`) to f
 - **The result:** the job writes the digest-pinned reference to the step summary, which this forge cannot read back. Resolve the digest from the registry instead (the recipe is in [devcontainer.md](devcontainer.md)).
 - **Failure digest:** the job ends with the standard failure-digest step, like every job here.
 
+## The renovate workflow
+
+[`.forgejo/workflows/renovate.yml`](../../.forgejo/workflows/renovate.yml) runs the dependency bot on the `belay`
+runner. The security channel runs at 01:17, 07:17, 13:17 and 19:17 UTC, and the routine window on Wednesdays at 05:00
+UTC. A dispatch is a dry run by default. It is not a merge check. Its record is the commit status `renovate/verdict`,
+plus `renovate/mode` on a dispatch, and its failures reach the failure digest. Everything else is in
+[the dependency-bot runbook](renovate.md).
+
 ## The registry-retention workflow
 
 [`.forgejo/workflows/registry-retention.yml`](../../.forgejo/workflows/registry-retention.yml) runs
@@ -138,9 +146,9 @@ registry. It is not a merge check.
   - `belay-devcontainer`: the newest 4, or anything younger than 21 days, plus every digest under
     `protect:`.
   - `belay-ci-failures`: failure bundles, plus a durations-only version for every green job (feature 008).
-    At least 125 versions and 45 days, the floor `ci-status durations` needs. The
-    floor is 25 runs × 5 bundle-publishing jobs (guardrails, sast, devcontainer-image,
-    registry-retention, image-scan), so a new job that publishes a bundle makes the config fail until the number
+    At least 150 versions and 45 days, the floor `ci-status durations` needs. The
+    floor is 25 runs × 6 bundle-publishing jobs (guardrails, sast, devcontainer-image,
+    registry-retention, image-scan, renovate), so a new job that publishes a bundle makes the config fail until the number
     is raised.
   - A package the file does not list (another repository's, under the same owner) is reported and
     never deleted.
@@ -161,6 +169,8 @@ registry. It is not a merge check.
 | `CI_DIGEST_TOKEN` | Repository **Settings → Actions → Secrets** | `write:issue`, `write:package`, `read:repository` | The failure-digest step only |
 | `REGISTRY_TOKEN` | Repository **Settings → Actions → Secrets** | `write:package` | The `devcontainer-image` push step only |
 | `REGISTRY_CLEANUP_TOKEN` | Repository **Settings → Actions → Secrets** | `write:package` | The `registry-retention` report step only. Without it, the job fails loudly rather than reporting an empty registry |
+| `RENOVATE_TOKEN` | Repository **Settings → Actions → Secrets** | `read:user`, `read:organization`, `write:repository`, `write:issue`, on the restricted `belay-renovate` account | The `renovate` workflow's preflight and run steps only. Without it, the preflight fails the run by name ([renovate.md](renovate.md#the-token)) |
+| `RENOVATE_GITHUB_COM_TOKEN` | Repository **Settings → Actions → Secrets** | a github.com fine-grained token: public-repository read, no permissions | Optional. Release and changelog lookups in the `renovate` run, past github.com's anonymous rate limit |
 
 Guardrails needs no repository variables. If `CI_DIGEST_TOKEN` is missing or empty, the digest falls back to the run token, then to the job log. CI never fails because of it.
 

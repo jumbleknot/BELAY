@@ -51,6 +51,9 @@ forge's database, not in git: there is no `git revert` for a mass close.
   unexpectedly vanishes from `ready`, check for a leftover label (`list --label status/blocked`)
 - `status/needs-spec` — **the bridge to SDD**: too large to implement directly, so it needs
   `specs/NNN-*/` spec → plan → tasks first. Apply it rather than starting to code
+- `status/bot-managed` — the dependency bot's **Dependency Dashboard** issue. `ready` never lists it (it prints
+  `(n bot-managed item(s) not listed)`). Never edit, relabel or close it; the bot owns it
+  (`docs/runbooks/renovate.md`). `dependencies` and `security` label the bot's PRs; they are not backlog labels
 
 Milestones map to feature directories (`NNN-slug`); no milestone is normal — that is the free backlog.
 

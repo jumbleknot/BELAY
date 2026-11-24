@@ -15,7 +15,7 @@ one-line backlog edit.
 
 ```bash
 node scripts/backlog.mjs --help          # full flag reference, exit codes, measured API quirks
-node scripts/backlog.mjs ready           # open, unblocked, priority-ordered
+node scripts/backlog.mjs ready           # open, unblocked, priority-ordered; never the bot's dashboard
 node scripts/backlog.mjs list [--state open|closed|all] [--label L]... [--milestone M] [--q TEXT]
 node scripts/backlog.mjs show <n>
 node scripts/backlog.mjs create --title T --body-file F [--label L]... [--milestone M]
@@ -79,7 +79,7 @@ not been widened; re-run it if either credential is ever re-minted.
 | --- | --- |
 | type | `type/bug` `type/feature` `type/tech-debt` `type/chore` — exactly one |
 | priority | `priority/p1` `priority/p2` `priority/p3` — exactly one |
-| status | `status/blocked` (the dependency graph is the intended authority — but `ready` skips the graph for a labelled item, so a stale label silently hides it; it warns for an unlabelled item with an open blocker) · `status/needs-spec` (too large to implement directly: it goes through `specs/NNN-*/` spec → plan → tasks first) |
+| status | `status/blocked` (the dependency graph is the intended authority — but `ready` skips the graph for a labelled item, so a stale label silently hides it; it warns for an unlabelled item with an open blocker) · `status/needs-spec` (too large to implement directly: it goes through `specs/NNN-*/` spec → plan → tasks first) · `status/bot-managed` (the dependency bot's Dependency Dashboard issue: `ready` never lists it, and prints `(n bot-managed item(s) not listed)` instead; never edit or close it, see [renovate.md](renovate.md#reading-the-dashboard)) |
 
 **Milestones** map to feature directories (`NNN-slug`). No milestone is normal — that is the free
 backlog. A milestone must exist before it can be used: an unknown name is refused locally, because the

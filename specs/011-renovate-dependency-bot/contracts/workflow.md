@@ -21,11 +21,15 @@ jobs:
 The steps, in order:
 1. `actions/checkout`, pinned by SHA.
 2. `actions/setup-node`, 26.13.1. It must come **before** step 3.
-3. Install pnpm (`install-pnpm.sh`), through `ci-log-step.sh`.
-4. Publish the dispatch mode: a `renovate/mode` commit status. Runs only on dispatch, with `always()` and
-   `continue-on-error`.
-5. Preflight the credential. It fails by name when `RENOVATE_TOKEN` is empty, or when `GET /api/v1/user` with it is
-   not 200. It never prints the token.
+3. Install pnpm (`install-pnpm.sh`), then the workspace dependencies (`pnpm install --frozen-lockfile`), both through
+   `ci-log-step.sh`. `check-renovate-config.mjs` imports `yaml`, and `workflow-deps-installed.guard.test.mjs` fails a job that
+   runs it before an install.
+4. Publish the dispatch mode: `check-renovate-config.mjs --publish-mode` posts a `renovate/mode` commit status. Runs only
+   on dispatch, with `always()` and `continue-on-error`.
+5. Preflight the credential: `check-renovate-config.mjs --preflight`, with `RENOVATE_TOKEN` in the step's environment. It
+   fails by name when the token is empty, or when `GET /api/v1/user` with it is not 200. It never prints the token. Both
+   this step and step 4 run through the script rather than `curl -H "Authorization: token …"`, which would put the
+   credential on a process's argv.
 6. Validate the config: `renovate-config-validator --strict --no-global renovate.json`, at
    `$(node scripts/check-renovate-config.mjs --print-renovate-version)`, with `npx --before=<now − 3 d>`.
 7. Run Renovate with this environment:
@@ -42,18 +46,20 @@ The steps, in order:
      never opens an onboarding PR
 8. The verdict: `check-renovate-config.mjs --run-verdict <log> --publish-verdict`, with `always()`, so a failed run
    still posts `renovate/verdict` (research R11). The step env has `GITHUB_TOKEN: ${{ github.token }}`.
-9. Publish the failure digest, last, with `always()`.
+9. Upload `renovate-log.ndjson` as the `renovate-log` artifact (7 days), with `always()`.
+10. Publish the failure digest, last, with `always()`.
 
 No host literal appears: the endpoint comes from `github.server_url`, and the repository from `github.repository`.
 
-## `guardrails.yml`, a new step in the existing `guardrails` job
+## `guardrails.yml`, two new steps in the existing `sast` job
 
-Placed after the dependency install:
+The `guardrails` job's seven steps are themselves a guarded contract, and `sast` is the supply-chain job, so the two
+checks sit there, after its dependency install:
 - **Validate renovate.json**: the same validator command as step 6.
 - **Verify version-and-checksum pairs**: `node scripts/refresh-pin-checksum.mjs --verify-changed --base
   origin/${{ github.base_ref || 'main' }}`.
 
-Both go through `ci-log-step.sh`. Being in `guardrails`, both are part of the required check. Neither adds a job, so
+Both go through `ci-log-step.sh`. `guardrails / sast` is a required context, so both are part of the required check. Neither adds a job, so
 the retention floor is unaffected by them.
 
 ## Guard tests (`scripts/__tests__/renovate-workflow.guard.test.mjs`)

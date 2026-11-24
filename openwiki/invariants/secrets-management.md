@@ -1,7 +1,7 @@
 ---
 type: Convention
 title: Secrets management posture
-description: No clear-text secrets in git, what secrets/ may hold, the three forge credentials and their deliberately separate scopes, why ANTHROPIC_API_KEY is never set where AI coding runs, and the scan, redactor and never-print rules that keep a credential out of output, digests and wiki pages.
+description: No clear-text secrets in git, what secrets/ may hold, the forge credentials and the dependency bot's tokens with their deliberately separate scopes, why ANTHROPIC_API_KEY is never set where AI coding runs, and the scan, redactor and never-print rules that keep a credential out of output, digests and wiki pages.
 tags: [secrets, security, credentials, forge]
 timestamp: 2026-11-22
 ---
@@ -21,6 +21,8 @@ variable or a gitignored file, and its template is an `*.example` file.
 | `FORGE_ISSUE_TOKEN` | user environment variable | `write:issue` + `read:repository` | `backlog.mjs` and `taskstoissues.mjs` writes |
 | the git credential for `origin` | the git credential helper | the account's push access | `forge-pr.mjs` (open, merge, dispatch), through `git credential fill` |
 | `CI_DIGEST_TOKEN` | repository Actions secret | `write:issue`, `write:package`, `read:repository` | the CI failure-digest step only |
+| `RENOVATE_TOKEN` | repository Actions secret, never the dev container | `read:user`, `read:organization`, `write:repository`, `write:issue`, on the dedicated restricted `belay-renovate` account | the dependency bot's `renovate` workflow only ([runbook](../../docs/runbooks/renovate.md#the-token)) |
+| `RENOVATE_GITHUB_COM_TOKEN` | repository Actions secret (optional) | a github.com fine-grained token: public-repository read, no permissions | release lookups in the `renovate` run, past github.com's anonymous rate limit |
 
 Full detail is in the [CI runbook](../../docs/runbooks/ci.md#secrets) and the
 [backlog runbook](../../docs/runbooks/backlog.md#the-credential).

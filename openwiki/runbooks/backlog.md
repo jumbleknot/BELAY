@@ -4,8 +4,8 @@ title: The agent-driven backlog (Forgejo Issues)
 description: How the BELAY backlog lives in the repository's own Forgejo tracker and is worked by the assistant through scripts/backlog.mjs and the tasks-to-issues fan-out — the write credential bounded server-side by its scope and client-side by a same-repository guard, the label and milestone conventions, why closure is an explicit act, and the API traps that make a filter fail open.
 tags: [backlog, forgejo, issues, runbook]
 resource: docs/runbooks/backlog.md
-resource-sha256: 83b9425d0aff9204f66bda273ad37030deee056e34215a413fcf19596125bca1
-timestamp: 2026-11-23T13:26:41.479Z
+resource-sha256: 63cb54ba0ee54a7bc6fab0c2c51e44fc9d5b8b7e13c71e3850ed9dba5ccc36a0
+timestamp: 2026-11-24T11:26:01.404Z
 ---
 
 # The agent-driven backlog (Forgejo Issues)
@@ -42,3 +42,6 @@ run.** Issue changes are HTTP calls, so a one-line backlog edit costs no CI cycl
   reporting the form as broken.
 - **Exit codes:** 0 ok, 1 unexpected, 2 usage or validation, 3 missing credential (often a token set
   after the terminal started), 4 authorisation, 5 transport.
+- **`ready` never lists the dependency bot's dashboard.** An item labelled `status/bot-managed` is
+  skipped, and `ready` says so: `(n bot-managed item(s) not listed)`. The bot owns that issue; never
+  edit or close it ([dependency bot](renovate.md)).

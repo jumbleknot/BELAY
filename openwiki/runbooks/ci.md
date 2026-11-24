@@ -4,8 +4,8 @@ title: CI guardrails, the failure digest, and the PR loop
 description: The single guardrails Forgejo Actions workflow required on main — what it runs and how to reproduce it locally, how a failure is read back from the redacted digest and its package bundle with ci-status.mjs, the dedicated repository runner and the one exception to it (the dev-container image job, which never runs pull-request code), the sast job beside guardrails, the report-only registry-retention job, branch protection, the terminal PR loop through forge-pr.mjs, and the rule every new job must follow.
 tags: [ci, forgejo, pull-requests, runbook]
 resource: docs/runbooks/ci.md
-resource-sha256: 458c246ce1351f3ae2b1a1fb2585cecc1ba34197290b4e74e1bb0920117ca435
-timestamp: 2026-11-24T01:31:07.328Z
+resource-sha256: 4744f064aa7cab031562ab4a37893e822a1fef00be99c542f0c08a26b1eeb73b
+timestamp: 2026-11-24T11:26:01.482Z
 ---
 
 # CI guardrails, the failure digest, and the PR loop
@@ -79,3 +79,9 @@ node scripts/forge-pr.mjs merge <n> --expect-head "$(git rev-parse HEAD)"
   can fail on a just-published transitive under pnpm's release-age policy (see
   [package-manager enforcement](../invariants/package-manager-enforcement.md)). Read one digest, not
   all of them.
+- **The `sast` job also runs the dependency bot's two PR checks**: `renovate.json` against Renovate's
+  strict validator at the pinned version, and a version-and-checksum pair that moved must agree with
+  its release. The bot's own `renovate` workflow is not a merge check; its record is the
+  `renovate/verdict` status ([dependency bot](renovate.md)).
+- **The evidence floor is 150 versions**: 25 durations runs × 6 bundle-publishing jobs. A new job that
+  publishes a bundle fails the retention config until the number is raised.
