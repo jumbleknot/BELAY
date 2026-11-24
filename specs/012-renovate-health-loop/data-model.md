@@ -53,7 +53,7 @@ One comment per health run.
 | --- | --- |
 | `HealthReport.healthy` | `true` exactly when there are no dashboard problems, every branch is `active`, no PR is blocked, the lock-file verdict passes, and the dashboard was found. |
 | `HealthReport.body` | When healthy, **one line**: `✅ <YYYY-MM-DD> healthy: dashboard 0 problems · <N> bot branches active · <M>/<limit> open PRs, none blocked · lock file <state>`. Otherwise a header `⚠️ <YYYY-MM-DD> <K> finding(s)`, then one line per finding. |
-| `HealthReport.marker` | The first line carries `<!-- renovate-health -->`, so `--check-freshness` finds the newest report among the issue's comments. |
+| `HealthReport.marker` | The first line carries `<!-- renovate-health -->`, so `--check-freshness` finds the newest report among the issue's comments. A failure comment (FR-005) never carries it. |
 
 ## Tracking issue
 
@@ -61,12 +61,12 @@ One comment per health run.
 | --- | --- |
 | `TrackingIssue.title` | `Dependency-bot health reports`. |
 | `TrackingIssue.label` | `status/bot-managed`. Required: `backlog.mjs ready` excludes it. |
-| `TrackingIssue.freshness` | The age of the newest comment carrying `HealthReport.marker`. More than **8 days** fails `--check-freshness`. No such comment means "no report yet", which passes. |
+| `TrackingIssue.freshness` | One of `fresh <N>d`, `stale <N>d`, `no-report-yet` or `missing`. It is the age of the newest comment carrying `HealthReport.marker`. More than **8 days** is `stale`. With no such comment, it is `no-report-yet`, which passes. It is `missing`, which fails, when the issue does not exist but a `renovate-health` run has already succeeded. |
 
 ## Reap candidate
 
 | Field | Constraint |
 | --- | --- |
 | `ReapCandidate.name`, `ReapCandidate.sha` | From `git for-each-ref refs/remotes/origin`, after `fetch --prune`. |
-| `ReapCandidate.decision` | `reap` only when all four rules of research R7 hold. Otherwise `keep` with one reason: `protected`, `open-pr`, `not-merged`, `ancestry-unknown`, `too-new` or `no-date`. |
+| `ReapCandidate.decision` | `reap` only when all five rules of research R7 hold. Otherwise `keep` with one reason: `protected`, `open-pr`, `not-merged`, `ancestry-unknown`, `unstarted` (the head is on `main`'s first-parent history), `too-new` or `no-date`. |
 | `ReapCandidate.age` | Now minus the tip commit's committer date. `reap` needs ≥ 6 hours. |

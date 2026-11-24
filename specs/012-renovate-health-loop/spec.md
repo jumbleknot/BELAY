@@ -135,7 +135,8 @@ With deletion enabled, a merged, unused branch is deleted, and every protected o
 ### Functional Requirements
 
 - **FR-001**: A scheduled health job MUST run weekly, after the bot's routine window, and MUST post exactly one comment
-  per run on a single tracking issue.
+  per run on a single tracking issue. That is the report, or, when a read failed, a failure comment that is not a
+  report (FR-005).
 - **FR-002**: When nothing is wrong, the comment MUST be one line. It MUST state the date, the number of bot branches
   classified and that the dashboard reported no problems.
 - **FR-003**: The job MUST read the bot dashboard's repository-problems section and report every entry in it.
@@ -149,7 +150,8 @@ With deletion enabled, a merged, unused branch is deleted, and every protected o
 - **FR-004a**: The job MUST report every open bot PR whose required checks are failing, naming the failing checks.
   "Healthy" MUST mean that no bot PR is blocked.
 - **FR-005**: The job MUST fail loudly, through the failure digest, when it cannot read the dashboard, the branches or
-  the pull requests. It MUST NOT post "healthy" from partial data.
+  the pull requests. It MUST NOT post "healthy" from partial data. It posts a failure comment naming what it could
+  not read, and that comment does not count as a report for the freshness check.
 - **FR-006**: The tracking issue MUST carry the `status/bot-managed` label, so the backlog's `ready` list never shows
   it. The job MUST create it if it is missing.
 - **FR-007**: A lock-file check MUST run after each routine window. It MUST derive the window from the bot's own
@@ -157,7 +159,9 @@ With deletion enabled, a merged, unused branch is deleted, and every protected o
   window nor the bot recorded the lock file as already current.
 - **FR-008**: A branch reaper MUST delete remote branches whose head is already contained in `main` and that have no
   open pull request, are not protected, and whose tip commit is older than a grace period of 6 hours (MCM's measured
-  value). The open-PR read MUST fail closed: a short or malformed listing deletes nothing.
+  value). It MUST keep a branch whose head lies on `main`'s first-parent history, because that is a branch created
+  from `main` with no commits of its own yet. A tip commit's age cannot tell such a branch apart, since it points at
+  an existing `main` commit. The open-PR read MUST fail closed: a short or malformed listing deletes nothing.
 - **FR-009**: The reaper MUST default to a dry run that deletes nothing. Deletion MUST need an explicit flag, and the
   scheduled workflow is what passes it.
 - **FR-010**: The reaper MUST never delete `main`, a branch matching a branch-protection rule, or a branch with an open

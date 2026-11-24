@@ -47,8 +47,9 @@ The steps, in order:
 
 ## `.forgejo/workflows/renovate.yml` (changed, feature 011)
 
-After the verdict step, a step runs `renovate-health.mjs --check-freshness` with `GITHUB_TOKEN` (research R6). It is
-blocking, has no `continue-on-error`, and runs on every bot run.
+**Before** the verdict step, with `always()`, a step runs `renovate-health.mjs --check-freshness --out
+health-freshness.txt` with `GITHUB_TOKEN` (research R6). The verdict step then passes `--health-freshness
+health-freshness.txt`. So a stale report fails `renovate/verdict` itself, and the status and the job always agree.
 
 ## Guards (`scripts/__tests__/renovate-health-workflows.guard.test.mjs`)
 

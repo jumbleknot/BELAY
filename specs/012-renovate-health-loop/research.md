@@ -62,8 +62,10 @@ Two workflows on the `belay` runner:
 the window from `renovate.json` (`lockFileMaintenance.schedule`, else `schedule`, always in UTC; rule C2 enforces UTC)
 with `cronMinutes` from `check-renovate-config.mjs`. The window's copy never lives anywhere else.
 
-1. **The window run.** It finds the `renovate` workflow runs that started inside the window (the Actions tasks
-   listing, filtered by name and start time). With none, it **fails**: "the window run never happened". That catches
+1. **The window run.** It finds the `renovate` workflow runs that started inside the window: the Actions tasks
+   listing, filtered client-side by `name === "renovate"` and **`run_started_at`**. `created_at` is the queue time.
+   Both were measured on 2026-11-24. That endpoint returns `{ workflow_runs, total_count }` with **no `x-total-count`
+   header**, so `listAll` reads it with `items: "workflow_runs"` (R8). With none, it **fails**: "the window run never happened". That catches
    the window-never-meets-cron failure, MCM's worst, directly.
 2. **The lock-file result.** Feature 011's verdict step now appends the lock-file-maintenance branch's result, taken
    from Renovate's own `branches info extended` record, to the `renovate/verdict` description. For example:
@@ -79,6 +81,12 @@ with `cronMinutes` from `check-renovate-config.mjs`. The window's copy never liv
 | anything else, or no `lock file:` part | no | **fail**, naming what was seen |
 | (no window run) | (any) | **fail**: the window run never happened |
 | (any) | only one created *outside* the window | **fail**, reported as forced |
+
+**The result decides, and a PR is needed only for the results that produce one.** Every combination the table does
+ not list is `unknown`, which fails, naming both values:
+- `pr-created` or `pr-updated` with no lock-file PR found inside the window;
+- `no-work` combined with a PR created outside the window. The window is what is judged, so this is `current` and
+  passes, and the report also names the forced PR.
 
 **Rationale**:
 - MCM's check judged only PR creation times. It reported "STILL_STARVED" as a comment and never failed, and it could
@@ -126,7 +134,9 @@ The report is:
 
 **Exit codes**:
 - `0` when it posted, whatever the findings: findings are reported, not failures;
-- `1` when any read failed, or the post was refused (FR-005). It never posts "healthy" from partial data.
+- `1` when any read failed, or the post was refused (FR-005). It never posts "healthy" from partial data. When a read
+  fails, it posts a failure comment, `❌ <date> could not read <what>`, **without** the report marker, so the
+  tracking issue records the failure and the watchdog still counts only real reports.
 
 **Rationale**: MCM's version always exits 0, even on errors, so a broken report job was silent. That is exactly the
 thing this feature exists to end.
@@ -148,7 +158,13 @@ thing this feature exists to end.
 that comment is **older than 8 days**. The step reports this through the failure digest; it does not hide it under
 `continue-on-error`.
 
-Before the first report exists (no tracking issue, or no comments yet), it passes, saying "no report yet".
+Before the first report exists (no tracking issue, or no comments yet), it passes, saying "no report yet". **Except**:
+when the tracking issue is missing but a `renovate-health` run has already succeeded (the Actions tasks listing), the
+issue was deleted after reports existed. That is a failure, not a bootstrap.
+
+**Placement (one record tells the truth)**: the watchdog runs **before** the verdict step. It writes its state to a
+file, which `--run-verdict --health-freshness <file>` reads. The verdict line gains `; health report: <state>`, and a
+`stale` or `unknown` state fails the verdict. So `renovate/verdict` and the job always agree.
 
 **Rationale**: "silence is the alarm" needs a listener. Nothing else in BELAY reads the tracking issue on a schedule.
 The bot runs four times a day on an independent schedule, so the two loops watch each other:
@@ -169,8 +185,16 @@ It costs one API call.
 2. It is not the head of any open PR. The open-PR listing is read to its end, and a short or malformed read deletes
    nothing (FR-013).
 3. `git merge-base --is-ancestor` says its head is in `origin/main`. An unanswerable ancestry means keep.
-4. Its tip commit is at least **6 hours** old (MCM's `GRACE_MS`). This protects a branch another agent has just
-   created from `main`.
+4. Its head is **not on `main`'s first-parent history**: `git rev-list --first-parent origin/main` does not contain
+   it. A branch created from `main` with no commits of its own points at a first-parent commit, so it is
+   `unstarted` and kept. A branch merged through a merge commit has its tip as a second parent, so it is not on the
+   first-parent history and can be reaped. MCM's rules miss this: a branch created today from a `main` commit that is
+   days old passes their age check at once.
+5. Its tip commit is at least **6 hours** old (MCM's `GRACE_MS`), as a second guard.
+
+**Known limitation**: a branch merged by fast-forward or squash is never reaped. Its tip is on the first-parent
+history, or not in `main` at all. That is the safe direction: BELAY merges with merge commits, and the merge tool
+deletes the head branch anyway.
 
 - The default is a dry run. `--apply` deletes, and the scheduled workflow passes it.
 - Every keep and every reap is printed with its reason.
@@ -183,7 +207,9 @@ BELAY's protection set may grow, and the reaper should honour it without an edit
 ## R8 — The shared list reader (FR-013)
 
 **Decision**: `scripts/lib/forge-list.mjs` exports
-`listAll(path, { fetch, token, base, pageSize = 50 })`. It:
+`listAll(path, { fetch, token, base, pageSize = 50, items })`. With `items` (for example `"workflow_runs"`) the page
+is an object, the rows are that key, and the total is the body's `total_count`. Without it, the page is an array and
+the total is `x-total-count`. It:
 - pages with `limit` and `page`, since `?limit=` alone is ignored on this forge (measured by MCM);
 - reads `x-total-count`;
 - **throws** when the rows read differ from the total, or a page is not an array.

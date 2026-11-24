@@ -71,7 +71,9 @@ Shorthand used below:
   - throws on a page that is not an array;
   - throws on a missing `x-total-count`;
   - throws when the rows read differ from the total (FR-013);
-  - an empty listing (total 0) returns `[]`.
+  - an empty listing (total 0) returns `[]`;
+  - with `items: "workflow_runs"`, it reads an object page and its body's `total_count` (the Actions tasks shape,
+    measured 2026-11-24), and fails closed on a mismatch.
   - **Scenarios covered**: FR-013, spec edge case "the forge paginates"
   - **Verify RED**: `node --test scripts/__tests__/forge-list.test.mjs` → expected: ≥6 failing — `not implemented`
 - [ ] T004 Implement `listAll` in `scripts/lib/forge-list.mjs` (research R8).
@@ -134,9 +136,10 @@ finding class renders.
   - it creates the tracking issue, labelled `status/bot-managed`, when it is missing (data-model.md
     `TrackingIssue.title` and `TrackingIssue.label`);
   - it comments on a closed tracking issue and says so;
-  - a failed read exits 1 and posts nothing, never "healthy" (FR-005);
+  - a failed read exits 1 and posts a failure comment without the report marker, never "healthy" (FR-005);
   - `--dry-run` posts nothing;
-  - `--check-freshness` exits 1 at 8 days + 1 minute.
+  - `--check-freshness --out` writes `stale 9d` at 8 days + 1 minute, `no-report-yet` with no report, and `missing`
+    when the issue is gone but a `renovate-health` run has succeeded (data-model.md `TrackingIssue.freshness`).
   - **Scenarios covered**: US1-AC5, US1-AC6, FR-005, FR-006
   - **Verify RED**: `node --test --test-name-pattern "health main" scripts/__tests__/renovate-health.test.mjs` → expected: ≥6 failing — `not implemented`
 
@@ -151,7 +154,8 @@ finding class renders.
   - **Verify GREEN**: T009's command → expected: 0 failures
 - [ ] T014 [US1] Implement `judgeFreshness` and the CLI (`--dry-run`, `--check-freshness`, `--lockfile-verdict`, the
   default post) in `scripts/renovate-health.mjs`. It covers data-model.md `TrackingIssue.title`,
-  `TrackingIssue.label` and `TrackingIssue.freshness`, with `listAll` for every listing, `git merge-base
+  `TrackingIssue.label` and `TrackingIssue.freshness`, and data-model.md `BotBranch.sha` from the branch listing,
+  with `listAll` for every listing, `git merge-base
   --is-ancestor` for ancestry, `GITHUB_TOKEN` for reads and `CI_DIGEST_TOKEN` for writes (research R2).
   - **Verify GREEN**: T010's and T011's commands → expected: 0 failures; then `node --test scripts/__tests__/renovate-health.test.mjs` passes with 0 skipped
 - [ ] T015 [US1] Tests in `WG`, then the workflow `.forgejo/workflows/renovate-health.yml` per
@@ -159,9 +163,11 @@ finding class renders.
   `always()`, the digest last).
   - **Verify RED**: `node --test scripts/__tests__/renovate-health-workflows.guard.test.mjs` → expected: failing — `ENOENT … renovate-health.yml`
   - **Verify GREEN**: the same command → expected: 0 failures for the health assertions; then `node scripts/check-ci-digest-coverage.mjs` and `node --test scripts/__tests__/workflow-deps-installed.guard.test.mjs` pass
-- [ ] T016 [US1] Add the freshness watchdog step to `.forgejo/workflows/renovate.yml` (research R6). Extend
-  `scripts/__tests__/renovate-workflow.guard.test.mjs` first to assert it: after the verdict step, blocking, with
-  `GITHUB_TOKEN`.
+- [ ] T016 [US1] Add the freshness watchdog step to `.forgejo/workflows/renovate.yml`, **before** the verdict step
+  with `always()`, writing `health-freshness.txt`. Make the verdict step pass `--health-freshness health-freshness.txt`
+  (research R6). Extend `scripts/__tests__/renovate-workflow.guard.test.mjs` first to assert the order and the flag.
+  In `RC`, test first that `judgeRun` appends `; health report: <state>` and fails on `stale`, `missing` or
+  `unknown`.
   - **Verify RED**: `node --test --test-name-pattern "freshness" scripts/__tests__/renovate-workflow.guard.test.mjs` → expected: 1 failing — step not found
   - **Verify GREEN**: the same command → expected: 0 failures
 - [ ] T017 [US1] Live dry run, read-only: `node scripts/renovate-health.mjs --dry-run`, with `GITHUB_TOKEN=$FORGE_TOKEN`
@@ -188,13 +194,15 @@ finding class renders.
   - a non-UTC timezone throws.
   - **Scenarios covered**: US2-AC4, spec edge case "a run between two windows"
   - **Verify RED**: `node --test --test-name-pattern "deriveWindow" scripts/__tests__/check-lockfile-refresh.test.mjs` → expected: ≥4 failing — `not implemented`
-- [ ] T019 [P] [US2] Tests in `LR` for `judgeLockfile`: one case per row of research R3's table, producing data-model.md
-  `LockfileVerdict.state`. A PR is matched by head **or** title, per `LockfileVerdict.pr`, using MCM's
+- [ ] T019 [P] [US2] Tests in `LR` for `judgeLockfile`: one case per row of research R3's table, plus the two
+  unlisted combinations R3 names (`pr-created` with no PR found gives `unknown`; `no-work` with a forced PR gives
+  `current`, naming the PR), producing data-model.md `LockfileVerdict.state`. A PR is matched by head **or** title, per `LockfileVerdict.pr`, using MCM's
   `refs/pull/N/head` case. Every verdict line names the window.
   - **Scenarios covered**: US2-AC1 to US2-AC3, FR-007
   - **Verify RED**: `node --test --test-name-pattern "judgeLockfile" scripts/__tests__/check-lockfile-refresh.test.mjs` → expected: ≥8 failing — `not implemented`
 - [ ] T020 [P] [US2] Tests in `LR` for `main`, with an injected `fetch`:
-  - it finds the window run among the Actions tasks, filtering client-side by name and start time;
+  - it finds the window run among the Actions tasks, filtering client-side by `name` and `run_started_at` (research
+    R3). The fixture is a captured real row;
   - it reads `renovate/verdict` on that run's sha;
   - `--verdict-out` writes the JSON;
   - the exit code is 0 for `unaided` and `current`, 1 otherwise;
@@ -239,11 +247,12 @@ finding class renders.
   - `open-pr`;
   - `not-merged`;
   - `ancestry-unknown`;
+  - `unstarted` (the head is on `main`'s first-parent history, even when the tip is days old);
   - `too-new` (5h 59m against `ReapCandidate.age`);
   - `no-date`;
   - `reap`, at exactly 6 hours.
   - **Scenarios covered**: US3-AC1 to US3-AC4, FR-008, FR-010, SC-004
-  - **Verify RED**: `node --test --test-name-pattern "decideBranch" scripts/__tests__/reap-merged-branches.test.mjs` → expected: ≥7 failing — `not implemented`
+  - **Verify RED**: `node --test --test-name-pattern "decideBranch" scripts/__tests__/reap-merged-branches.test.mjs` → expected: ≥8 failing — `not implemented`
 - [ ] T027 [P] [US3] Tests in `RM` for `main`, with an injected `git` and `fetch`:
   - the default is a dry run, which deletes nothing;
   - `--apply` deletes with `--force-with-lease` to the classified sha (data-model.md `ReapCandidate.sha`);
@@ -259,8 +268,8 @@ finding class renders.
   `ReapCandidate.decision` and `ReapCandidate.age`).
   - **Verify GREEN**: T026's command → expected: 0 failures
 - [ ] T029 [US3] Implement the CLI (`--apply`, `--selftest`, the dry-run default) in `scripts/reap-merged-branches.mjs`.
-  It runs `git fetch --prune`, then `for-each-ref`, then `merge-base`, and deletes with `push --force-with-lease`
-  (research R7).
+  It runs `git fetch --prune`, `for-each-ref`, `merge-base` and `rev-list --first-parent origin/main`, then deletes
+  with `push --force-with-lease` leased to data-model.md `ReapCandidate.sha` (research R7).
   - **Verify GREEN**: T027's command → expected: 0 failures; then `node --test scripts/__tests__/reap-merged-branches.test.mjs` passes with 0 skipped
 - [ ] T030 [US3] Add `.forgejo/workflows/branch-reaper.yml` per contracts/workflows.md. Extend `WG` first: the cron,
   dispatch `apply` defaulting to false, the apply flag through `env`, `fetch-depth: 0`, the self-test before the

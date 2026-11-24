@@ -27,7 +27,11 @@ node scripts/check-lockfile-refresh.mjs --now 2026-11-25T08:30:00Z
    - `backlog.mjs ready` does not list it;
    - it has exactly one new comment: one line if healthy, findings otherwise.
 3. Dispatch the reaper as a dry run (the default) and read its job log. **Expect**: nothing is deleted.
-4. Record the report and the reaper's list on item #48.
+4. Prove the deletion path once (L3). Push a throwaway branch made of one commit merged into `main` through a merge
+   commit, wait for the grace period (or replay with an injected clock), then dispatch with `apply: true`. **Expect**:
+   that branch, and only that branch, is reaped. This is the first time the run token's push-delete is measured in
+   BELAY; in MCM it is measured.
+5. Record the report and the reaper's list on item #48.
 
 ## §3 The first Wednesday (2026-11-25 or the next)
 
