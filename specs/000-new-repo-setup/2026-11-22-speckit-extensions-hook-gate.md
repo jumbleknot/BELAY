@@ -11,7 +11,7 @@
 
 **Tech Stack:** Node 24+ ESM, `node:test`, Spec Kit 1.4.2 CLI (`specify extension add`), PowerShell scripts integration.
 
-**Spec:** [docs/superpowers/specs/2026-11-22-speckit-forgejo-parity-design.md](../specs/2026-11-22-speckit-forgejo-parity-design.md), section "Step 0". Features 001–003 in that design are **not** part of this plan. Each one goes through `/speckit-specify` → `/speckit-plan` → `/speckit-tasks` after this plan lands.
+**Spec:** [specs/000-new-repo-setup/2026-11-22-speckit-forgejo-parity-design.md](2026-11-22-speckit-forgejo-parity-design.md), section "Step 0". Features 001–003 in that design are **not** part of this plan. Each one goes through `/speckit-specify` → `/speckit-plan` → `/speckit-tasks` after this plan lands.
 
 ## Global Constraints
 

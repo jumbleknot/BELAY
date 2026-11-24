@@ -26,7 +26,7 @@ Most top-level folders are still empty placeholders.
 
 | Folder | Purpose |
 | --- | --- |
-| `docs/` | Documentation: `runbooks/` (live operator procedures), `templates/`, `proposals/` and `superpowers/` (pre-spec design records, excluded from this wiki) |
+| `docs/` | Documentation: `runbooks/` (live operator procedures), `templates/`, `proposals/` (pre-spec design records, excluded from this wiki) |
 | `openwiki/` | This knowledge bundle (see [the quickstart](../quickstart.md)) |
 | `specs/` | Spec Kit feature specifications, `specs/<NNN>-<feature-name>/` (see [spec-driven development](../process/spec-driven-development.md)) |
 | `scripts/` | Repository scripts, as the Nx project `scripts` (`scripts/project.json`): the gates, the CI scripts, the PR, CI-status and backlog tools, and their tests in `scripts/__tests__/` |

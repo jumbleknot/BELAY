@@ -6,7 +6,7 @@
 
 **Status**: Draft
 
-**Input**: User description: "Feature 002: PR and CI-status tooling for BELAY on Forgejo. Source of truth: docs/superpowers/specs/2026-11-22-speckit-forgejo-parity-design.md, section 'Feature 002', plus the user's direction to reuse MovieCollectionManager's implementation as much as possible, stripping only MCM coupling.
+**Input**: User description: "Feature 002: PR and CI-status tooling for BELAY on Forgejo. Source of truth: specs/000-new-repo-setup/2026-11-22-speckit-forgejo-parity-design.md, section 'Feature 002', plus the user's direction to reuse MovieCollectionManager's implementation as much as possible, stripping only MCM coupling.
 
 Scope:
 - a CI-status tool (status / watch / failure / durations, selected by commit, PR, branch or run; status exits 0 only when the commit is mergeable; failure reads BELAY's repo-scoped digest evidence);
