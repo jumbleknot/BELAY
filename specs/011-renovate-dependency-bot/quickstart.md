@@ -27,7 +27,11 @@ container or a chat**.
 
 1. **Create the bot account.** Go to Site Administration → User Accounts → Create User Account:
    - Username: `belay-renovate`.
-   - Email: a mailbox you control. A `+renovate` alias of your own address works.
+   - Email: Forgejo needs a **unique** address, so yours cannot be reused. The bot never sends or receives mail.
+     There are two ways to get one:
+     - a plus alias of your own address (`you+renovate@…`), if your provider delivers those to your inbox;
+     - a reserved address that never delivers (`belay-renovate@example.invalid`). An admin-created account needs no
+       confirmation email. If the instance's email-domain allowlist refuses it, use the alias instead.
    - Password: a long random one. It is only ever used to sign in once and create the token.
    - It must not be an administrator.
 
