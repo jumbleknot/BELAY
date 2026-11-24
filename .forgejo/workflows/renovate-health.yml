@@ -1,0 +1,68 @@
+# The dependency bot's weekly health report (feature 012, backlog item 48).
+#
+# ADR-0004: "the bot is not done until its health loop is". A bot that silently stops working is
+# worse than no bot, because you believe you are covered. MovieCollectionManager measured four silent
+# breakages, each lasting weeks. So once a week this job:
+#   1. checks the lock-file channel (check-lockfile-refresh.mjs): did the routine window run, and what
+#      did Renovate say happened to lock-file maintenance in it? A miss turns the job red;
+#   2. posts ONE comment on the tracking issue "Dependency-bot health reports" (renovate-health.mjs):
+#      one line when healthy, one line per finding otherwise. It reads the dashboard's problems, every
+#      renovate/* branch, every bot PR's required checks, and the lock-file verdict above.
+# A missing week means this job died. The bot's own run (renovate.yml) checks for exactly that, and
+# fails its renovate/verdict when the newest report is more than 8 days old.
+#
+# WEDNESDAY 08:30 UTC: after the 05:00-06:59 window and its 07:17 security run, so it reads settled state.
+# The belay runner, never a pull request. Tokens: the run's own token reads; CI_DIGEST_TOKEN
+# (write:issue) posts the report and creates the tracking issue if it is missing.
+name: renovate-health
+
+on:
+  schedule:
+    - cron: '30 8 * * 3'
+  workflow_dispatch:
+
+concurrency:
+  group: renovate-health
+  cancel-in-progress: false
+
+jobs:
+  renovate-health:
+    runs-on: belay
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Branch ancestry is wrong on a shallow clone: every branch would look unmerged.
+          fetch-depth: 0
+      - name: Set up Node (constitution pin)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 26.13.1
+      - name: Install pnpm (version from package.json packageManager)
+        run: bash scripts/ci-log-step.sh renovate-health-install-pnpm bash scripts/install-pnpm.sh
+      - name: Install workspace dependencies (frozen lockfile)
+        run: bash scripts/ci-log-step.sh renovate-health-install-deps pnpm install --frozen-lockfile
+      - name: Self-tests (prove the failure paths before the real checks)
+        run: |
+          bash scripts/ci-log-step.sh renovate-health-selftest bash -e /dev/stdin <<'CI_LOG_STEP'
+          node scripts/check-lockfile-refresh.mjs --selftest
+          node scripts/renovate-health.mjs --selftest
+          CI_LOG_STEP
+      - name: Check the lock-file refresh happened in the last window
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/ci-log-step.sh renovate-health-lockfile node scripts/check-lockfile-refresh.mjs --verdict-out lockfile-verdict.json
+      - name: Post the weekly health report
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_DIGEST_TOKEN: ${{ secrets.CI_DIGEST_TOKEN }}
+        run: bash scripts/ci-log-step.sh renovate-health-report node scripts/renovate-health.mjs --lockfile-verdict lockfile-verdict.json
+      - name: Publish failure digest
+        if: always()
+        continue-on-error: true
+        env:
+          CI_DIGEST_TOKEN: ${{ secrets.CI_DIGEST_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_DIGEST_JOB_STATUS: ${{ job.status }}
+        run: node scripts/ci-failure-digest.mjs

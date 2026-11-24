@@ -133,6 +133,17 @@ UTC. A dispatch is a dry run by default. It is not a merge check. Its record is 
 plus `renovate/mode` on a dispatch, and its failures reach the failure digest. Everything else is in
 [the dependency-bot runbook](renovate.md).
 
+## The renovate-health and branch-reaper workflows
+
+These are the bot's health loop (feature 012), both on the `belay` runner and never on a pull request:
+- [`.forgejo/workflows/renovate-health.yml`](../../.forgejo/workflows/renovate-health.yml) runs Wednesdays at 08:30
+  UTC. It checks the lock-file refresh, then posts one comment on the `Dependency-bot health reports` issue.
+- [`.forgejo/workflows/branch-reaper.yml`](../../.forgejo/workflows/branch-reaper.yml) runs daily at 03:30 UTC. It
+  deletes merged, unused branches; a dispatch is a dry run unless `apply` is ticked.
+
+The bot's own run fails its verdict when the weekly report is more than 8 days old. The details are in
+[the dependency-bot runbook](renovate.md#the-health-loop).
+
 ## The registry-retention workflow
 
 [`.forgejo/workflows/registry-retention.yml`](../../.forgejo/workflows/registry-retention.yml) runs
@@ -146,9 +157,9 @@ registry. It is not a merge check.
   - `belay-devcontainer`: the newest 4, or anything younger than 21 days, plus every digest under
     `protect:`.
   - `belay-ci-failures`: failure bundles, plus a durations-only version for every green job (feature 008).
-    At least 150 versions and 45 days, the floor `ci-status durations` needs. The
-    floor is 25 runs × 6 bundle-publishing jobs (guardrails, sast, devcontainer-image,
-    registry-retention, image-scan, renovate), so a new job that publishes a bundle makes the config fail until the number
+    At least 200 versions and 45 days, the floor `ci-status durations` needs. The
+    floor is 25 runs × 8 bundle-publishing jobs (guardrails, sast, devcontainer-image,
+    registry-retention, image-scan, renovate, renovate-health, branch-reaper), so a new job that publishes a bundle makes the config fail until the number
     is raised.
   - A package the file does not list (another repository's, under the same owner) is reported and
     never deleted.
@@ -166,7 +177,7 @@ registry. It is not a merge check.
 
 | Name | Where | Scopes | Used by |
 | --- | --- | --- | --- |
-| `CI_DIGEST_TOKEN` | Repository **Settings → Actions → Secrets** | `write:issue`, `write:package`, `read:repository` | The failure-digest step only |
+| `CI_DIGEST_TOKEN` | Repository **Settings → Actions → Secrets** | `write:issue`, `write:package`, `read:repository` | The failure-digest step, and the weekly dependency-bot health report (`renovate-health.yml`, which also creates its tracking issue) |
 | `REGISTRY_TOKEN` | Repository **Settings → Actions → Secrets** | `write:package` | The `devcontainer-image` push step only |
 | `REGISTRY_CLEANUP_TOKEN` | Repository **Settings → Actions → Secrets** | `write:package` | The `registry-retention` report step only. Without it, the job fails loudly rather than reporting an empty registry |
 | `RENOVATE_TOKEN` | Repository **Settings → Actions → Secrets** | `read:user`, `read:organization`, `write:repository`, `write:issue`, on the restricted `belay-renovate` account | The `renovate` workflow's preflight and run steps only. Without it, the preflight fails the run by name ([renovate.md](renovate.md#the-token)) |

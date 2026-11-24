@@ -106,11 +106,20 @@ jobs:
           RENOVATE_LOG_FILE_LEVEL: debug
           COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
         run: bash scripts/ci-log-step.sh renovate npx --yes --before="$(node -e 'process.stdout.write(new Date(Date.now()-3*864e5).toISOString())')" renovate@$(node scripts/check-renovate-config.mjs --print-renovate-version)
+      # Feature 012: the two loops watch each other. The weekly health job checks this bot's lock-file
+      # channel; this step checks that the weekly report still arrives. It runs BEFORE the verdict and
+      # feeds it, so a stale report (more than 8 days) fails renovate/verdict itself, and the status and
+      # the job always agree. A freshness the step could not read is `unknown`, which fails too.
+      - name: Check the weekly health report is fresh
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/ci-log-step.sh renovate-health-freshness node scripts/renovate-health.mjs --check-freshness --out health-freshness.txt
       - name: Judge the run and publish renovate/verdict
         if: always()
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: bash scripts/ci-log-step.sh renovate-verdict node scripts/check-renovate-config.mjs --run-verdict renovate-log.ndjson --publish-verdict
+        run: bash scripts/ci-log-step.sh renovate-verdict node scripts/check-renovate-config.mjs --run-verdict renovate-log.ndjson --health-freshness health-freshness.txt --publish-verdict
       - name: Upload the Renovate log
         if: always()
         uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3

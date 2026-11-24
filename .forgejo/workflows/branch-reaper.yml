@@ -1,0 +1,66 @@
+# Delete remote branches already merged into main that nothing uses (feature 012, backlog item 48).
+#
+# A bot branch that survives its merge is reused VERBATIM on the bot's next run, which opens an empty
+# PR. MovieCollectionManager measured four at once. The merge tool and the repository setting delete
+# most merged heads; this catches the rest, such as a web-UI merge with deletion unticked.
+#
+# scripts/reap-merged-branches.mjs never deletes main, a protected branch, a branch with an open PR,
+# one created from main with no commits of its own (on main's first-parent history), or one whose tip
+# is younger than 6 hours. A short or unreadable listing deletes nothing. The delete is a leased
+# `git push`, with the run's own token, which cannot push to protected main.
+#
+# DAILY 03:30 UTC: clear of the 01:17 security run and the 04:00 image sweep. A schedule applies; a
+# dispatch is a DRY RUN unless `apply` is ticked. The decision goes through env, never ${{ }} in run:.
+name: branch-reaper
+
+on:
+  schedule:
+    - cron: '30 3 * * *'
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Delete the candidates (unticked: list them, delete nothing)'
+        type: boolean
+        default: false
+
+concurrency:
+  group: branch-reaper
+  cancel-in-progress: false
+
+jobs:
+  branch-reaper:
+    runs-on: belay
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Full history and every remote branch: ancestry and first-parent checks need both. The
+          # persisted credentials (the default) are what the leased delete pushes with.
+          fetch-depth: 0
+      - name: Set up Node (constitution pin)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 26.13.1
+      - name: Install pnpm (version from package.json packageManager)
+        run: bash scripts/ci-log-step.sh branch-reaper-install-pnpm bash scripts/install-pnpm.sh
+      - name: Install workspace dependencies (frozen lockfile)
+        run: bash scripts/ci-log-step.sh branch-reaper-install-deps pnpm install --frozen-lockfile
+      - name: Self-test (prove every keep reason before deleting anything)
+        run: bash scripts/ci-log-step.sh branch-reaper-selftest node scripts/reap-merged-branches.mjs --selftest
+      - name: Reap merged branches
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          REAPER_APPLY: ${{ github.event_name == 'schedule' || inputs.apply == true }}
+        run: |
+          bash scripts/ci-log-step.sh branch-reaper bash -e /dev/stdin <<'CI_LOG_STEP'
+          if [ "$REAPER_APPLY" = "true" ]; then set -- --apply; else set --; fi
+          node scripts/reap-merged-branches.mjs "$@"
+          CI_LOG_STEP
+      - name: Publish failure digest
+        if: always()
+        continue-on-error: true
+        env:
+          CI_DIGEST_TOKEN: ${{ secrets.CI_DIGEST_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_DIGEST_JOB_STATUS: ${{ job.status }}
+        run: node scripts/ci-failure-digest.mjs

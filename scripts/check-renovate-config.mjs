@@ -527,7 +527,16 @@ const PASSING = new Set(['done', 'no-work', 'not-scheduled']);
 const REFUSAL = /Failed to look up|\b40[13]\b|authenticat/i;
 
 /** Judge Renovate's JSON log records: RunVerdict.result, .errors, .refusals and .repository. */
-export function judgeRun(records, { repository = DEFAULT_REPOSITORY } = {}) {
+/** The lock-file-maintenance branch's result in this run, from Renovate's own record (feature 012, R3). */
+function lockfileResult(records) {
+  const info = records.filter((r) => r.msg === 'branches info extended').at(-1);
+  return info?.branchesInformation?.find((b) => b.branchName === 'renovate/lock-file-maintenance')?.result ?? 'absent';
+}
+
+// The health report's freshness states that fail the bot's own verdict (feature 012, research R6).
+const STALE_HEALTH = /^(stale|missing|unknown)\b/;
+
+export function judgeRun(records, { repository = DEFAULT_REPOSITORY, health } = {}) {
   const fail = (reason) => ({ ok: false, reason, line: `❌ renovate run: ${reason}` });
   if (!records.length) return fail('the run produced no log');
   const error = records.find((r) => r.level >= 50);
@@ -540,7 +549,12 @@ export function judgeRun(records, { repository = DEFAULT_REPOSITORY } = {}) {
   const result = last.result ?? last.res;
   if (!PASSING.has(result)) return fail(`the repository finished with result "${result}"`);
   const prs = records.filter((r) => /^PR created/i.test(r.msg ?? '')).length;
-  return { ok: true, result, line: `✅ renovate run: ${result}, ${prs} PR(s) created` };
+  // The lock-file suffix is what check-lockfile-refresh.mjs reads off this status on the window run.
+  const tail = `; lock file: ${lockfileResult(records)}${health ? `; health report: ${health}` : ''}`;
+  if (health && STALE_HEALTH.test(health)) {
+    return { ok: false, result, reason: `the weekly health report is ${health}`, line: `❌ renovate run: ${result}, ${prs} PR(s) created${tail}` };
+  }
+  return { ok: true, result, line: `✅ renovate run: ${result}, ${prs} PR(s) created${tail}` };
 }
 
 /** Post the verdict as the commit status renovate/verdict: a scheduled run has no other readable record. */
@@ -698,7 +712,10 @@ export async function main(argv = process.argv.slice(2), { env = process.env, lo
   if (argv[0] === '--publish-mode') return publishMode({ env, log, error });
   if (argv[0] === '--run-verdict') {
     if (!argv[1]) { error(USAGE); return 2; }
-    const verdict = judgeRun(readLog(argv[1]), { repository: env.GITHUB_REPOSITORY || DEFAULT_REPOSITORY });
+    const h = argv.indexOf('--health-freshness');
+    // A freshness file the watchdog step failed to write is `unknown`, which fails: never silently fresh.
+    const health = h < 0 ? undefined : (existsSync(argv[h + 1] ?? '') ? readFileSync(argv[h + 1], 'utf8').trim() || 'unknown' : 'unknown');
+    const verdict = judgeRun(readLog(argv[1]), { repository: env.GITHUB_REPOSITORY || DEFAULT_REPOSITORY, health });
     (verdict.ok ? log : error)(`[renovate] ${verdict.line}`);
     if (argv.includes('--publish-verdict')) await publishVerdict(verdict, { env, log, error });
     return verdict.ok ? 0 : 1;
