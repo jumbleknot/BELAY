@@ -42,6 +42,7 @@ BELAY is a polyglot monorepo of tooling that other repositories share, so every 
 ### Projects
 
 - [BELAY repository — layout and working conventions](openwiki/projects/repository.md) **[canonical]** — folders, line endings, ignored paths, lock files, license, git
+- [The learnings ledger](openwiki/projects/learnings-ledger.md) — the story, append-only lessons, a log written only by `count-repo-metrics.mjs`
 
 ### Invariants
 

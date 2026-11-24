@@ -4,8 +4,8 @@ title: OpenWiki quickstart — BELAY
 description: The root entry point to BELAY's OpenWiki bundle — what the bundle is and is not, how to query it by type, tag, resource or directory, a task-routing map to the concept areas, and how the derived-versus-authoritative split decides where a new learning belongs.
 tags: [openwiki, navigation, quickstart]
 resource: openwiki/INSTRUCTIONS.md
-resource-sha256: 0a3419d0375100f174edfcae3a04ff230b346ee99663cd8a396600b00406d5f6
-timestamp: 2026-11-23T13:26:41.476Z
+resource-sha256: 687c64f39604ab78ab135f7e4b58ceb277fe9041bde884c97709028fd7577048
+timestamp: 2026-11-24T14:02:08.071Z
 ---
 
 # OpenWiki quickstart — BELAY
@@ -58,6 +58,7 @@ with none is *authoritative*: canonical in its own right, and listed under `auth
 | introduce a toolchain, build plugin, top-level folder, bot or long-lived credential | [decision records](./process/decision-records.md), [the decisions](./decisions/index.md) |
 | state a rule without writing its gate | [unenforced rules](./invariants/unenforced-rules.md) |
 | rename or remove something documented | [doc drift](./runbooks/doc-drift.md), [wiki maintenance](./process/wiki-maintenance.md) |
+| learn the repository's story so far, or measure its size at a commit | [the learnings ledger](./projects/learnings-ledger.md) (a narrative; it indexes lessons, never holds them) |
 
 ## Coverage
 

@@ -408,7 +408,9 @@ rewrite the content for the new repository:
   forge host, tailnet address or host-and-port pair in any page), front matter, and where a new
   learning goes.
 - **`docs/runbooks/doc-drift.md`**: the doc-impact sweep (live, through the tasks override) and the
-  quarterly drift audit, a backlog item that files its own successor.
+  quarterly drift audit, a backlog item that files its own successor. The audit also refreshes a learnings ledger
+  whose measurement log is written by a counting script (BELAY's is `docs/BELAY-Learnings.md`, filled by
+  `scripts/count-repo-metrics.mjs --append-log`).
 
 **The same-PR rule:** a change to a file that an `openwiki/` page cites as its `resource` refreshes
 that page in the same PR. BELAY first kept this by review; step 13 adds the gate that enforces it.
