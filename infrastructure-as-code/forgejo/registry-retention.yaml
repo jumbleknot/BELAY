@@ -27,8 +27,8 @@ packages:
   # days, whichever keeps more, plus every protected digest.
   - { name: belay-devcontainer, type: container, keepNewest: 4, keepDays: 21 }
   # Evidence bundles. ci-failure-digest.mjs ALREADY prunes these at its RETENTION_DAYS (30) on every
-  # publish, so this rule is the floor `ci-status durations` needs, not the deleter: 25 runs × 4
-  # bundle-publishing jobs (guardrails, sast, devcontainer-image, registry-retention) = 100. The script
+  # publish, so this rule is the floor `ci-status durations` needs, not the deleter: 25 runs × 5
+  # bundle-publishing jobs (guardrails, sast, devcontainer-image, registry-retention, image-scan) = 125. The script
   # refuses anything below the product, so a new job that publishes a bundle fails the config until
   # this is raised.
-  - { name: belay-ci-failures, type: generic, keepNewest: 100, keepDays: 45 }
+  - { name: belay-ci-failures, type: generic, keepNewest: 125, keepDays: 45 }

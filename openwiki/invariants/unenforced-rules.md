@@ -26,6 +26,7 @@ review.
 | **A refreshed wiki summary is accurate** | [the brief](../INSTRUCTIONS.md), §1 and §9 | review. V17 proves only that the page was recorded after its source changed | none planned |
 | **Docs keep up with changed *behaviour*** | constitution (Documentation) | the doc-impact sweep catches renamed and removed *identifiers*. Behaviour changes are left to the quarterly audit | layer 2 of [doc drift](../runbooks/doc-drift.md), built only if an audit shows it is needed |
 | **A structural decision is asked, not taken, and recorded** | `AGENTS.md` gate, [decision records](../process/decision-records.md) | review, plus the ADR's recorded approval | none planned |
+| **A PR does not add a vulnerable third-party image** | [image scanning](../runbooks/image-scanning.md), feature 010 research R8 | the sweep runs on such a PR but is **not a required context**, so a red result does not block the merge; the Tuesday and Friday `sweep/verdict` status on `main`, and review, catch it after. The builder gate is hard: no vulnerable dev-container image is ever pushed | none planned. Making it required would bring back MCM's meaningless green tick on skipped runs |
 | **Redaction beyond what the scanners catch** (abstract host references, no host and port pairs) | [the brief](../INSTRUCTIONS.md), §3 | the secret scan and topology scrub catch the shapes they know; review catches the rest | none planned |
 
 Spec Kit's own soft spots, such as which override the gate does not guard, are kept with their

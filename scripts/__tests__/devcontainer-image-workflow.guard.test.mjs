@@ -69,3 +69,53 @@ test('every run: step goes through ci-log-step.sh, and the job ends with the fai
 test('the workflow never names the upstream project', () => {
   assert.doesNotMatch(raw(), /mcm/i);
 });
+
+// ── Feature 010: the builder scans the image BEFORE it is pushed (spec clarification, FR-001) ────────
+// A blocking finding (an un-allowlisted fixable Critical) fails the scan step, and a failed step stops
+// the job, so `Push` never runs and no vulnerable digest exists to re-pin onto.
+const steps010 = () => wf().jobs['build-publish'].steps;
+const indexOf = (pred) => steps010().findIndex(pred);
+
+test('feature 010: install Trivy, scan and gate, then upload the report, all between Build and Push', () => {
+  const build = indexOf((s) => /docker build/.test(s.run ?? ''));
+  const install = indexOf((s) => s.name === 'Install Trivy (pinned, sha256-verified)');
+  const scan = indexOf((s) => s.name === 'Scan the built image (gates the push)');
+  const upload = indexOf((s) => s.name === 'Upload the image-scan report');
+  const push = indexOf((s) => /docker push/.test(s.run ?? ''));
+  assert.ok(build >= 0 && install > build && scan > install && push > scan, `order: build ${build}, install ${install}, scan ${scan}, push ${push}`);
+  assert.ok(upload > scan, 'the report is uploaded after the scan');
+});
+
+test('feature 010: the install and scan steps carry the same build gate as Push', () => {
+  const gate = steps010().find((s) => /docker push/.test(s.run ?? '')).if;
+  for (const name of ['Install Trivy (pinned, sha256-verified)', 'Scan the built image (gates the push)']) {
+    assert.equal(steps010().find((s) => s.name === name).if, gate, `${name} if:`);
+  }
+});
+
+test('feature 010: the scan step scans "$TAG" from the local daemon, then runs the gate', () => {
+  const run = steps010().find((s) => s.name === 'Scan the built image (gates the push)').run;
+  const scanAt = run.indexOf('node scripts/image-scan.mjs --image "$TAG" --image-src docker');
+  const gateAt = run.indexOf('node scripts/check-image-findings.mjs');
+  assert.ok(scanAt >= 0 && gateAt > scanAt, run);
+});
+
+test('feature 010: the image-scan report is uploaded always() when the image was built, even when the scan fails', () => {
+  const s = steps010().find((x) => x.name === 'Upload the image-scan report');
+  assert.equal(s.if, "always() && steps.gate.outputs.build == 'true'");
+  assert.match(String(s.with?.path), /security\/images\/reports/);
+});
+
+// Moved here from T011: it cannot hold until the builder scans. Every image BELAY builds has exactly
+// one owner, the builder that scans it before push, so the sweep excluding it leaves no blind spot.
+test('feature 010: every name in BUILT_IMAGES is built by a job that scans it before its push', async () => {
+  const { BUILT_IMAGES } = await import('../image-scan.mjs');
+  for (const name of BUILT_IMAGES) {
+    const job = Object.values(wf().jobs).find((j) => (j.steps ?? []).some((s) => (s.run ?? '').includes(`${name}:`) && /docker build/.test(s.run ?? '')));
+    assert.ok(job, `${name}: no job builds it`);
+    const ix = (pred) => job.steps.findIndex(pred);
+    const scan = ix((s) => /image-scan\.mjs --image/.test(s.run ?? ''));
+    const push = ix((s) => /docker push/.test(s.run ?? ''));
+    assert.ok(scan >= 0 && scan < push, `${name}: scanned at ${scan}, pushed at ${push}`);
+  }
+});

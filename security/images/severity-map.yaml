@@ -1,0 +1,8 @@
+# Trivy native severity → normalized severity (feature 010). PURE DATA, read by scripts/image-scan.mjs.
+# An unmapped native value is a hard error (no silent default), so a new Trivy level fails loudly.
+trivy:
+  CRITICAL: Critical
+  HIGH: High
+  MEDIUM: Medium
+  LOW: Low
+  UNKNOWN: Unknown

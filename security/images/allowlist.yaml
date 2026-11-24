@@ -1,0 +1,27 @@
+# Image CVE allowlist (feature 010; specs/010-image-cve-scan/data-model.md, "Allowlist entry").
+#
+# THE ACCEPTED BASELINE: suppression happens at the gate only (scripts/check-image-findings.mjs), and
+# a suppressed finding stays listed in the report. Only a BLOCKING finding (a fixable Critical) needs
+# an entry; everything else is a warning already.
+#
+# Every field is required:
+#   - image: 'node:26-bookworm@sha256:b708[0-9a-f]+'   # regex, unanchored, against the scanned ref.
+#                                                     # MUST carry a version (":<digit>") or a digest
+#                                                     # ("@sha256:"): a bare name would match every future
+#                                                     # version and never end (refused).
+#     id: 'CVE-2026-1234'                             # regex against the advisory id
+#     justification: 'why it cannot be fixed yet'
+#     addedBy: '<who>'
+#     expiry: '2026-12-31'                            # YYYY-MM-DD; expired entries stop suppressing
+#
+# Re-key an entry whenever its image's pin changes: an entry keyed to the old pin matches nothing,
+# and the gate reports it UNMATCHED while the finding blocks again. That is the intended discharge.
+- image: 'node:26-bookworm@sha256:b7087bc4d973034b30854b378ba107f9fab622b47514cb7e2592e41b8bab8d49'
+  id: 'CVE-2026-99083'
+  justification: >-
+    linux-libc-dev 6.1.190-1 in the pinned base; Debian ships 6.1.192-1, but Docker Hub has not rebuilt
+    node:26-bookworm (its current digest IS this pin, checked 2026-11-24), so a re-pin cannot clear it yet.
+    The image BELAY builds is not affected: toolchain.Dockerfile upgrades the package. Re-pin the FROM line
+    when upstream rebuilds; this entry then goes UNMATCHED, so delete it then.
+  addedBy: 'claude (feature 010, T018)'
+  expiry: '2026-12-24'

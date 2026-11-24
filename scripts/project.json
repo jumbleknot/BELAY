@@ -29,6 +29,8 @@
           "node scripts/check-sast-findings.mjs --selftest",
           "node scripts/sast-scan.mjs --selftest",
           "node scripts/check-coverage.mjs --selftest",
+          "node scripts/image-scan.mjs --selftest",
+          "node scripts/check-image-findings.mjs --selftest",
           "node scripts/check-resource-naming.mjs --selftest",
           "node scripts/check-resource-naming.mjs",
           "node scripts/check-openwiki-okf.mjs --selftest",

@@ -51,6 +51,7 @@ with none is *authoritative*: canonical in its own right, and listed under `auth
 | add a dependency or a project | [package-manager enforcement](./invariants/package-manager-enforcement.md), [Nx](./invariants/nx-task-runner.md) |
 | commit or switch branches in the shared dev container | [the dev container](./runbooks/devcontainer.md) |
 | open, watch or merge a PR, or read a red CI run | [CI guardrails](./runbooks/ci.md), [PR batching](./process/pull-request-batching.md) |
+| touch a Dockerfile, an image reference, or read an image-scan result | [image scanning](./runbooks/image-scanning.md) |
 | file or work a backlog item | [the backlog](./runbooks/backlog.md) |
 | handle a token or a `.env` | [secrets](./invariants/secrets-management.md), [the .env trap](./gotchas/env-file-inline-comments.md) |
 | trust a surprising tool result | [instrument traps](./gotchas/instrument-traps.md), [RTK](./invariants/rtk-token-compression.md) |

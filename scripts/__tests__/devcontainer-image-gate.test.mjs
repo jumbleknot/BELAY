@@ -63,7 +63,10 @@ test('every step after the gate except the failure digest is conditioned on it',
   assert.equal(checkout.with?.['fetch-depth'], 0, 'the gate diffs against before, so it needs history');
   for (const s of steps.slice(gateAt + 1)) {
     if (/ci-failure-digest\.mjs/.test(s.run ?? '')) continue;
-    assert.equal(s.if, "steps.gate.outputs.build == 'true'", `step "${s.name}" must be gated`);
+    // Feature 010: a report upload must also run after a FAILED scan, so it is `always()` AND gated.
+    // The invariant is unchanged: no step after the gate runs when the gate decided not to build.
+    const gated = ["steps.gate.outputs.build == 'true'", "always() && steps.gate.outputs.build == 'true'"];
+    assert.ok(gated.includes(s.if), `step "${s.name}" must be gated (got ${JSON.stringify(s.if)})`);
   }
 });
 

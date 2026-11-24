@@ -127,6 +127,7 @@ crash.log
 # committed. The tree (README, scan.yaml, semgrep.yaml, severity-map.yaml, rules/, allowlist.yaml)
 # stays tracked; only the reports are ignored, as in MCM.
 security/sast/reports/*
+security/images/reports/
 !security/sast/reports/.gitkeep
 
 # Claude Code worktrees (claude --worktree) are scratch checkouts, never committed

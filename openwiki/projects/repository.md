@@ -30,7 +30,7 @@ Most top-level folders are still empty placeholders.
 | `openwiki/` | This knowledge bundle (see [the quickstart](../quickstart.md)) |
 | `specs/` | Spec Kit feature specifications, `specs/<NNN>-<feature-name>/` (see [spec-driven development](../process/spec-driven-development.md)) |
 | `scripts/` | Repository scripts, as the Nx project `scripts` (`scripts/project.json`): the gates, the CI scripts, the PR, CI-status and backlog tools, and their tests in `scripts/__tests__/` |
-| `.forgejo/` | CI workflows (`workflows/guardrails.yml`, and `workflows/devcontainer-image.yml` for the dev-container image) and the backlog issue form (see [CI guardrails](../runbooks/ci.md)) |
+| `.forgejo/` | CI workflows (`workflows/guardrails.yml`, `workflows/devcontainer-image.yml` for the dev-container image, and `workflows/image-scan.yml` for the image CVE sweep) and the backlog issue form (see [CI guardrails](../runbooks/ci.md)) |
 | `.devcontainer/` | The dev container for the `belay` Docker Sandbox: its config, the toolchain image, the egress allowlist and the lifecycle scripts (see [the dev container](../runbooks/devcontainer.md) and `docs/runbooks/devcontainer.md`) |
 | `.specify/` | Spec Kit: templates, overrides, extensions and the constitution (see [Spec Kit](../runbooks/spec-kit.md)) |
 | `.claude/skills/` | Assistant skills: the `/speckit-*` commands and `forgejo-issues`. `.claude/settings.local.json` stays local |
