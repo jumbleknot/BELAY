@@ -116,13 +116,30 @@ Every gate's `--selftest` runs in `scripts:lint`. **Decision:** `check-coverage.
 too. It needs no test run, because it judges synthetic lcov text. The real gate runs at the end of
 `scripts:test`, where the report exists.
 
-## R10. Risk, not yet measured: a coverage run nested inside a coverage run
+## R10. A coverage run nested inside a coverage run (measured)
 
 The `--run` end-to-end test starts `node --test --experimental-test-coverage` against a fixture **from
 inside** the outer, coverage-measured suite. R1 showed that child processes inherit the outer run's
 coverage collection. The inner run's report could therefore pick up the outer run's environment, or the
 outer report could absorb the fixture's modules, although those fall outside `include` and would be ignored.
 
-**To verify first in tasks:** run the end-to-end test under `scripts:test` and confirm two things: the
-inner verdict is judged only on the fixture, and the outer report has no fixture paths. If either leaks,
-the test clears `NODE_V8_COVERAGE` in the child's environment.
+**Measured 2026-11-24 (T003), and the risk was real, but in a different variable.** In a scratch project,
+a test running under `node --test --experimental-test-coverage` started a nested
+`node --test --experimental-test-coverage --test-reporter=lcov --test-reporter-destination=inner.lcov`. The test
+process carries `NODE_TEST_CONTEXT`, `NODE_TEST_WORKER_ID` and `NODE_V8_COVERAGE`. Results by child environment:
+
+| Child environment | Exit | Inner report |
+| --- | --- | --- |
+| inherited unchanged | 0 | **not written**: nothing on stdout either, a silent false green |
+| `NODE_V8_COVERAGE` removed | 0 | not written |
+| `NODE_TEST_CONTEXT` removed | 0 | written, with only `SF:src/fix.mjs` |
+| both removed | 0 | written, with only `SF:src/fix.mjs` |
+
+With `NODE_TEST_CONTEXT` inherited, the nested runner behaves as a worker of the outer one and never runs its
+own reporters. The outer report gained no fixture paths in any case.
+
+**Decision:** `--run` itself removes `NODE_TEST_CONTEXT`, `NODE_TEST_WORKER_ID` and `NODE_V8_COVERAGE` from the
+child's environment. That makes it correct wherever it is started from (Nx, a shell, or a test), and keeps the
+inner and outer measurements independent. The end-to-end tests need no special handling of their own.
+`--run` still fails closed if no report is written, so a regression here would read as a failure, never as a
+pass.

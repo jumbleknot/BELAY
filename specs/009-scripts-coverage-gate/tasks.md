@@ -29,7 +29,7 @@ Every test task and its paired implementation task use the TDD checkpoint format
 
 ## Phase 1: Setup
 
-- [ ] T001 Confirm the worktree `/home/coder/worktrees/009-coverage` on `009-scripts-coverage-gate`, with a real
+- [x] T001 Confirm the worktree `/home/coder/worktrees/009-coverage` on `009-scripts-coverage-gate`, with a real
   frozen install (not a symlinked `node_modules`), is green before any change
   - **Done when**: `pnpm nx run scripts:lint --skip-nx-cache` and `pnpm nx run scripts:test --skip-nx-cache` both exit 0,
     and the test summary reads `fail 0`, `skipped 0`
@@ -67,7 +67,7 @@ Every test task and its paired implementation task use the TDD checkpoint format
 
 ## Phase 2: Foundational (blocks every story)
 
-- [ ] T003 Measure research **R10** before building on it. In a scratch directory (outside the repository), run
+- [x] T003 Measure research **R10** before building on it. In a scratch directory (outside the repository), run
   `node --test --experimental-test-coverage` on a tiny fixture *from inside* a test that is itself running under
   `--experimental-test-coverage`. Record in research.md R10 two things: whether the inner lcov holds only the fixture's
   modules, and whether the outer report gains fixture paths. Then record the decision: clear `NODE_V8_COVERAGE` in the
@@ -99,7 +99,7 @@ FR-012 require, and the SAST orchestrator is raised above the floor (FR-012, SC-
 
 > Write these first and see them fail for the right reason. A RED with 0 failures means the test is wrong.
 
-- [ ] T006 [US1] Write `scripts/__tests__/check-coverage.test.mjs`, the verdict rules, all with in-memory inputs and an explicit
+- [x] T006 [US1] Write `scripts/__tests__/check-coverage.test.mjs`, the verdict rules, all with in-memory inputs and an explicit
   `today`:
   - `parseLcov` reads `SF`/`LF`/`LH`/`BRF`/`BRH` per record and ignores records outside `include`;
   - every source module at or above 70% passes;
@@ -121,10 +121,10 @@ FR-012 require, and the SAST orchestrator is raised above the floor (FR-012, SC-
   `Coverage policy.include`, and `Verdict`.
   - **Scenarios covered**: US1-AC1, US1-AC2, US1-AC3, US1-AC4; spec Edge Cases (untested file, empty report, test files excluded)
   - **Verify RED**: `node --test scripts/__tests__/check-coverage.test.mjs` → expected: every test failing — `not implemented`
-- [ ] T007 [P] [US1] Export `toSarif`, `normalizeCargoAudit` and `emitProposedAllowlist` from `scripts/sast-scan.mjs`, with no
+- [x] T007 [P] [US1] Export `toSarif`, `normalizeCargoAudit` and `emitProposedAllowlist` from `scripts/sast-scan.mjs`, with no
   change to their bodies (research R7). This is a prerequisite for T008, and is not itself a behaviour change
   - **Done when**: `node scripts/sast-scan.mjs --selftest` exits 0, and `git diff` shows only the three `export` keywords
-- [ ] T008 [US1] Write `scripts/__tests__/sast-scan-transforms.test.mjs`, asserting **observable output**:
+- [x] T008 [US1] Write `scripts/__tests__/sast-scan-transforms.test.mjs`, asserting **observable output**:
   - `toSarif` turns two findings into a SARIF 2.1.0 log with one result each, the right rule id, level and location;
   - `normalizeCargoAudit` turns a cargo-audit JSON fixture into findings with the CVSS-banded severity, runtime/dev scope
     from the runtime set, and an `informational` warning as Low;
@@ -141,7 +141,7 @@ FR-012 require, and the SAST orchestrator is raised above the floor (FR-012, SC-
 
 ### Implementation for User Story 1
 
-- [ ] T009 [US1] Implement `parseLcov`, `validatePolicy`, `listSourceModules` (from the **file system**, per research R5; not
+- [x] T009 [US1] Implement `parseLcov`, `validatePolicy`, `listSourceModules` (from the **file system**, per research R5; not
   `git ls-files`), `judgeCoverage` and `formatVerdict` in `scripts/check-coverage.mjs` (prerequisite: T006 verified RED). Field
   citations, all in `data-model.md`:
   - `validatePolicy` enforces `Coverage policy.floor`, `Coverage policy.include`, `Exception.module`, `Exception.floor`,
@@ -152,10 +152,13 @@ FR-012 require, and the SAST orchestrator is raised above the floor (FR-012, SC-
   - `formatVerdict` prints the output lines in `contracts/check-coverage-cli.md`.
   - **Verify GREEN**: `node --test scripts/__tests__/check-coverage.test.mjs` → expected: 0 failures, 0 skipped. Then
     `pnpm nx run scripts:test` still passes
-- [ ] T010 [US1] Confirm the orchestrator is above the floor (prerequisite: T008)
+- [x] T010 [US1] Confirm the orchestrator is above the floor (prerequisite: T008)
   - **Verify GREEN**: `node --test scripts/__tests__/sast-scan-transforms.test.mjs` → 0 failures. In a coverage run
     (`node --test --experimental-test-coverage --test-coverage-include="scripts/*.mjs" --test-coverage-include="scripts/lib/**" "scripts/__tests__/*.test.mjs"`),
     `sast-scan.mjs` reads ≥ 70% of lines; record the figure here
+  - **Recorded 2026-11-24**: measured with the policy's exact patterns (`scripts/*.mjs`, `scripts/lib/*.mjs`), and judged by
+    the gate's own functions: `scripts/sast-scan.mjs` 75.00% (912/1216), up from 67.76%; `scripts/check-coverage.mjs` 97.74%.
+    Verdict: `✅ 39 modules ≥ 70% lines; total 92.02% lines (81.03% branches, not gated)`
 
 **Checkpoint**: the verdict logic is complete and proven, and no module is below the floor.
 

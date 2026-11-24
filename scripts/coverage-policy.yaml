@@ -1,0 +1,29 @@
+# Coverage policy for the scripts Nx project (feature 009, backlog item 53).
+#
+# THE ONE PLACE the coverage floor is stated (spec FR-013). scripts/check-coverage.mjs reads it, and
+# `--run` builds the test runner's --test-coverage-include flags from `include`, so the set that is
+# measured and the set that is judged cannot drift apart.
+#
+# WHY IT LIVES UNDER scripts/: Nx caches the `test` target with inputs {projectRoot}/**/*. A policy
+# inside the project root means a changed floor invalidates a cached pass (research R6).
+#
+# The floor is the constitution's 70% of lines, applied to every module AND to the total. Never lower
+# it to get a change through: add tests, or delete code nobody needs. A module that cannot reasonably
+# reach the floor gets a recorded, expiring exception below, never a lower floor for everyone.
+#
+# Exception shape (specs/009-scripts-coverage-gate/data-model.md):
+#   - module: scripts/<file>.mjs      # must exist and match `include`
+#     floor: 55                       # >= 50 and below `floor`
+#     reason: "why it cannot reach the floor yet"
+#     addedBy: "<who>"
+#     expiry: "YYYY-MM-DD"            # required; expired entries stop applying (allowlist-expiry.mjs)
+
+version: 1
+
+floor: 70
+
+include:
+  - "scripts/*.mjs"
+  - "scripts/lib/*.mjs"
+
+exceptions: []
