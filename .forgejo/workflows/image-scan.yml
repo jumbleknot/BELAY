@@ -1,0 +1,97 @@
+# The image CVE sweep (feature 010, backlog item 49). Trivy scans every THIRD-PARTY image named in the
+# tree: Dockerfile FROM lines, compose image: keys under infrastructure-as-code/, workflow job and
+# service containers. Images BELAY builds (scripts/image-scan.mjs BUILT_IMAGES) are excluded: their
+# own builder scans them before push, so every image has exactly one owner.
+#
+# WHY A SCHEDULE: a pinned image never changes, but its vulnerability list does. Tuesday and Friday
+# 04:00 UTC keep the longest gap at 4 days (spec SC-002); MCM's Tuesday run exists because an advisory
+# published early in the week first surfaced at Friday's.
+#
+# NOT A REQUIRED CONTEXT (research R8). MCM's required sweep had to post success when it skipped, so
+# its green tick stopped meaning anything, and a fail-closed network scan blocked unrelated PRs on
+# database blips. The hard gate is in devcontainer-image.yml (no vulnerable dev image is pushed). The
+# soft spot this leaves is recorded in openwiki/invariants/unenforced-rules.md.
+#
+# THE VERDICT STATUS is the only readable record of a GREEN run's counts: the forge has no log or
+# artifact endpoint, and the failure digest publishes only on failure. So it is posted on schedule,
+# push and dispatch, and read with `node scripts/ci-status.mjs status --sha <sha>`.
+#
+# Pinned by scripts/__tests__/image-scan-workflow.guard.test.mjs.
+name: image-scan
+
+on:
+  schedule:
+    - cron: '0 4 * * 2'
+    - cron: '0 4 * * 5'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '**/*Dockerfile*'
+      - 'infrastructure-as-code/**'
+      - '.forgejo/workflows/**'
+      - 'scripts/image-scan.mjs'
+      - 'scripts/check-image-findings.mjs'
+      - 'scripts/install-trivy.mjs'
+      - 'security/images/**'
+  push:
+    branches: [main]
+    paths:
+      - '**/*Dockerfile*'
+      - 'infrastructure-as-code/**'
+      - '.forgejo/workflows/**'
+      - 'scripts/image-scan.mjs'
+      - 'scripts/check-image-findings.mjs'
+      - 'scripts/install-trivy.mjs'
+      - 'security/images/**'
+
+concurrency:
+  group: image-scan-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sweep:
+    runs-on: belay
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node (constitution pin)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 26.13.1
+      - name: Install pnpm (version from package.json packageManager)
+        run: bash scripts/ci-log-step.sh image-scan-install-pnpm bash scripts/install-pnpm.sh
+      - name: Install workspace dependencies (frozen lockfile)
+        run: bash scripts/ci-log-step.sh image-scan-install-deps pnpm install --frozen-lockfile
+      - name: Install Trivy (pinned, sha256-verified)
+        run: |
+          bash scripts/ci-log-step.sh image-scan-install-trivy bash -e /dev/stdin <<'CI_LOG_STEP'
+          node scripts/install-trivy.mjs "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          CI_LOG_STEP
+      - name: Enumerate image references
+        run: bash scripts/ci-log-step.sh image-scan-list node scripts/image-scan.mjs --list
+      - name: Sweep third-party images
+        run: bash scripts/ci-log-step.sh image-scan-sweep node scripts/image-scan.mjs
+      - name: Gate (fail on any un-allowlisted fixable Critical)
+        run: bash scripts/ci-log-step.sh image-scan-gate node scripts/check-image-findings.mjs --verdict-out security/images/reports/verdict.txt
+      - name: Upload the image-scan report
+        if: always()
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3
+        with:
+          name: image-scan-report
+          path: security/images/reports/
+          retention-days: 14
+      - name: Publish the verdict status (image-scan / verdict)
+        if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          JOB_STATUS: ${{ job.status }}
+        run: bash scripts/ci-log-step.sh image-scan-verdict-status node scripts/check-image-findings.mjs --publish-verdict security/images/reports/verdict.txt
+      - name: Publish failure digest
+        if: always()
+        continue-on-error: true
+        env:
+          CI_DIGEST_TOKEN: ${{ secrets.CI_DIGEST_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_DIGEST_JOB_STATUS: ${{ job.status }}
+        run: node scripts/ci-failure-digest.mjs

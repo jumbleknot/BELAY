@@ -134,9 +134,9 @@ registry. It is not a merge check.
   - `belay-devcontainer`: the newest 4, or anything younger than 21 days, plus every digest under
     `protect:`.
   - `belay-ci-failures`: failure bundles, plus a durations-only version for every green job (feature 008).
-    At least 100 versions and 45 days, the floor `ci-status durations` needs. The
-    floor is 25 runs × 4 bundle-publishing jobs (guardrails, sast, devcontainer-image,
-    registry-retention), so a new job that publishes a bundle makes the config fail until the number
+    At least 125 versions and 45 days, the floor `ci-status durations` needs. The
+    floor is 25 runs × 5 bundle-publishing jobs (guardrails, sast, devcontainer-image,
+    registry-retention, image-scan), so a new job that publishes a bundle makes the config fail until the number
     is raised.
   - A package the file does not list (another repository's, under the same owner) is reported and
     never deleted.

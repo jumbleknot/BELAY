@@ -107,3 +107,129 @@ test('scanImage: a CVE title on STDOUT that looks like a transport error never t
   assert.throws(() => scanImage(IMG, { imageSrc: 'remote', spawn, sleep: () => {}, onRetry: () => {} }));
   assert.equal(n, 1);
 });
+
+// ── enumerateImages (US2) ───────────────────────────────────────────────────────────────────────
+import { enumerateImages, collectTreeFiles, BUILT_IMAGES } from '../image-scan.mjs';
+import { readFileSync as readFile } from 'node:fs';
+import { dirname as dirOf, resolve as resolvePath } from 'node:path';
+import { fileURLToPath as toPath } from 'node:url';
+
+const ROOT = resolvePath(dirOf(toPath(import.meta.url)), '..', '..');
+const byRef = (refs) => Object.fromEntries(refs.map((r) => [r.ref, r]));
+const DIGEST = 'sha256:' + 'a'.repeat(64);
+
+test('enumerate: Dockerfile FROM with a tag, a digest, and both, each with its form', () => {
+  const refs = byRef(enumerateImages([{ path: 'x/Dockerfile', content:
+    `FROM alpine:3.20\nFROM debian@${DIGEST}\nFROM node:26-bookworm@${DIGEST}\n` }]));
+  assert.equal(refs['alpine:3.20'].form, 'tag');
+  assert.equal(refs[`debian@${DIGEST}`].form, 'digest');
+  assert.equal(refs[`node:26-bookworm@${DIGEST}`].form, 'tag+digest');
+  assert.deepEqual(refs['alpine:3.20'].locations, ['x/Dockerfile:1']);
+  assert.equal(refs['alpine:3.20'].owner, 'sweep');
+  assert.equal(refs['alpine:3.20'].status, 'scannable');
+});
+
+test('enumerate: an ARG default resolves FROM ${BASE_IMAGE}; a built image is owned by its builder', () => {
+  const [r] = enumerateImages([{ path: '.devcontainer/Dockerfile', content: 'ARG BASE_IMAGE=belay-devcontainer\nFROM ${BASE_IMAGE}\n' }]);
+  assert.equal(r.ref, 'belay-devcontainer');
+  assert.equal(r.owner, 'built:belay-devcontainer');
+  assert.equal(r.status, 'scannable');
+});
+
+test('enumerate: an unresolvable variable is not-scannable, with its location, never dropped', () => {
+  const [r] = enumerateImages([{ path: 'a/Dockerfile', content: 'FROM ${NOWHERE}:1\n' }]);
+  assert.equal(r.status, 'not-scannable');
+  assert.deepEqual(r.locations, ['a/Dockerfile:1']);
+});
+
+test('enumerate: FROM scratch, FROM <earlier stage>, and --platform= are handled; stage names are not images', () => {
+  const refs = enumerateImages([{ path: 'b/Dockerfile', content:
+    'FROM --platform=linux/amd64 golang:1.24 AS build\nFROM build AS test\nFROM scratch\nFROM --platform=$BUILDPLATFORM alpine:3.20\n' }]).map((r) => r.ref);
+  assert.deepEqual(refs, ['alpine:3.20', 'golang:1.24']);
+});
+
+test('enumerate: compose image: keys under infrastructure-as-code/, quoted or not', () => {
+  const refs = enumerateImages([{ path: 'infrastructure-as-code/stack/compose.yaml', content:
+    'services:\n  db:\n    image: "postgres:18@' + DIGEST + '"\n  cache:\n    image: redis:8\n' }]);
+  assert.deepEqual(refs.map((r) => [r.ref, r.locations[0]]), [
+    ['postgres:18@' + DIGEST, 'infrastructure-as-code/stack/compose.yaml:3'], ['redis:8', 'infrastructure-as-code/stack/compose.yaml:5']]);
+});
+
+test('enumerate: workflow job containers (string and object form) and service images', () => {
+  const refs = enumerateImages([{ path: '.forgejo/workflows/w.yml', content:
+    'jobs:\n  a:\n    container: node:26\n  b:\n    container:\n      image: ubuntu:24.04\n    services:\n      pg:\n        image: postgres:18\n' }]);
+  assert.deepEqual(refs.map((r) => [r.ref, r.locations[0]]), [
+    ['node:26', '.forgejo/workflows/w.yml:3'], ['postgres:18', '.forgejo/workflows/w.yml:9'], ['ubuntu:24.04', '.forgejo/workflows/w.yml:6']]);
+});
+
+test('enumerate: one reference in two files is enumerated once, with both locations; output is sorted', () => {
+  const refs = enumerateImages([
+    { path: 'z/Dockerfile', content: 'FROM redis:8\n' },
+    { path: 'a/Dockerfile', content: 'FROM redis:8\nFROM alpine:3.20\n' },
+  ]);
+  assert.deepEqual(refs.map((r) => r.ref), ['alpine:3.20', 'redis:8']);
+  assert.deepEqual(refs[1].locations, ['a/Dockerfile:1', 'z/Dockerfile:1']);
+});
+
+test('enumerate: files outside the three forms are not read for images', () => {
+  assert.deepEqual(enumerateImages([{ path: 'docs/x.md', content: 'FROM alpine:3.20\nimage: redis:8\n' }]), []);
+});
+
+// The REAL tree (SC-003): every FROM / image: / container: line the tree contains is enumerated,
+// as some owner. A form the enumeration does not understand fails here, not silently in production.
+test('tree guard: every image line in the tree appears in the enumeration', () => {
+  const files = collectTreeFiles(ROOT);
+  const enumerated = new Set(enumerateImages(files).flatMap((r) => r.locations));
+  const IMAGE_LINE = /^\s*(?:FROM\s|image:\s|container:\s*\S)/i;
+  const missing = [];
+  for (const { path, content } of files) {
+    content.split(/\r?\n/).forEach((line, i) => {
+      if (!IMAGE_LINE.test(line)) return;
+      if (/^\s*FROM\s+(?:--platform=\S+\s+)?scratch\b/i.test(line)) return;
+      if (/^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)/i.test(line) && isStage(content, line)) return;
+      if (!enumerated.has(`${path}:${i + 1}`)) missing.push(`${path}:${i + 1}: ${line.trim()}`);
+    });
+  }
+  assert.deepEqual(missing, []);
+});
+
+function isStage(content, line) {
+  const name = /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)/i.exec(line)[1];
+  return new RegExp(`\\bAS\\s+${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(content);
+}
+
+test('tree guard: today the tree holds the digest-pinned node base (sweep) and belay-devcontainer (built)', () => {
+  const refs = byRef(enumerateImages(collectTreeFiles(ROOT)));
+  const node = Object.values(refs).find((r) => r.ref.startsWith('node:26-bookworm@sha256:'));
+  assert.ok(node, 'the toolchain base image is enumerated');
+  assert.equal(node.owner, 'sweep');
+  assert.equal(node.form, 'tag+digest');
+  assert.equal(refs['belay-devcontainer']?.owner, 'built:belay-devcontainer');
+  assert.ok(BUILT_IMAGES.includes('belay-devcontainer'));
+  assert.equal(Object.values(refs).filter((r) => r.status === 'not-scannable').length, 0);
+  // Sanity on the reader itself: the toolchain Dockerfile really was read.
+  assert.ok(readFile(resolvePath(ROOT, '.devcontainer/toolchain.Dockerfile'), 'utf8').includes(node.ref));
+});
+
+// ── --selftest (US2, T015) ──────────────────────────────────────────────────────────────────────
+import { imageScanSelftest } from '../image-scan.mjs';
+import { spawnSync as spawnReal } from 'node:child_process';
+
+test('selftest: the real enumeration and normalization pass, and the CLI says so', () => {
+  assert.deepEqual(imageScanSelftest().failures, []);
+  const r = spawnReal(process.execPath, [resolvePath(ROOT, 'scripts/image-scan.mjs'), '--selftest'], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /✓ image-scan --selftest passed/);
+});
+
+test('selftest: an enumeration that drops a FROM line is caught', () => {
+  const dropsFrom = (files, opts) => enumerateImages(files.filter((f) => !/Dockerfile/.test(f.path)), opts);
+  const { failures } = imageScanSelftest({ enumerateImages: dropsFrom });
+  assert.ok(failures.some((f) => /FROM/.test(f)), failures.join('\n'));
+});
+
+test('selftest: a normalizer that blocks an unfixable Critical is caught', () => {
+  const overBlocks = (json, ctx) => normalizeTrivy(json, ctx).map((f) => ({ ...f, blocking: f.severity === 'Critical' }));
+  const { failures } = imageScanSelftest({ normalizeTrivy: overBlocks });
+  assert.ok(failures.some((f) => /unfixable/.test(f)), failures.join('\n'));
+});

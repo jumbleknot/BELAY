@@ -5,7 +5,7 @@
 //
 // Trivy runs, this script normalizes what it reports, and scripts/check-image-findings.mjs judges.
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
@@ -98,14 +98,201 @@ export function scanImage(ref, { imageSrc, spawn = spawnSync, ...retryOpts } = {
   }, { logPrefix: 'image-scan', ...retryOpts });
 }
 
-// ── not yet implemented (their tests come first: T011, T015, T019) ─────────────────────────────
+// ── enumeration (research R3; data-model.md, Image reference) ───────────────────────────────────
 
-const notImplemented = () => { throw new Error('not implemented'); };
-export const enumerateImages = notImplemented;
-export const imageScanSelftest = notImplemented;
-export const main = notImplemented;
+/**
+ * The images BELAY's own workflows build. Each is scanned by its BUILDER, before its push, and is
+ * excluded from the sweep: every image has exactly one owner. Membership, NEVER a name prefix: MCM's
+ * prefix rule once excluded an image that no builder scanned, so it was published examined by
+ * neither side.
+ */
+export const BUILT_IMAGES = Object.freeze(['belay-devcontainer']);
 
-if (isMain(import.meta.url)) {
-  console.error('not implemented');
-  process.exitCode = 1;
+const DOCKERFILE = /(?:^|\/)[^/]*Dockerfile[^/]*$/;
+const COMPOSE = /^infrastructure-as-code\/.+\.ya?ml$/;
+const WORKFLOW = /^\.forgejo\/workflows\/[^/]+\.ya?ml$/;
+const FROM_LINE = /^\s*FROM\s+(?:--platform=\S+\s+)?(\S+)(?:\s+AS\s+(\S+))?/i;
+const ARG_LINE = /^\s*ARG\s+([A-Za-z_][A-Za-z0-9_]*)(?:=(?:"([^"]*)"|'([^']*)'|(\S*)))?/i;
+const IMAGE_KEY = /^\s*image:\s*["']?((?:\$\{[^}]*\}|[^"'#\s])+)["']?/;
+const CONTAINER_STRING = /^\s*container:\s*["']?((?:\$\{[^}]*\}|[^"'#\s{])+)["']?\s*$/;
+
+/** The files that can name images: Dockerfiles, compose under infrastructure-as-code/, workflows. */
+export function collectTreeFiles(root = REPO_ROOT, { spawn = spawnSync } = {}) {
+  const r = spawn('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' });
+  if (r.status !== 0) throw new ImageScanError(`git ls-files failed: ${(r.stderr || '').slice(-300)}`);
+  return (r.stdout || '').split('\0').filter(Boolean)
+    .filter((p) => !p.startsWith('scripts/__tests__/') && (DOCKERFILE.test(p) || COMPOSE.test(p) || WORKFLOW.test(p)))
+    .sort()
+    .map((path) => ({ path, content: readFileSync(resolve(root, path), 'utf8') }));
 }
+
+function dockerfileRefs(path, content) {
+  const args = new Map();
+  const stages = new Set();
+  const out = [];
+  content.split(/\r?\n/).forEach((line, i) => {
+    const a = ARG_LINE.exec(line);
+    if (a) {
+      const value = a[2] ?? a[3] ?? a[4];
+      if (value !== undefined && value !== '') args.set(a[1], value);
+      return;
+    }
+    const m = FROM_LINE.exec(line);
+    if (!m) return;
+    const raw = m[1];
+    if (m[2]) stages.add(m[2]);
+    if (raw.toLowerCase() === 'scratch' || stages.has(raw) && raw !== m[2]) return;
+    // ${NAME} / $NAME resolve only from an ARG with a default; anything left stays visible.
+    const ref = raw.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)/g,
+      (whole, b, c) => args.get(b ?? c) ?? whole);
+    out.push({ ref, location: `${path}:${i + 1}` });
+  });
+  return out;
+}
+
+function lineRefs(path, content, patterns) {
+  const out = [];
+  content.split(/\r?\n/).forEach((line, i) => {
+    for (const re of patterns) {
+      const m = re.exec(line);
+      if (m) { out.push({ ref: m[1], location: `${path}:${i + 1}` }); break; }
+    }
+  });
+  return out;
+}
+
+const formOf = (ref) => {
+  if (!ref.includes('@sha256:')) return 'tag';
+  const name = ref.split('@')[0];
+  return name.slice(name.lastIndexOf('/') + 1).includes(':') ? 'tag+digest' : 'digest';
+};
+const bareName = (ref) => ref.split('@')[0].split('/').pop().split(':')[0];
+
+/** Every image reference the files name, once each, with every location (data-model.md, Image reference). */
+export function enumerateImages(files, { builtImages = BUILT_IMAGES } = {}) {
+  const byRef = new Map();
+  for (const { path, content } of files) {
+    let found = [];
+    if (DOCKERFILE.test(path)) found = dockerfileRefs(path, content);
+    else if (COMPOSE.test(path)) found = lineRefs(path, content, [IMAGE_KEY]);
+    else if (WORKFLOW.test(path)) found = lineRefs(path, content, [CONTAINER_STRING, IMAGE_KEY]);
+    for (const { ref, location } of found) {
+      if (!byRef.has(ref)) {
+        const owner = builtImages.includes(bareName(ref)) ? `built:${bareName(ref)}` : 'sweep';
+        byRef.set(ref, { ref, locations: [], form: formOf(ref), owner, status: ref.includes('$') ? 'not-scannable' : 'scannable' });
+      }
+      byRef.get(ref).locations.push(location);
+    }
+  }
+  return [...byRef.values()]
+    .map((r) => ({ ...r, locations: [...r.locations].sort() }))
+    .sort((a, b) => a.ref.localeCompare(b.ref));
+}
+
+// ── --selftest ──────────────────────────────────────────────────────────────────────────────────
+// Enumeration and normalization on synthetic input, before CI trusts a real sweep: an enumeration
+// that silently stopped seeing a reference form would otherwise report a truthful, meaningless zero.
+// `deps` lets the tests break one stage and watch the selftest name it.
+
+const ST_DIGEST = `sha256:${'a'.repeat(64)}`;
+const ST_FILES = [
+  { path: 'x/Dockerfile', content: `ARG BASE=belay-devcontainer\nFROM \${BASE}\nFROM golang:1.24 AS build\nFROM build\nFROM scratch\nFROM node:26@${ST_DIGEST}\n` },
+  { path: 'infrastructure-as-code/s/compose.yaml', content: 'services:\n  db:\n    image: postgres:18\n' },
+  { path: '.forgejo/workflows/w.yml', content: 'jobs:\n  a:\n    container: ubuntu:24.04\n' },
+];
+const ST_MAP = { CRITICAL: 'Critical', HIGH: 'High', MEDIUM: 'Medium', LOW: 'Low', UNKNOWN: 'Unknown' };
+
+export function imageScanSelftest(deps = {}) {
+  const d = { enumerateImages, normalizeTrivy, ...deps };
+  const failures = [];
+  try {
+    const refs = Object.fromEntries(d.enumerateImages(ST_FILES).map((r) => [r.ref, r]));
+    const want = (ref, check, what) => { if (!refs[ref] || !check(refs[ref])) failures.push(`enumeration: ${what}`); };
+    want('golang:1.24', (r) => r.owner === 'sweep', 'a Dockerfile FROM line was not enumerated');
+    want(`node:26@${ST_DIGEST}`, (r) => r.form === 'tag+digest', 'a digest-pinned FROM line was not enumerated with its form');
+    want('belay-devcontainer', (r) => r.owner === 'built:belay-devcontainer', 'an ARG-resolved built image was not owned by its builder');
+    want('postgres:18', () => true, 'a compose image: key was not enumerated');
+    want('ubuntu:24.04', () => true, 'a workflow container was not enumerated');
+    for (const bad of ['scratch', 'build']) if (refs[bad]) failures.push(`enumeration: "${bad}" was treated as an image`);
+  } catch (e) {
+    failures.push(`enumeration threw: ${e.message}`);
+  }
+  try {
+    const json = { Results: [{ Vulnerabilities: [
+      { VulnerabilityID: 'CVE-FIX', PkgName: 'a', InstalledVersion: '1', FixedVersion: '2', Severity: 'CRITICAL' },
+      { VulnerabilityID: 'CVE-NOFIX', PkgName: 'b', InstalledVersion: '1', FixedVersion: '', Severity: 'CRITICAL' },
+      { VulnerabilityID: 'CVE-HIGH', PkgName: 'c', InstalledVersion: '1', FixedVersion: '2', Severity: 'HIGH' },
+    ] }] };
+    const byId = Object.fromEntries(d.normalizeTrivy(json, { image: 'x:1', locations: [], map: ST_MAP }).map((f) => [f.id, f]));
+    if (!byId['CVE-FIX']?.blocking) failures.push('normalization: a fixable Critical was not blocking');
+    if (byId['CVE-NOFIX']?.blocking !== false) failures.push('normalization: an unfixable Critical was blocking (it must warn)');
+    if (byId['CVE-HIGH']?.blocking !== false) failures.push('normalization: a fixable High was blocking (it must warn)');
+  } catch (e) {
+    failures.push(`normalization threw: ${e.message}`);
+  }
+  return { failures };
+}
+
+// ── CLI ─────────────────────────────────────────────────────────────────────────────────────────
+
+export const REPORT_DIR = 'security/images/reports';
+const USAGE = 'Usage: image-scan.mjs --list | (sweep) | --image <ref> [--image-src docker|remote] | --selftest';
+
+function writeReport(root, report, natives) {
+  const dir = resolve(root, REPORT_DIR);
+  mkdirSync(dir, { recursive: true });
+  natives.forEach((n, i) => writeFileSync(resolve(dir, `trivy-${i + 1}.json`), JSON.stringify(n, null, 2)));
+  writeFileSync(resolve(dir, 'findings.json'), JSON.stringify(report, null, 2));
+}
+
+export function main(argv, { root = REPO_ROOT, spawn = spawnSync, log = console.log, error = console.error, retry = {} } = {}) {
+  try {
+    const flags = new Set();
+    for (const a of argv) {
+      if (a === '--list' || a === '--selftest') flags.add(a);
+      else if (a === '--image' || a === '--image-src') throw new Error('not implemented');
+      else throw new ImageScanError(`unknown argument ${a}\n${USAGE}`, 2);
+    }
+    if (flags.has('--selftest')) {
+      const { failures } = imageScanSelftest();
+      for (const f of failures) error(`✗ image-scan --selftest: ${f}`);
+      if (failures.length) return 1;
+      log('✓ image-scan --selftest passed (Dockerfile FROM incl. ARG defaults, stages and scratch; compose image:; workflow container; built-image ownership; fixable vs unfixable Critical)');
+      return 0;
+    }
+    const refs = enumerateImages(collectTreeFiles(root, { spawn }));
+    if (flags.has('--list')) {
+      for (const r of refs) log(`${r.ref} · ${r.form} · ${r.owner} · ${r.status} · ${r.locations.join(', ')}`);
+      const count = (pred) => refs.filter(pred).length;
+      log(`[image-scan] ${refs.length} reference(s): ${count((r) => r.owner === 'sweep')} sweep, ${count((r) => r.owner !== 'sweep')} built, ${count((r) => r.status === 'not-scannable')} not-scannable`);
+      return 0;
+    }
+    // The sweep. The old report goes first: if any scan fails, the gate must find NO report and
+    // fail closed, never judge the previous run's numbers.
+    rmSync(resolve(root, REPORT_DIR, 'findings.json'), { force: true });
+    const map = loadSeverityMap(resolve(root, SEVERITY_MAP_PATH));
+    const targets = refs.filter((r) => r.owner === 'sweep' && r.status === 'scannable');
+    const findings = [];
+    const natives = [];
+    for (const r of targets) {
+      const json = scanImage(r.ref, { imageSrc: 'remote', spawn, ...retry });
+      natives.push(json);
+      const found = normalizeTrivy(json, { image: r.ref, locations: r.locations, map });
+      findings.push(...found);
+      log(`[image-scan] scanned ${r.ref}: ${found.length} finding(s), ${found.filter((f) => f.blocking).length} fixable Critical`);
+    }
+    const report = {
+      schemaVersion: 1, mode: 'sweep', scannedImages: targets.map((r) => r.ref), platform: SWEEP_PLATFORM,
+      notScannable: refs.filter((r) => r.status === 'not-scannable').map((r) => ({ ref: r.ref, locations: r.locations })),
+      findings,
+    };
+    writeReport(root, report, natives);
+    log(`[image-scan] report written: ${REPORT_DIR}/findings.json (${targets.length} image(s) scanned)`);
+    return 0;
+  } catch (e) {
+    if (e instanceof ImageScanError) { error(`[image-scan] ✗ ${e.message}`); return e.exitCode; }
+    throw e;
+  }
+}
+
+if (isMain(import.meta.url)) process.exitCode = main(process.argv.slice(2));

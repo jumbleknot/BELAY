@@ -3,7 +3,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -93,4 +93,66 @@ test('the CLI: a passing report exits 0 with the ✅ line last; a blocking one e
     assert.equal(r2.status, 1, r2.stdout + r2.stderr);
     assert.match(r2.stdout.trim().split('\n').at(-1), /❌ 1 image scanned: 1 blocking/);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('the CLI: --verdict-out writes the verdict line to a file, for the status step to post (pass or fail)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'belay-imgfind-'));
+  try {
+    const allow = join(dir, 'allow.yaml');
+    writeFileSync(allow, '[]\n');
+    const bad = join(dir, 'bad.json');
+    writeFileSync(bad, JSON.stringify(report([finding()])));
+    const out = join(dir, 'verdict.txt');
+    const r = spawnSync(process.execPath, [CLI, '--report', bad, '--allowlist', allow, '--verdict-out', out], { encoding: 'utf8' });
+    assert.equal(r.status, 1);
+    assert.match(readFileSync(out, 'utf8').trim(), /^\[image-scan\] ❌ 1 image scanned: 1 blocking/);
+    const missing = join(dir, 'verdict2.txt');
+    spawnSync(process.execPath, [CLI, '--report', join(dir, 'nope.json'), '--allowlist', allow, '--verdict-out', missing], { encoding: 'utf8' });
+    assert.match(readFileSync(missing, 'utf8'), /report missing: nothing was scanned/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+// ── --publish-verdict: the image-scan / verdict commit status ──────────────────────────────────
+import { publishVerdict } from '../check-image-findings.mjs';
+
+const ENV = { GITHUB_SERVER_URL: 'https://forge.example', GITHUB_REPOSITORY: 'o/r', GITHUB_SHA: 'a'.repeat(40), GITHUB_RUN_NUMBER: '7', GITHUB_TOKEN: 'tok', JOB_STATUS: 'success' };
+
+test('publishVerdict: posts image-scan / verdict with the verdict line as its description, on the run sha', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'belay-imgverdict-'));
+  try {
+    const f = join(dir, 'v.txt');
+    writeFileSync(f, '[image-scan] ✅ 1 image scanned: 0 blocking · 0 allowlisted · 0 warnings\n');
+    let call;
+    const code = await publishVerdict(f, { env: ENV, fetch: async (url, init) => { call = { url, init }; return { ok: true, status: 201 }; }, log: () => {} });
+    assert.equal(code, 0);
+    assert.equal(call.url, `https://forge.example/api/v1/repos/o/r/statuses/${'a'.repeat(40)}`);
+    assert.equal(call.init.headers.Authorization, 'token tok');
+    const body = JSON.parse(call.init.body);
+    assert.deepEqual([body.state, body.context, body.description], ['success', 'image-scan / verdict', '✅ 1 image scanned: 0 blocking · 0 allowlisted · 0 warnings']);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('publishVerdict: failure when the job failed or the line is ❌, and "no verdict" when the file is missing', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'belay-imgverdict-'));
+  try {
+    const f = join(dir, 'v.txt');
+    writeFileSync(f, '[image-scan] ✅ 1 image scanned: 0 blocking · 0 allowlisted · 0 warnings\n');
+    const states = [];
+    const fetch = async (_u, init) => { states.push(JSON.parse(init.body)); return { ok: true, status: 201 }; };
+    await publishVerdict(f, { env: { ...ENV, JOB_STATUS: 'failure' }, fetch, log: () => {} });
+    writeFileSync(f, '[image-scan] ❌ 1 image scanned: 1 blocking · 0 allowlisted · 0 warnings\n');
+    await publishVerdict(f, { env: ENV, fetch, log: () => {} });
+    await publishVerdict(join(dir, 'missing.txt'), { env: ENV, fetch, log: () => {} });
+    assert.deepEqual(states.map((s) => s.state), ['failure', 'failure', 'failure']);
+    assert.match(states[2].description, /the sweep failed before a verdict/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('publishVerdict: a rejected POST, or a missing token, exits 1 naming the cause', async () => {
+  const log = () => {};
+  assert.equal(await publishVerdict('/nonexistent', { env: ENV, fetch: async () => ({ ok: false, status: 403 }), log, error: log }), 1);
+  const { GITHUB_TOKEN, ...noToken } = ENV;
+  const errors = [];
+  assert.equal(await publishVerdict('/nonexistent', { env: noToken, fetch: async () => ({ ok: true }), log, error: (m) => errors.push(m) }), 1);
+  assert.match(errors.join('\n'), /GITHUB_TOKEN/);
 });
