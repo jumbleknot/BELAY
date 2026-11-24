@@ -339,7 +339,7 @@ wrongly (FR-007, SC-005).
 - [ ] T030 Backlog, after merge only. Close item 53 with a verification comment (the PR, the merge sha, the total, and the
   lowest module), and close item 54 (its register row landed with the spec commit, on `main` once merged)
   - **Done when**: both are closed, each with a comment
-- [ ] T031 **Open the PR** from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
+- [x] T031 **Open the PR** (branch `009-scripts-coverage-gate`, PR #59) from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
   1. `git push origin HEAD:009-scripts-coverage-gate`
   2. `node scripts/forge-pr.mjs open --head 009-scripts-coverage-gate --title "…" --body-file <file>`
   3. `node scripts/ci-status.mjs watch --pr <n>`, until it exits 0
