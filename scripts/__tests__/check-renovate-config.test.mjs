@@ -440,3 +440,30 @@ test('publishMode: posts renovate/mode as DRY RUN or LIVE, with the run token', 
     assert.equal(calls[0].init.headers.Authorization, 'token run-token');
   }
 });
+
+// ── feature 012: the lock-file and health-report suffixes on the verdict line ────────────────────
+
+const doneRec = { level: 30, msg: 'Repository finished', repository: 'jumbleknot/BELAY', result: 'done' };
+const infoRec = (result) => ({ level: 20, msg: 'branches info extended', branchesInformation: [
+  { branchName: 'renovate/semgrep-1.x', result: 'pr-created' }, { branchName: 'renovate/lock-file-maintenance', result }] });
+
+test('lock file suffix: the lock-file-maintenance branch result is appended', () => {
+  assert.match(judgeRun([infoRec('no-work'), doneRec]).line, /; lock file: no-work$/);
+});
+test('lock file suffix: no branches record, or no lock-file entry, is "absent"', () => {
+  assert.match(judgeRun([doneRec]).line, /; lock file: absent$/);
+  assert.match(judgeRun([{ level: 20, msg: 'branches info extended', branchesInformation: [] }, doneRec]).line, /; lock file: absent$/);
+});
+test('health report suffix: a fresh report is appended and passes', () => {
+  const v = judgeRun([infoRec('no-work'), doneRec], { health: 'fresh 2d' });
+  assert.equal(v.ok, true);
+  assert.match(v.line, /; lock file: no-work; health report: fresh 2d$/);
+});
+test('health report suffix: stale, missing or unknown fails the verdict, naming it', () => {
+  for (const h of ['stale 9d', 'missing', 'unknown']) {
+    const v = judgeRun([doneRec], { health: h });
+    assert.equal(v.ok, false, h);
+    assert.match(v.line, new RegExp(`health report: ${h}`));
+  }
+});
+test('health report suffix: no-report-yet passes', () => assert.equal(judgeRun([doneRec], { health: 'no-report-yet' }).ok, true));
