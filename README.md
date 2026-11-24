@@ -28,7 +28,7 @@ BELAY is a pnpm + Nx workspace. With Node 24 or later:
 ```bash
 pnpm install --frozen-lockfile   # install the workspace (pnpm version comes from package.json)
 pnpm nx run scripts:lint         # gates and selftests
-pnpm nx run scripts:test         # script unit tests
+pnpm nx run scripts:test         # script unit tests, then the 70% line-coverage gate
 ```
 
 Every pull request runs the same checks in CI. See [docs/runbooks/ci.md](docs/runbooks/ci.md).

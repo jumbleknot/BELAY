@@ -28,6 +28,7 @@
           "node scripts/check-override-consistency.mjs",
           "node scripts/check-sast-findings.mjs --selftest",
           "node scripts/sast-scan.mjs --selftest",
+          "node scripts/check-coverage.mjs --selftest",
           "node scripts/check-resource-naming.mjs --selftest",
           "node scripts/check-resource-naming.mjs",
           "node scripts/check-openwiki-okf.mjs --selftest",
@@ -69,7 +70,7 @@
       "executor": "nx:run-commands",
       "options": {
         "cwd": "{workspaceRoot}",
-        "command": "node --test \"scripts/__tests__/*.test.mjs\""
+        "command": "node scripts/check-coverage.mjs --run"
       }
     }
   }

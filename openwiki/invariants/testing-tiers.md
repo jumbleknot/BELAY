@@ -20,6 +20,7 @@ uses the Verify RED / Verify GREEN format (see
 | **Gates** | Repository checks that scan the tree and fail on drift: the Spec Kit override gate, the CI digest-coverage gate, the egress allowlist check, the secret scan, the topology scrub, toolchain consistency, the inline-secret, argv-secret, override-floor and resource-naming gates (which guard compose files, Maestro and overrides ahead of their arrival), and the OpenWiki OKF and governance gates | `pnpm nx run scripts:lint` | **Yes**, through the required `guardrails` check |
 | **Selftests** | Each gate's `--selftest`, plus the secret-scan, redactor, digest and `ci-status` selftests. They prove a detector still detects, so a gate cannot pass vacuously | `pnpm nx run scripts:lint` | **Yes** |
 | **Unit** | `node:test` files in `scripts/__tests__/*.test.mjs`. Forge calls are made against fakes and fixtures, never the real forge | `pnpm nx run scripts:test` | **Yes** |
+| **Coverage** | The unit tests run under Node's built-in coverage, then `scripts/check-coverage.mjs` fails if any source module (`scripts/*.mjs`, `scripts/lib/*.mjs`) or the total is below **70% of lines**, or if a source module is missing from the report. A module no test loads is absent from the report, not shown at 0%, so it fails as uncovered. Branches are reported, not gated. The floor and any expiring exceptions live in one place, `scripts/coverage-policy.yaml` | `pnpm nx run scripts:test` (the same run as Unit) | **Yes** |
 
 Nothing in CI talks to a live forge, so no integration tier exists yet.
 

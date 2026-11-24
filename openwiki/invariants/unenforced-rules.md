@@ -1,7 +1,7 @@
 ---
 type: Reference
 title: Rules stated but not mechanically enforced — where enforcement is soft
-description: The register of BELAY rules that a document states but no gate checks — spec-before-code, the coverage minimum, RED-before-GREEN, summary accuracy, semantic doc drift, structural decisions, redaction beyond the scanners — with where each is stated, what backs it instead, and the backlog item that would close it; re-read at every quarterly drift audit.
+description: The register of BELAY rules that a document states but no gate checks — spec-before-code, RED-before-GREEN, summary accuracy, semantic doc drift, structural decisions, redaction beyond the scanners — with where each is stated, what backs it instead, and the backlog item that would close it; re-read at every quarterly drift audit.
 tags: [governance, gates, enforcement, gaps]
 timestamp: 2026-11-23
 ---
@@ -21,8 +21,7 @@ review.
 
 | Rule | Stated in | Backed instead by | Closes it |
 | --- | --- | --- | --- |
-| **A spec exists before implementation code** under the SDD-gated folders | constitution (No Vibe Coding), `AGENTS.md` gate | session gate, PR review, the `spec(N)` → `plan(N)` → `tasks(N)` commit trail | backlog item 54 (evaluate a check; MovieCollectionManager never built one) |
-| **Coverage of at least 70% for new features** | constitution, the Backend, Frontend and AI Agent Quality Standards sections | nothing: no Nx target or workflow measures coverage | backlog item 53 (decided 2026-11-23: gate `scripts/` now, through its own spec) |
+| **A spec exists before implementation code** under the SDD-gated folders | constitution (No Vibe Coding), `AGENTS.md` gate | session gate, PR review, the `spec(N)` → `plan(N)` → `tasks(N)` commit trail | **decided not to build** (backlog item 54, maintainer, 2026-11-24): every Renovate PR and small chore under the gated folders would need an exemption, and MovieCollectionManager ran about a hundred features without one. Revisit only if a violation slips through review |
 | **RED is observed before GREEN** | constitution (TDD), [test authoring conventions](../process/test-authoring-conventions.md) | the Verify RED / Verify GREEN commands and expected output recorded in `tasks.md`: *evidenced, not verified*, because nothing replays them | none planned |
 | **A refreshed wiki summary is accurate** | [the brief](../INSTRUCTIONS.md), §1 and §9 | review. V17 proves only that the page was recorded after its source changed | none planned |
 | **Docs keep up with changed *behaviour*** | constitution (Documentation) | the doc-impact sweep catches renamed and removed *identifiers*. Behaviour changes are left to the quarterly audit | layer 2 of [doc drift](../runbooks/doc-drift.md), built only if an audit shows it is needed |
@@ -35,6 +34,10 @@ repeated here.
 
 ## Gotchas
 
+- **Coverage is gated for `scripts/`, and only there** (feature 009). `scripts:test` fails when any
+  source module, or the total, is below 70% of lines, and when a source module is missing from the
+  report. A new project with tests must add its own coverage gate, or a row here, in the PR that
+  adds it. Otherwise the constitution's 70% rule silently stops being enforced for it.
 - **Remove an entry in the same PR as the gate that closes it.** A stale entry here makes a gated rule
   look soft, and a missing entry makes a soft rule look gated. Both errors mislead in the same way.
 - **Add an entry when you write a rule without a gate.** It is the honest alternative to writing the
