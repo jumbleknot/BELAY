@@ -130,7 +130,9 @@ jobs:
       - name: Validate renovate.json (strict, at the pinned version)
         run: bash scripts/ci-log-step.sh sast-renovate-config npx --yes --before="$(node -e 'process.stdout.write(new Date(Date.now()-3*864e5).toISOString())')" --package renovate@$(node scripts/check-renovate-config.mjs --print-renovate-version) -- renovate-config-validator --strict --no-global renovate.json
       - name: Verify version-and-checksum pairs (only those that moved)
-        run: bash scripts/ci-log-step.sh sast-pin-checksums node scripts/refresh-pin-checksum.mjs --verify-changed --base origin/${{ github.base_ref || 'main' }}
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        run: bash scripts/ci-log-step.sh sast-pin-checksums node scripts/refresh-pin-checksum.mjs --verify-changed --base "origin/$BASE_REF"
       # Stages 2 and 3, prepared and DORMANT (feature 008; items #39, #40). Each step installs only when
       # its lockfile is tracked (a Cargo.lock; a uv.lock under a project directory), discovered exactly
       # as the scanners discover them, so today both say "nothing to prepare" and exit 0. Unconditional

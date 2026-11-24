@@ -178,6 +178,9 @@ test('checksum pairs: sast verifies every version-and-checksum pair that moved a
   assert.ok(at >= 0, 'no Verify version-and-checksum pairs step');
   const run = sastSteps()[at].run;
   assert.match(run, /^bash scripts\/ci-log-step\.sh /);
-  assert.match(run, /--base origin\/\$\{\{ github\.base_ref \|\| 'main' \}\}/);
+  // Through env, never `${{ }}` inside run: (semgrep run-shell-injection, measured on PR #63).
+  assert.doesNotMatch(run, /\$\{\{/);
+  assert.match(run, /--base "origin\/\$BASE_REF"/);
+  assert.equal(sastSteps()[at].env.BASE_REF, "${{ github.base_ref || 'main' }}");
   assert.ok(at > sastIdx(/PR base ref is available/), 'after the base ref is fetched');
 });
