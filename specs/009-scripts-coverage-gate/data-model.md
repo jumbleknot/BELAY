@@ -40,8 +40,9 @@ floor.
 
 The verdict **fails** when any of these holds:
 - any module is `below-floor` or `no-coverage-data`;
-- the total `ΣlinesHit / ΣlinesFound` is below the policy floor, where modules with no data count as 0
-  hit of 0 found (so the total cannot hide them, and they fail on their own);
+- the total `ΣlinesHit / ΣlinesFound` is below the policy floor. Only exceptions can make this happen,
+  because without them every module is at least at the floor and so is their line-weighted total. A module
+  with no data adds nothing to either sum, and fails on its own as `no-coverage-data`;
 - the report is missing or empty, or contains no record for any source module;
 - the policy is invalid;
 - an exception names a module that does not exist.

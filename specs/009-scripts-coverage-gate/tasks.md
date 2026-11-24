@@ -105,8 +105,11 @@ FR-012 require, and the SAST orchestrator is raised above the floor (FR-012, SC-
   - every source module at or above 70% passes;
   - one module at 69.9% fails, naming it with its percent and the floor;
   - a source module absent from the report fails as `no-coverage-data`, never as passing;
-  - every listed module is above the floor but the total is below it, so the verdict fails on the total;
+  - every module meets its *applied* floor, one of them only through an active exception at 55%, and the total is
+    below 70%, so the verdict fails on the total. This is the only reachable shape of a total failure (spec US1-AC4);
   - an empty report, or one with no record for any source module, fails closed;
+  - a malformed record (`LF`/`LH` before any `SF`, or a non-numeric `LH`) fails closed with a message naming it,
+    never read as zero or as passing (spec FR-006, "unreadable");
   - a module with `LF:0` counts as 100%;
   - an active exception applies its floor, an `expiring` one warns, and an `expired` one is judged at the policy floor;
   - `validatePolicy` refuses (as a usage error, exit 2): a floor outside 50–100, an empty `include`, an `include` pattern
@@ -139,9 +142,14 @@ FR-012 require, and the SAST orchestrator is raised above the floor (FR-012, SC-
 ### Implementation for User Story 1
 
 - [ ] T009 [US1] Implement `parseLcov`, `validatePolicy`, `listSourceModules` (from the **file system**, per research R5; not
-  `git ls-files`), `judgeCoverage` and `formatVerdict` in `scripts/check-coverage.mjs`, per `data-model.md` → `Module result`,
-  `Verdict`, `Exception` (expiry through `classifyExpiry` and `WARNING_WINDOW_DAYS` from `scripts/allowlist-expiry.mjs`, never
-  re-derived) and the output lines in `contracts/check-coverage-cli.md` (prerequisite: T006 verified RED)
+  `git ls-files`), `judgeCoverage` and `formatVerdict` in `scripts/check-coverage.mjs` (prerequisite: T006 verified RED). Field
+  citations, all in `data-model.md`:
+  - `validatePolicy` enforces `Coverage policy.floor`, `Coverage policy.include`, `Exception.module`, `Exception.floor`,
+    `Exception.reason`, `Exception.addedBy` and `Exception.expiry`. Expiry goes through `classifyExpiry` and
+    `WARNING_WINDOW_DAYS` from `scripts/allowlist-expiry.mjs`, never re-derived;
+  - `judgeCoverage` computes `Module result.percent`, `Module result.appliedFloor` and `Module result.status`, and then the
+    `Verdict`;
+  - `formatVerdict` prints the output lines in `contracts/check-coverage-cli.md`.
   - **Verify GREEN**: `node --test scripts/__tests__/check-coverage.test.mjs` → expected: 0 failures, 0 skipped. Then
     `pnpm nx run scripts:test` still passes
 - [ ] T010 [US1] Confirm the orchestrator is above the floor (prerequisite: T008)
@@ -174,6 +182,8 @@ verdict at the end of the output for the digest (FR-001, FR-006, FR-008 to FR-01
   - the passing variant exits 0, with `✅` last;
   - a failing fixture test makes `--run` exit with the test runner's non-zero code, and still print the verdict;
   - with no report written (a policy whose include matches nothing the tests load), the run fails closed;
+  - a variant whose only test of the below-floor module is `test.skip` makes `--run` fail on that module. A skip is not an
+    exemption (spec Edge Cases);
   - `--report <missing file>` exits 1, and an unknown flag exits 2.
 
   Cite: `contracts/check-coverage-cli.md` (`--run`, exit codes).
@@ -193,11 +203,13 @@ verdict at the end of the output for the digest (FR-001, FR-006, FR-008 to FR-01
   `node --test "scripts/__tests__/*.test.mjs"`)
   - **Verify GREEN**: `pnpm nx run scripts:test --skip-nx-cache --output-style=static` → every test passes with `skipped 0`,
     and the **last** output line is `[coverage] ✅ … modules ≥ 70% lines; total …%`. Record the total and the lowest module here
-- [ ] T014 [US2] Prove the verdict reaches the CI digest's tail (research R8). Run the wrapped step locally with a deliberately
-  failing tree (T027, scenario 2) with `export CI_STEP_LOG_ROOT=$(mktemp -d)`, then
+- [ ] T014 [US2] Prove the verdict reaches the CI digest's tail (research R8). Make the tree fail on purpose by moving
+  `scripts/__tests__/sast-scan-transforms.test.mjs` aside (the orchestrator then drops below the floor). Then run
+  `export CI_STEP_LOG_ROOT=$(mktemp -d)`, then
   `bash scripts/ci-log-step.sh guardrails-test pnpm nx run scripts:test --skip-nx-cache`,
   and read the tail of `$CI_STEP_LOG_ROOT/local/local/guardrails-test.log`, which is the file the digest reads in CI
-  - **Done when**: the tail holds the `✗` lines and the `❌` summary. The live CI confirmation is the PR's own run (T031)
+  - **Done when**: the tail holds the `✗ scripts/sast-scan.mjs` line and the `❌` summary, and the test file is moved back
+    (`git status --porcelain` is clean). The live CI confirmation is the PR's own run (T031)
 
 **Checkpoint**: `scripts:test` is the coverage gate, locally and in CI.
 
@@ -246,7 +258,7 @@ wrongly (FR-007, SC-005).
 
 **Goal**: FR-014 and FR-015. **Independent Test**: quickstart §6.
 
-- [ ] T019 [US4] (done in the spec commit `2e2dbc2`) The register's spec-before-code row records the item 54 decision
+- [x] T019 [US4] (done in the spec commit `2e2dbc2`) The register's spec-before-code row records the item 54 decision
   - **Done when**: `openwiki/invariants/unenforced-rules.md` says "decided not to build" with the reason, and names no open item
 - [ ] T020 [US4] `openwiki/invariants/unenforced-rules.md`: **remove** the coverage row, because `scripts/` is now gated and no other
   project exists yet. Add under Gotchas that a new project with tests adds its own coverage gate, or a row here, in the PR
@@ -276,7 +288,8 @@ wrongly (FR-007, SC-005).
 - [ ] T026 **Close-out re-search**: re-run T002's searches. Every hit that states current procedure and is now untrue is fixed,
   or justified here
   - **Done when**: the result is recorded here
-- [ ] T027 Run [quickstart.md](quickstart.md) §1–§6 on a scratch branch. Revert every deliberate break
+- [ ] T027 Run [quickstart.md](quickstart.md) §1, §2, §4 and §6 locally. Revert every deliberate break. §3 (local against CI,
+  SC-003) and §5 (durations, SC-004) need the PR's CI run, so they are recorded with T029
   - **Done when**: each scenario's observed result is recorded here, including SC-001's three failure shapes and SC-005 (T018)
 - [ ] T028 Final validation, per `openwiki/invariants/feature-validation-checklist.md`:
   - `pnpm nx run scripts:lint --skip-nx-cache`;
@@ -284,8 +297,9 @@ wrongly (FR-007, SC-005).
   - `node scripts/wiki-refresh.mjs --stale`, which must be empty;
   - `node scripts/sast-scan.mjs --scope full` followed by `node scripts/check-sast-findings.mjs`, with 0 blocking.
   - **Done when**: all exit 0, recorded with their summary lines
-- [ ] T029 Record SC-004 after the PR's first green run: `node scripts/ci-status.mjs durations --job guardrails`, the
-  `guardrails-test` step against the last runs on `main`
+- [ ] T029 After the PR's first green run, record quickstart §3 and §5:
+  - SC-003: the CI `[coverage]` summary line against the local one from T013, within 0.1 points;
+  - SC-004: `node scripts/ci-status.mjs durations --job guardrails`, the `guardrails-test` step against the last runs on `main`.
   - **Done when**: the before and after figures are in the PR comment (not in this file; see T031)
 - [ ] T030 Backlog, after merge only. Close item 53 with a verification comment (the PR, the merge sha, the total, and the
   lowest module), and close item 54 (its register row landed with the spec commit, on `main` once merged)

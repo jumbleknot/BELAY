@@ -53,7 +53,7 @@ It judges in-memory lcov text against an in-memory policy. Each scenario must pr
 - a passing report (pass);
 - a module below the floor (fail, naming it);
 - a source module missing from the report (fail, `no coverage data`);
-- a total below the floor, with every listed module above it (fail on the total);
+- a total below the floor, while every module meets its *applied* floor because one has an active exception at 55% (fail on the total);
 - an empty report (fail closed);
 - an active exception (pass at its floor);
 - an expired exception (fail at the policy floor);

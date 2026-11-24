@@ -39,7 +39,7 @@ A contributor, human or AI session, changes a script or adds one, and opens a pu
 1. **Given** every source file is at or above the floor, **When** the required check runs, **Then** it passes and reports the total line coverage and the lowest-covered file.
 2. **Given** a change leaves one source file below 70% of lines, **When** the required check runs, **Then** it fails and names that file, its measured coverage and the floor.
 3. **Given** a new source file that no test loads, **When** the required check runs, **Then** it fails and names the file as having no coverage data. It never passes just because the file is missing from the report.
-4. **Given** the total line coverage falls below 70% while every listed file is above it (for example, because files are missing from the report), **When** the check runs, **Then** it fails on the total.
+4. **Given** every module meets its *applied* floor, one of them only because an active exception lowers its floor (for example, to 55%), and the total line coverage is therefore below 70%, **When** the check runs, **Then** it fails on the total. Without exceptions this cannot happen: a line-weighted total of modules that are all at least 70% is itself at least 70%, so the total floor is what stops exceptions from adding up to a project below the rule.
 
 ---
 
