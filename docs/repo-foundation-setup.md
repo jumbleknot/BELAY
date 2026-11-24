@@ -1,6 +1,6 @@
 # Setting up a new repository's foundation: the BELAY playbook
 
-This guide replays, in order, everything done to set BELAY up between 2026-11-21 and 2026-11-23,
+This guide replays, in order, everything done to set BELAY up between 2026-11-21 and 2026-11-24,
 before any product code existed. Follow it when you start a new repository that should work the same
 way: spec-driven, gated by CI, with the backlog in Forgejo issues and development in a sandboxed dev
 container.
@@ -32,7 +32,12 @@ This guide gives the order and links to them, and doesn't repeat them.
 | 11 | `AGENTS.md` as an index, the `openwiki/` bundle, doc drift | PR | 1–2 h |
 | 12 | Dev container on Docker Sandbox | feature 004 | half a day |
 | 13 | The remaining guardrail gates, the wiki gates and registry retention | feature 005 | half a day |
-| 14 | Final checks | n/a | 15 min |
+| 14 | Decision records and the register of unenforced rules | PR | 1 h |
+| 15 | A coverage gate on the scripts project | feature 009 | 1–2 h |
+| 16 | Container-image CVE scanning | feature 010 | half a day |
+| 17 | A self-hosted dependency bot (Renovate) | feature 011, plus maintainer setup | half a day |
+| 18 | The dependency bot's health loop | feature 012 | half a day |
+| 19 | Final checks | n/a | 15 min |
 
 Steps 1 to 4 go straight to `main`, because there is no CI or protection yet. From step 5 on, every
 change goes through a Spec Kit feature and a pull request. That way the process you are building is
@@ -558,7 +563,206 @@ publishes `step-durations.tsv` alone (feature 008). Port the publication with th
 
 ---
 
-## Step 14: Final checks
+## Step 14: Decision records and the register of unenforced rules
+
+**What:**
+- `docs/decisions/` holds one ADR per structural decision: a toolchain, a top-level layout, a credential, a bot. Each
+  one has a status, the date, **who approved it**, the alternatives considered and the consequences.
+- `openwiki/decisions/` holds a derived page per ADR.
+- `openwiki/invariants/unenforced-rules.md` is a register of every rule stated somewhere but kept only by review. Each
+  row says what backs the rule instead, and what would close the gap.
+
+**Why:** `AGENTS.md`'s gate says a structural decision is asked, not taken. Without a record, the reason is lost the
+day after the session that decided it, and the next session re-litigates it. The register keeps "this is soft" visible,
+rather than buried in one feature's research.
+
+**Copy or adapt:**
+- `docs/decisions/README.md` and the ADR template shape;
+- `openwiki/process/decision-records.md`;
+- `openwiki/invariants/unenforced-rules.md`.
+
+Start the register with the rules your repository states but does not gate yet. BELAY's first rows were the coverage
+floor and RED-before-GREEN.
+
+**Check:** `check-openwiki-okf.mjs` and `check-openwiki-governance.mjs` pass with the new pages, and every ADR names
+its approver.
+
+---
+
+## Step 15: A coverage gate on the scripts project (feature 009)
+
+**What:** `scripts:test` runs `node scripts/check-coverage.mjs --run`. It runs the test suite under Node's built-in
+coverage and fails when any module in `scripts/coverage-policy.yaml`'s `include` set is under the floor (70% of lines,
+the constitution's number). An exception needs a written reason.
+
+**Why:** the constitution's 70% was a sentence that nothing measured. A gate that runs inside the existing test target
+costs no new job.
+
+**Copy:**
+- `scripts/check-coverage.mjs`;
+- `scripts/coverage-policy.yaml`;
+- the change to `scripts:test` in `scripts/project.json`.
+
+**Traps:**
+- **A module no test loads is absent from the report, not at 0%.** The gate lists the `include` set itself and fails
+  a module that is missing from the report, so an untested script cannot hide.
+- **A nested `node --test` that inherits `NODE_TEST_CONTEXT` writes no report and exits 0.** `--run` strips
+  `NODE_TEST_CONTEXT`, `NODE_TEST_WORKER_ID` and `NODE_V8_COVERAGE` from the child's environment.
+- **Resolve `--report` paths with `resolve`, not `join`.** An absolute path joined onto the root silently names a file
+  that does not exist.
+
+**Check:** `pnpm nx run scripts:test` ends with `[coverage] ✅ N modules ≥ 70% lines`. Delete a test file and confirm
+its module fails the gate.
+
+---
+
+## Step 16: Container-image CVE scanning (feature 010)
+
+**What:** a pinned Trivy, verified against a sha256 pinned **in the repository**, scans container images at two points:
+- **The builder** (`devcontainer-image.yml`) scans the image it just built, **before the push**. A fixable Critical with
+  no allowlist entry stops the push, so no vulnerable digest ever exists to re-pin onto.
+- **A sweep** (`image-scan.yml`, Tuesday and Friday) scans every third-party image the tree names. It posts
+  `sweep/verdict` and is **not** a required check.
+
+Allowlist entries in `security/images/allowlist.yaml` must carry a version or a digest, and an expiry. That way a
+re-pin discharges them, and the gate reports them `UNMATCHED`.
+
+**Why:** pinned images never change, but their advisories do. A required sweep would have to post success when it
+skipped, which makes its green tick meaningless; MCM measured that. So the hard gate is the builder, and the soft spot
+goes in the register (step 14).
+
+**Copy:**
+- `scripts/install-trivy.mjs`, `scripts/image-scan.mjs`, `scripts/check-image-findings.mjs`;
+- `security/images/`;
+- `.forgejo/workflows/image-scan.yml`, and the scan steps in `devcontainer-image.yml`;
+- [the image-scanning runbook](runbooks/image-scanning.md).
+
+**Traps:**
+- **Trivy forwards `GITHUB_TOKEN` to ghcr.** On a Forgejo runner that is a Forgejo token, and ghcr answers
+  `DENIED`. Run Trivy without `GITHUB_TOKEN` and `GH_TOKEN`, and list `mirror.gcr.io` second for both databases.
+- **A crashed scan looks like a refused push.** BELAY's first two builder runs skipped the push because the scan step
+  died on `import 'yaml'`: the job ran on the host runner without `pnpm install`. No image was ever judged.
+  `scripts/__tests__/workflow-deps-installed.guard.test.mjs` now fails any workflow job that runs a script needing a
+  third-party package before a frozen-lockfile install. Port it with the first workflow that runs a script.
+- **Prove the gate on a throwaway branch.** Remove the Dockerfile layer that fixes a known CVE, dispatch the builder
+  on that branch, and confirm it fails at the scan step with `Push` skipped. Then delete the branch. Removing the
+  allowlist entry instead proves nothing when the built image does not carry the CVE.
+- **The dispatched run's number in the UI is not its API id.** `ci-status` reports the API id, so say both when you
+  ask someone to look.
+
+**Check:** the sweep posts `sweep/verdict` with an image count. The throwaway-branch builder run fails at the scan step,
+with `Push` skipped.
+
+---
+
+## Step 17: A self-hosted dependency bot (Renovate) (feature 011)
+
+**What:** `.forgejo/workflows/renovate.yml` runs Renovate on the repository's own runner, as a dedicated bot account.
+It **proposes** PRs and never merges them ([ADR-0004](decisions/ADR-0004-renovate-dependency-bot.md)). It has:
+- a security channel every six hours (OSV advisories, a 12-hour cooling-off);
+- one routine window a week in **UTC** (at most 4 PRs, lock files first);
+- dashboard approval for every major.
+
+`scripts/check-renovate-config.mjs` holds `renovate.json` to eleven offline rules. Among them:
+- no automerge;
+- every schedule meets its cron;
+- every hold explained;
+- lockstep groups complete;
+- **every pinned version or digest in the tree is managed or excluded** (`security/dependencies/unmanaged-pins.yaml`).
+
+Version-and-sha256 pins (Trivy, rustup-init, cargo-audit) are moved together by a post-upgrade task,
+`scripts/refresh-pin-checksum.mjs`, which needs the publisher's checksum to agree. The `sast` job verifies every pair
+that moved. A run is judged from Renovate's own JSON log, never its exit code. A manual dispatch defaults to a dry
+run.
+
+**Why:** pinning buys reproducibility, but a pinned thing never updates itself, and BELAY's pins are its consumers'
+pins. MCM measured most of the ways a bot fails silently; the rules and the verdict exist for those.
+
+**Maintainer setup (one time, in the forge's web UI; the bot cannot do it):**
+1. Create a user `<repo>-renovate`. It needs a unique email; a `+renovate` alias of your own address works, or a
+   `.invalid` address on an instance without an email-domain allowlist. Tick **Restricted**.
+2. Add it to the repository as a **Write** collaborator.
+3. Sign in as the bot and create a token with `read:user`, `read:organization`, `write:repository` and `write:issue`.
+4. Store it as the Actions secret `RENOVATE_TOKEN`.
+5. Optionally, store a github.com fine-grained read token (public repositories, no permissions) as
+   `RENOVATE_GITHUB_COM_TOKEN`. The `GITHUB_` prefix is reserved.
+6. Tick **Delete pull request branch after merge by default** in the repository settings.
+
+**Copy:**
+- `renovate.json`;
+- `scripts/check-renovate-config.mjs`, `scripts/refresh-pin-checksum.mjs`;
+- `security/dependencies/`;
+- `.forgejo/workflows/renovate.yml`, and the two `sast` steps in `guardrails.yml`;
+- the `status/bot-managed` handling in `scripts/backlog.mjs`;
+- [the dependency-bot runbook](runbooks/renovate.md).
+
+Then:
+- re-measure the pin inventory, so `check-renovate-config.mjs` reports N managed and M excluded;
+- create the labels with `backlog.mjs setup-labels`;
+- dispatch the dry run.
+
+**Traps:**
+- **Renovate 44 refuses the old dashboard shape.** `--strict` treats `dependencyDashboard: true` with
+  `dependencyDashboardLabels` as "Config migration necessary". Use `dependencyDashboard: { enabled, labels }`. Rule C9
+  enforces this offline.
+- **Installing Renovate with `npx` can exhaust a small dev container** (BELAY's: exit 137 in 8 GB). Validate the
+  config in CI, where the `sast` job runs it on every PR.
+- **The `${{ github.base_ref }}` value must go through `env:`**, never inline in `run:`. Semgrep's
+  `run-shell-injection` blocks it.
+- **`setup-node`'s `node-version` is extracted through `github-releases`** (`actions/node-versions`), not the
+  `node-version` datasource. Match it by name.
+- **Routine updates wait for the window, even on a manual dispatch.** To force one early, tick its box on the
+  Dependency Dashboard, then dispatch a live run. A PR forced this way does not prove the window works.
+
+**Check:**
+- The dry run posts `renovate/mode` `DRY RUN` and `renovate/verdict` `✅ … done, 0 PR(s) created`, and creates nothing.
+- The first live run creates the Dependency Dashboard, and `backlog.mjs ready` does not list it.
+- One ticked update produces one PR, and its CI passes.
+
+---
+
+## Step 18: The dependency bot's health loop (feature 012)
+
+**What:**
+- **`renovate-health.yml`** runs weekly, after the window. It checks that the window ran and what Renovate said
+  happened to lock-file maintenance in it (`check-lockfile-refresh.mjs`). Then it posts **one comment** on the
+  `Dependency-bot health reports` issue (`renovate-health.mjs`): one line when healthy, one line per finding
+  otherwise. Findings are dashboard problems, empty or stale bot branches, red bot PRs, and a lock-file miss.
+- **The bot's own run fails its verdict when that report is more than 8 days old**, so the two loops watch each other.
+- **`branch-reaper.yml`** runs daily and deletes branches that are merged, unused and unprotected, and not on `main`'s
+  first-parent history. A dispatch is a dry run unless `apply` is ticked.
+
+**Why:** a bot that silently stops is worse than no bot, because you believe you are covered (ADR-0004). MCM found its
+bot broken in four independent ways, each for weeks.
+
+**Copy:**
+- `scripts/renovate-health.mjs`, `scripts/check-lockfile-refresh.mjs`, `scripts/reap-merged-branches.mjs`;
+- `scripts/lib/forge-list.mjs`;
+- the two workflows, and the freshness step in `renovate.yml`;
+- "The health loop" in [the dependency-bot runbook](runbooks/renovate.md#the-health-loop).
+
+Raise the retention floor for the two new jobs.
+
+**Traps:**
+- **Fail loudly.** MCM's health jobs always exit 0, so a broken one was silent. Exit 1 on a failed read, and post a
+  failure comment that the freshness check does not count as a report.
+- **A tip-age grace period alone deletes branches other agents just created.** A branch created from an older `main`
+  commit is "merged" and its tip is old. Keep any branch on `main`'s first-parent history (MCM's reaper lacks this).
+- **The run token gets 403 on `/branch_protections`.** Read that one endpoint with `CI_DIGEST_TOKEN`. BELAY found this
+  only on the first live run: locally, the owner's token can read it.
+- **`/actions/tasks` returns `{ workflow_runs, total_count }` with no `x-total-count` header**, and `run_started_at`
+  is the start time. A paginated reader must handle that shape and fail closed on a short read.
+- **Find bot issues by label and title, never by number**, and never let a closed issue silence the report.
+
+**Check:**
+- A dispatched health job creates the tracking issue, labelled `status/bot-managed`.
+- The reaper's dry run gives a reason for every branch.
+- A throwaway branch pointed at an old merged head, plus a control at `main`'s tip, shows a dispatch with `apply`
+  deleting the first and keeping the second.
+
+---
+
+## Step 19: Final checks
 
 Run all of these on the finished foundation:
 
@@ -575,6 +779,12 @@ Run all of these on the finished foundation:
   nothing).
 - [ ] `node scripts/wiki-refresh.mjs --stale` prints nothing.
 - [ ] The `registry-retention` workflow's first report lists every image version and deletes nothing.
+- [ ] `scripts:test` ends with the coverage gate's ✅ line.
+- [ ] The builder refuses to push an image with a fixable Critical (step 16's throwaway-branch run).
+- [ ] `node scripts/check-renovate-config.mjs` reports every pin managed or excluded, and the bot's dry run posts
+  `renovate/verdict` ✅.
+- [ ] `backlog.mjs ready` hides the Dependency Dashboard and the health-report issue.
+- [ ] The first weekly health report is on the tracking issue, and the reaper's dry run deletes nothing.
 - [ ] `git grep -n -i belay` returns only places where the name is intended.
 
 ---
@@ -595,6 +805,9 @@ BELAY's name is built into these places. Rename each one, and the guard test tha
 | Status context for branch protection | `guardrails / guardrails (pull_request)` and `guardrails / sast (pull_request)`. Record it from the first green run; don't assume it |
 | The constitution's name and opening | `.specify/memory/constitution.md` |
 | The `AGENTS.md` description line and `openwiki/projects/repository.md` | the description of the repository |
+| The bot account and its repository | `belay-renovate`; `DEFAULT_REPOSITORY` (`jumbleknot/BELAY`) in `scripts/check-renovate-config.mjs` |
+| The image BELAY builds | `belay-devcontainer` in `renovate.json`'s hold and `scripts/image-scan.mjs` `BUILT_IMAGES` |
+| Bot-managed issue titles | `Dependency Dashboard` (Renovate's) and `Dependency-bot health reports` (`renovate-health.mjs`) |
 
 **Also start these fresh:** `specs/` (start feature numbering at 001), the backlog, the derived
 wiki pages' `resource-sha256` (re-record them, because the sources differ), the audit log in
@@ -612,6 +825,11 @@ aren't true of the new repository until you measure them there.
   [005-guardrail-gate-ports](../specs/005-guardrail-gate-ports/spec.md),
   [006-sast-stage1](../specs/006-sast-stage1/spec.md),
   [007-dependency-downgrade-gate](../specs/007-dependency-downgrade-gate/spec.md),
-  [008-sast-stage-prep-step-durations](../specs/008-sast-stage-prep-step-durations/spec.md).
+  [008-sast-stage-prep-step-durations](../specs/008-sast-stage-prep-step-durations/spec.md),
+  [009-scripts-coverage-gate](../specs/009-scripts-coverage-gate/spec.md),
+  [010-image-cve-scan](../specs/010-image-cve-scan/spec.md),
+  [011-renovate-dependency-bot](../specs/011-renovate-dependency-bot/spec.md),
+  [012-renovate-health-loop](../specs/012-renovate-health-loop/spec.md).
+- The structural decisions and who approved them: [docs/decisions/](decisions/README.md).
 - Gaps that are known and not built yet live in the backlog: `node scripts/backlog.mjs list`. For
   example, items #39, #40 and #41 hold SAST stages 2 to 4.
