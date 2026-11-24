@@ -37,7 +37,8 @@ This guide gives the order and links to them, and doesn't repeat them.
 | 16 | Container-image CVE scanning | feature 010 | half a day |
 | 17 | A self-hosted dependency bot (Renovate) | feature 011, plus maintainer setup | half a day |
 | 18 | The dependency bot's health loop | feature 012 | half a day |
-| 19 | Final checks | n/a | 15 min |
+| 19 | A learnings ledger and its scripted measurement log | feature 013 | 2–3 h |
+| 20 | Final checks | n/a | 15 min |
 
 Steps 1 to 4 go straight to `main`, because there is no CI or protection yet. From step 5 on, every
 change goes through a Spec Kit feature and a pull request. That way the process you are building is
@@ -409,8 +410,8 @@ rewrite the content for the new repository:
   learning goes.
 - **`docs/runbooks/doc-drift.md`**: the doc-impact sweep (live, through the tasks override) and the
   quarterly drift audit, a backlog item that files its own successor. The audit also refreshes a learnings ledger
-  whose measurement log is written by a counting script (BELAY's is `docs/BELAY-Learnings.md`, filled by
-  `scripts/count-repo-metrics.mjs --append-log`).
+  whose measurement log is written by a counting script; step 19 adds both. The sweep's search is
+  `git grep --untracked`, because plain `git grep` never searches a file the feature has not committed yet.
 
 **The same-PR rule:** a change to a file that an `openwiki/` page cites as its `resource` refreshes
 that page in the same PR. BELAY first kept this by review; step 13 adds the gate that enforces it.
@@ -764,7 +765,49 @@ Raise the retention floor for the two new jobs.
 
 ---
 
-## Step 19: Final checks
+## Step 19: A learnings ledger and its scripted measurement log (feature 013)
+
+**What:**
+- **`docs/<NAME>-Learnings.md`**, in three parts: the story of the repository, rewritten in place at each refresh;
+  an append-only ledger of numbered lessons, each with its evidence and a link to the page that owns the rule now;
+  and a measurement log, one column per counted commit.
+- **`scripts/count-repo-metrics.mjs`** counts one commit's committed tree (`--rev`, default `HEAD`): features,
+  commits, code, test and documentation lines, test declarations, gate scripts, guard tests, task lists and
+  allowlist entries. `--append-log <file>` writes the column between the `metrics-log` markers itself, in date
+  order.
+- **Step 11 of the quarterly drift audit** (`docs/runbooks/doc-drift.md`) refreshes the document and appends a
+  column, so it happens on the audit's cadence.
+
+**Why:** MCM kept the same three-part document with a hand-counted log, and measured its hand counts as 4.5% off a
+script's, about a month's growth. Copying numbers into the table by hand was as much of the gap as counting them.
+
+**Copy:**
+- `scripts/count-repo-metrics.mjs` and its test;
+- the document's skeleton: Part 1 and Part 2 headings, "How to update", and an empty pair of markers;
+- step 11 of the drift audit, and the wiki concept `openwiki/projects/learnings-ledger.md`.
+
+Then adapt `classifyPath`, the allowlist path and the gate-script source in the script to the new repository's
+layout, and its test fixtures with them.
+
+**Traps:**
+- **Count committed objects, never the working copy.** The script reads `git ls-tree` and `git cat-file --batch`,
+  so uncommitted edits, or another session's files in a shared container, cannot change a number.
+- **A shallow clone cannot count commits.** The script reports commits as unavailable and refuses to log; run it
+  from a full clone.
+- **A column is only comparable with columns counted by the same script version.** The `Script commit` row records
+  it, with `+dirty` for local edits.
+- **The ledger indexes lessons and never holds them.** A new lesson goes to its home page first and enters the
+  ledger at the next refresh. Check each evidence commit with `git show` before citing it: BELAY's first draft
+  cited a proposal and a port as measurements.
+
+**Check:**
+- `node scripts/count-repo-metrics.mjs` prints a snapshot, and `--json` the same as JSON.
+- `--append-log` writes one column, and a second run for the same commit exits 1 with the file unchanged.
+- The test that every relative link in the document resolves passes.
+
+---
+
+## Step 20: Final checks
 
 Run all of these on the finished foundation:
 
@@ -787,6 +830,8 @@ Run all of these on the finished foundation:
   `renovate/verdict` ✅.
 - [ ] `backlog.mjs ready` hides the Dependency Dashboard and the health-report issue.
 - [ ] The first weekly health report is on the tracking issue, and the reaper's dry run deletes nothing.
+- [ ] `node scripts/count-repo-metrics.mjs --rev HEAD --append-log docs/<NAME>-Learnings.md` from a full clone
+  writes the log's first column.
 - [ ] `git grep -n -i belay` returns only places where the name is intended.
 
 ---
@@ -810,10 +855,11 @@ BELAY's name is built into these places. Rename each one, and the guard test tha
 | The bot account and its repository | `belay-renovate`; `DEFAULT_REPOSITORY` (`jumbleknot/BELAY`) in `scripts/check-renovate-config.mjs` |
 | The image BELAY builds | `belay-devcontainer` in `renovate.json`'s hold and `scripts/image-scan.mjs` `BUILT_IMAGES` |
 | Bot-managed issue titles | `Dependency Dashboard` (Renovate's) and `Dependency-bot health reports` (`renovate-health.mjs`) |
+| The learnings document | `docs/BELAY-Learnings.md`, named in `scripts/count-repo-metrics.mjs`, its test, the doc-drift runbook and `openwiki/projects/learnings-ledger.md` |
 
 **Also start these fresh:** `specs/` (start feature numbering at 001), the backlog, the derived
 wiki pages' `resource-sha256` (re-record them, because the sources differ), the audit log in
-`doc-drift.md`, and dated measurements in the runbooks. Those measurements are history from BELAY and
+`doc-drift.md`, the learnings document's story, lessons and measurement log, and dated measurements in the runbooks. Those measurements are history from BELAY and
 aren't true of the new repository until you measure them there.
 
 ## Where BELAY's history is recorded
@@ -831,7 +877,9 @@ aren't true of the new repository until you measure them there.
   [009-scripts-coverage-gate](../specs/009-scripts-coverage-gate/spec.md),
   [010-image-cve-scan](../specs/010-image-cve-scan/spec.md),
   [011-renovate-dependency-bot](../specs/011-renovate-dependency-bot/spec.md),
-  [012-renovate-health-loop](../specs/012-renovate-health-loop/spec.md).
+  [012-renovate-health-loop](../specs/012-renovate-health-loop/spec.md),
+  [013-learnings-ledger](../specs/013-learnings-ledger/spec.md).
+- The story so far, the lessons and the measurement log: [BELAY-Learnings.md](BELAY-Learnings.md).
 - The structural decisions and who approved them: [docs/decisions/](decisions/README.md).
 - Gaps that are known and not built yet live in the backlog: `node scripts/backlog.mjs list`. For
   example, items #39, #40 and #41 hold SAST stages 2 to 4.

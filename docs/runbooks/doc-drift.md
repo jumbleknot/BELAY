@@ -28,10 +28,12 @@ carries the close-out step. A change made without a spec should run the same sea
 The search is literal and cheap on purpose:
 
 ```bash
-git grep -n -F "<term>" -- '*.md' ':!specs/' ':!docs/proposals/' ':!docs/decisions/'
+git grep --untracked -n -F "<term>" -- '*.md' ':!specs/' ':!docs/proposals/' ':!docs/decisions/'
 ```
 
-This is the exact command in the tasks-template override. Keep the two identical: a change to the
+`--untracked` matters: without it `git grep` searches only tracked files, so a document the feature has created
+but not yet committed is never searched. Feature 013's first sweep missed its own new documents this way. Ignored
+files stay excluded. This is the exact command in the tasks-template override. Keep the two identical: a change to the
 override is recorded with `node scripts/check-speckit-overrides.mjs --record`.
 
 Each hit becomes a named doc task, or gets a one-line reason it needs no change. Dated records

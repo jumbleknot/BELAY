@@ -3,7 +3,7 @@ type: Convention
 title: RTK (Rust Token Killer) token compression
 description: RTK is a mandatory transparent CLI proxy that compresses command output before it reaches the agent's context; it must be active before any AI-assisted session, is verified with rtk gain, and can rewrite or hide a tool's answer, so a surprising result is re-run without it.
 tags: [rtk, tooling, context-window, prerequisite]
-timestamp: 2026-11-22
+timestamp: 2026-11-24
 ---
 
 # RTK (Rust Token Killer) token compression
@@ -42,6 +42,10 @@ In Claude Code a hook rewrites commands through RTK transparently, so `git statu
   and exits 0. RTK drops that notice, so the result looks exactly like "no matches". Cross-check with
   `grep -c`, which still reports the true count. Write a NUL sentinel in a text file as the `\u0000`
   escape, never as a raw byte.
+- **`git log -S` through RTK can come back empty.** Measured on 2026-11-24, in feature 013:
+  `git log --reverse --format='%ad %h' -S "SKIP COUNT" | head -1` printed nothing, while the same command under
+  `rtk proxy` printed the commit that introduced the phrase. Other terms in the same loop returned a later commit
+  than the true first one. Run history searches (`git log -S`, `-G`, `--reverse`) under `rtk proxy`.
 - **For anything whose exact output matters, write it to a file and read the file.** Ad-hoc
   `node -e` or `python -c` output can be rewritten on its way through the proxy.
 

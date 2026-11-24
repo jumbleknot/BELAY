@@ -4,8 +4,8 @@ title: "Doc drift: the doc-impact sweep and the quarterly audit"
 description: How BELAY keeps its procedure documents in step with the code — the doc-impact sweep every SDD feature runs at task generation and close-out, carried by a Spec Kit tasks-template override and required by the constitution; the three layers and which are live; and the quarterly drift audit that measures the result and files its own successor.
 tags: [documentation, drift, spec-kit, sdd, audit, runbook]
 resource: docs/runbooks/doc-drift.md
-resource-sha256: 2e4697b3c5bf393d9c1f5c0287f0b19c8c5232a18cb414002c146e7eb0c992ac
-timestamp: 2026-11-24T14:02:08.072Z
+resource-sha256: 6ae3ced09606762c2430b56ac25483a98b8a0665464e6b3d38ef0839a7a913ae
+timestamp: 2026-11-24T15:48:12.191Z
 ---
 
 # Doc drift: the doc-impact sweep and the quarterly audit
@@ -19,7 +19,8 @@ source document. This runbook covers the other direction: keeping a source docum
 
 1. **The doc-impact sweep** (live). Every SDD feature lists the identifiers it renames, removes or
    changes the meaning of. It searches every doc that states current procedure for each one with
-   `git grep -n -F` over `*.md`, excluding `specs/`, `docs/proposals/` and `docs/decisions/`. Each
+   `git grep --untracked -n -F` over `*.md`, excluding `specs/`, `docs/proposals/` and `docs/decisions/`
+   (`--untracked`, or the feature's own uncommitted documents are never searched). Each
    hit becomes a named doc task or a one-line justification. The search runs when tasks are
    generated, and again for the old names at close-out. MovieCollectionManager measured that the
    weak point is **discovery**, not follow-through: features did 94% of the doc tasks they wrote.

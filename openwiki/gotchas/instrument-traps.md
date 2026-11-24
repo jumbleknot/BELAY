@@ -1,9 +1,9 @@
 ---
 type: Gotcha
 title: Instrument traps — a tool's answer is about the tool, not your question
-description: Measured cases where a command ignored an argument it did not recognise, acted on one it should not have, or answered a different question — node --test flag order, rg -r, a forge empty list or 404, an empty search, a persistent cd — and the habit of checking the instrument before believing a result in either direction.
+description: Measured cases where a command ignored an argument it did not recognise, acted on one it should not have, or answered a different question — node --test flag order, rg -r, a forge empty list or 404, an empty search, git grep and new files, node's test reporter, spawnSync input encoding, a persistent cd — and the habit of checking the instrument before believing a result in either direction.
 tags: [tooling, testing, verification, forge]
-timestamp: 2026-11-22
+timestamp: 2026-11-24
 ---
 
 # Instrument traps — a tool's answer is about the tool, not your question
@@ -45,6 +45,16 @@ Most of these were measured in MovieCollectionManager, using the same tools BELA
 - **An empty search result is not proof of absence.** Confirm with a second method, such as a
   different tool, a broader pattern or `grep -c`, before writing "X is not used". RTK can also hide a
   binary-file notice (see [RTK](../invariants/rtk-token-compression.md)).
+- **`git grep` searches only tracked files.** A file you have created but not committed is never searched, so a
+  doc-impact sweep run before the first commit misses the feature's own new documents and reads as "no hits".
+  Add `--untracked` (ignored files stay excluded), or stage the files first. Measured in feature 013 (PR #71); the
+  sweep command in [doc drift](../runbooks/doc-drift.md) carries the flag.
+- **`node --test` prints the spec reporter even into a pipe.** On Node 26, the summary lines are `ℹ tests 27`,
+  `ℹ pass 26`, not TAP's `# tests 27`. A grep for `^# tests` matches nothing and looks like "no output"; feature
+  013's first RED check hit this. Grep for `^ℹ (tests|pass|fail|skipped)`, or pass `--test-reporter=tap` when a
+  script needs TAP.
+- **`spawnSync`'s `encoding` option also applies to `input`.** With `encoding: 'buffer'`, a string `input` throws
+  `Unknown encoding: buffer`. Pass `input` as a `Buffer`. Measured in feature 013.
 - **`cd` persists between shell calls in an agent session.** A `cd` into a subdirectory breaks later
   relative paths and makes real files look missing. Prefer absolute paths.
 - **Spec Kit hooks act without asking.** `.specify/extensions.yml` sets `auto_execute_hooks: true`,
