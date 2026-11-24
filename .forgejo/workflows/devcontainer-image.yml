@@ -99,6 +99,19 @@ jobs:
       # Critical with no allowlist entry fails the gate, a failed step stops the job, and `Push` never
       # runs, so no vulnerable digest exists for anyone to re-pin onto. The image is read from the
       # local daemon, so no --platform is forced: it is whatever this runner built.
+      #
+      # The scan scripts import `yaml`, so the workspace dependencies come first. Without them the
+      # scan died with ERR_MODULE_NOT_FOUND and the push was skipped only because the step crashed:
+      # that looks like the gate working, but no image was judged.
+      # workflow-deps-installed.guard.test.mjs fails any job that repeats this.
+      - name: Install pnpm (version from package.json packageManager)
+        if: steps.gate.outputs.build == 'true'
+        run: bash scripts/ci-log-step.sh build-publish-install-pnpm bash scripts/install-pnpm.sh
+
+      - name: Install workspace dependencies (frozen lockfile)
+        if: steps.gate.outputs.build == 'true'
+        run: bash scripts/ci-log-step.sh build-publish-install-deps pnpm install --frozen-lockfile
+
       - name: Install Trivy (pinned, sha256-verified)
         if: steps.gate.outputs.build == 'true'
         run: |
