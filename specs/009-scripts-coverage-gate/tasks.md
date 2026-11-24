@@ -173,7 +173,7 @@ verdict at the end of the output for the digest (FR-001, FR-006, FR-008 to FR-01
 
 ### Tests for User Story 2 (REQUIRED, TDD checkpoint format) ⚠️
 
-- [ ] T011 [US2] Create the fixture project `scripts/__tests__/fixtures/coverage-run/` with:
+- [x] T011 [US2] Create the fixture project `scripts/__tests__/fixtures/coverage-run/` with:
   - a policy;
   - two source modules: one fully tested, one with an untested branch below the floor;
   - one test file.
@@ -190,29 +190,38 @@ verdict at the end of the output for the digest (FR-001, FR-006, FR-008 to FR-01
   - `--report <missing file>` exits 1, and an unknown flag exits 2.
 
   Cite: `contracts/check-coverage-cli.md` (`--run`, exit codes).
+  - **Deviation (recorded)**: each case builds its project in a temp dir from inline strings, rather than a committed
+    `fixtures/coverage-run/`. Committed `.mjs` fixtures would be scanned by Semgrep and the other tree gates, and every
+    variant would need its own copy. Eight cases, including an invalid policy exiting 2 before anything runs
   - **Scenarios covered**: US2-AC1, US2-AC2; spec Edge Cases (no report, a skipped test lowers coverage)
   - **Verify RED**: `node --test --test-name-pattern="--run" scripts/__tests__/check-coverage.test.mjs` → expected: every
     `--run` test failing, with the stub's `not implemented` / exit 1. Node's flags go **before** the path (instrument trap)
 
 ### Implementation for User Story 2
 
-- [ ] T012 [US2] Implement the CLI in `scripts/check-coverage.mjs`: `--run`, the default gate with `--report <lcov>`, and `--help`.
+- [x] T012 [US2] Implement the CLI in `scripts/check-coverage.mjs`: `--run`, the default gate with `--report <lcov>`, and `--help`.
   `--run` builds one `--test-coverage-include` per `Coverage policy.include` pattern (`data-model.md`), so the measured set
   and the judged set cannot drift (research R5). It deletes the previous report first, inherits stdio, and gates after the
   runner exits (prerequisite: T011 verified RED)
   - **Verify GREEN**: `node --test --test-name-pattern="--run" scripts/__tests__/check-coverage.test.mjs` → 0 failures; then the
     whole file → 0 failures, 0 skipped
-- [ ] T013 [US2] Point `scripts/project.json`'s `test` target at `node scripts/check-coverage.mjs --run` (replacing
+- [x] T013 [US2] Point `scripts/project.json`'s `test` target at `node scripts/check-coverage.mjs --run` (replacing
   `node --test "scripts/__tests__/*.test.mjs"`)
   - **Verify GREEN**: `pnpm nx run scripts:test --skip-nx-cache --output-style=static` → every test passes with `skipped 0`,
     and the **last** output line is `[coverage] ✅ … modules ≥ 70% lines; total …%`. Record the total and the lowest module here
-- [ ] T014 [US2] Prove the verdict reaches the CI digest's tail (research R8). Make the tree fail on purpose by moving
+  - **Recorded 2026-11-24**: 1185 tests, 1185 passed, 0 failed, 0 skipped; last line
+    `[coverage] ✅ 39 modules ≥ 70% lines; total 92.09% lines (81.15% branches, not gated); lowest: scripts/sast-scan.mjs 75.00%`
+- [x] T014 [US2] Prove the verdict reaches the CI digest's tail (research R8). Make the tree fail on purpose by moving
   `scripts/__tests__/sast-scan-transforms.test.mjs` aside (the orchestrator then drops below the floor). Then run
   `export CI_STEP_LOG_ROOT=$(mktemp -d)`, then
   `bash scripts/ci-log-step.sh guardrails-test pnpm nx run scripts:test --skip-nx-cache`,
   and read the tail of `$CI_STEP_LOG_ROOT/local/local/guardrails-test.log`, which is the file the digest reads in CI
   - **Done when**: the tail holds the `✗ scripts/sast-scan.mjs` line and the `❌` summary, and the test file is moved back
     (`git status --porcelain` is clean). The live CI confirmation is the PR's own run (T031)
+  - **Recorded 2026-11-24**: step exit 1. The log ends with `✗ scripts/sast-scan.mjs — 68.01% lines, floor 70%` and the `❌`
+    summary, followed only by Nx's ~12-line trailer. The digest keeps the last 200 lines (`DEFAULT_CAPS` in
+    `ci-failure-digest.mjs`), so the verdict is inside it. The test file was moved back. Also proven by mutation: with
+    `NODE_TEST_CONTEXT` no longer stripped, 5 of the 6 `--run` tests fail (R10)
 
 **Checkpoint**: `scripts:test` is the coverage gate, locally and in CI.
 

@@ -13,8 +13,9 @@
 //
 // The verdict functions are PURE (lcov text, a policy, the module list and `today` in, a verdict
 // out), so the rules are unit-tested without running anything.
-import { globSync } from 'node:fs';
-import { matchesGlob } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { existsSync, globSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { dirname, join, matchesGlob } from 'node:path';
 import { classifyExpiry, daysUntil, WARNING_WINDOW_DAYS } from './allowlist-expiry.mjs';
 import { isMain } from './lib/is-main.mjs';
 
@@ -207,15 +208,113 @@ export function formatVerdict(v) {
   return lines;
 }
 
-// ── not yet implemented (their tests come first: T011, T015) ────────────────────────────────────
+// ── not yet implemented (its tests come first: T015) ────────────────────────────────────────────
 
 export function coverageSelftest() {
   throw new Error('not implemented');
 }
 
-if (isMain(import.meta.url)) {
-  console.error('[coverage] not implemented');
-  process.exitCode = 1;
+// ── CLI ─────────────────────────────────────────────────────────────────────────────────────────
+
+export const POLICY_PATH = 'scripts/coverage-policy.yaml';
+export const REPORT_PATH = 'coverage/scripts.lcov';
+const TEST_GLOB = 'scripts/__tests__/*.test.mjs';
+const USAGE = `Usage: check-coverage.mjs --run | [--report <lcov>] | --selftest | --help
+  --run              delete the report, run ${TEST_GLOB} under coverage, then gate (scripts:test)
+  --report <lcov>    gate an existing report only (default ${REPORT_PATH})
+  --selftest         judge synthetic reports; no test run (scripts:lint)
+Exit: 0 pass · 1 below the floor, no data, or a missing/malformed report · 2 bad arguments or policy
+      · under --run, the test runner's own code when tests failed`;
+
+// Research R10 (measured): a child that inherits NODE_TEST_CONTEXT behaves as a WORKER of an outer
+// test runner, never runs its own reporters, writes NO report, and exits 0: a silent false green.
+// So these are always removed, wherever --run is started from (Nx, a shell, or a test).
+const INHERITED_TEST_RUNNER_VARS = ['NODE_TEST_CONTEXT', 'NODE_TEST_WORKER_ID', 'NODE_V8_COVERAGE'];
+
+function parseArgs(argv) {
+  const args = { run: false, selftest: false, help: false, report: REPORT_PATH };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--run') args.run = true;
+    else if (a === '--selftest') args.selftest = true;
+    else if (a === '--help' || a === '-h') args.help = true;
+    else if (a === '--report') {
+      const v = argv[++i];
+      if (v === undefined || v.startsWith('--')) throw new CoverageUsageError(`--report needs a path\n${USAGE}`);
+      args.report = v;
+    } else throw new CoverageUsageError(`unknown argument ${a}\n${USAGE}`);
+  }
+  if (args.run && args.selftest) throw new CoverageUsageError(`--run and --selftest are separate modes\n${USAGE}`);
+  return args;
 }
+
+async function loadPolicy(root) {
+  const { parse } = await import('yaml');
+  const path = join(root, POLICY_PATH);
+  if (!existsSync(path)) throw new CoverageUsageError(`invalid coverage policy: ${POLICY_PATH} is missing`);
+  let raw;
+  try { raw = parse(readFileSync(path, 'utf8')); } catch (e) { throw new CoverageUsageError(`invalid coverage policy: ${POLICY_PATH} is not YAML (${e.message})`); }
+  const modules = listSourceModules(Array.isArray(raw?.include) ? raw.include.filter((p) => typeof p === 'string') : [], root);
+  return { policy: validatePolicy(raw, { modules }), modules };
+}
+
+function gate({ root, reportPath, policy, modules, today }) {
+  const full = join(root, reportPath);
+  if (!existsSync(full)) throw new CoverageReportError(`coverage report ${reportPath} is missing: nothing was measured, so nothing passes`);
+  const text = readFileSync(full, 'utf8');
+  const verdict = judgeCoverage({ records: parseLcov(text), modules, policy, today });
+  for (const line of formatVerdict(verdict)) console.log(line);
+  return verdict.ok ? 0 : 1;
+}
+
+function runTests({ root, policy, reportPath }) {
+  rmSync(join(root, reportPath), { force: true });
+  mkdirSync(dirname(join(root, reportPath)), { recursive: true });
+  const env = { ...process.env };
+  for (const k of INHERITED_TEST_RUNNER_VARS) delete env[k];
+  const args = [
+    '--test', '--experimental-test-coverage',
+    ...policy.include.map((p) => `--test-coverage-include=${p}`),
+    '--test-reporter=spec', '--test-reporter-destination=stdout',
+    '--test-reporter=lcov', `--test-reporter-destination=${reportPath}`,
+    TEST_GLOB,
+  ];
+  const r = spawnSync(process.execPath, args, { cwd: root, env, stdio: 'inherit' });
+  if (r.error) throw r.error;
+  return r.status ?? 1;
+}
+
+export async function main(argv, { root = process.cwd(), today = new Date().toISOString().slice(0, 10) } = {}) {
+  try {
+    const args = parseArgs(argv);
+    if (args.help) { console.log(USAGE); return 0; }
+    if (args.selftest) throw new Error('not implemented');
+    const { policy, modules } = await loadPolicy(root);
+    if (!args.run) return gate({ root, reportPath: args.report, policy, modules, today });
+    const testStatus = runTests({ root, policy, reportPath: REPORT_PATH });
+    let gateStatus;
+    try {
+      gateStatus = gate({ root, reportPath: REPORT_PATH, policy, modules, today });
+    } catch (e) {
+      if (!(e instanceof CoverageReportError)) throw e;
+      console.log(`[coverage] ✗ ${e.message}`);
+      gateStatus = e.exitCode;
+    }
+    if (testStatus !== 0) {
+      // A failing test is never masked by a passing gate, nor the reverse.
+      console.log(`[coverage] ❌ tests failed: the coverage verdict above is for information only (test runner exit ${testStatus})`);
+      return testStatus;
+    }
+    return gateStatus;
+  } catch (e) {
+    if (e instanceof CoverageUsageError || e instanceof CoverageReportError) {
+      console.error(`[coverage] ${e.exitCode === 2 ? '' : '✗ '}${e.message}`);
+      return e.exitCode;
+    }
+    throw e;
+  }
+}
+
+if (isMain(import.meta.url)) process.exitCode = await main(process.argv.slice(2));
 
 export { WARNING_WINDOW_DAYS };
