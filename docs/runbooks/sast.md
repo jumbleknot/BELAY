@@ -20,6 +20,7 @@ the npm registry):
 pnpm nx run scripts:sast                              # full scan, then the gate
 node scripts/sast-scan.mjs --scope changed --base origin/main   # Semgrep on changed files only; SCA still full
 node scripts/sast-scan.mjs --test-rules               # prove the custom rules against their fixtures
+node scripts/sast-scan.mjs --selftest                # prove the orchestrator still reports known scanner output (offline)
 node scripts/check-sast-findings.mjs                  # the gate alone (exit 0 pass / 1 blocking / 2 bad input)
 node scripts/check-dependency-downgrade.mjs --base origin/main   # after a scan: did this branch move a package INTO an advisory?
 ```
@@ -41,13 +42,17 @@ request and every push to `main`, next to `guardrails`, on the `belay` runner. I
 3. prepare the Rust toolchain and cargo-audit, and sync each Python project: **dormant** until a
    lockfile is tracked (see [Stages 2 to 4](#stages-2-to-4));
 4. the gate's `--selftest`;
-5. `--test-rules`;
-6. the scan: changed files on a PR, full on push. **SCA always runs in full**, because a new advisory
+5. the orchestrator's `--selftest`: known Semgrep and `pnpm audit` output, fed offline through the real
+   normalize, blocking, summary and scrub path, must come out as blocking findings, and a failed scanner
+   must read as `FAILED`. Without it, a scan that ran but parsed nothing would read as 0 findings and
+   pass the gate (backlog item 57). It also runs in `scripts:lint`;
+6. `--test-rules`;
+7. the scan: changed files on a PR, full on push. **SCA always runs in full**, because a new advisory
    can hit an unchanged dependency;
-7. the gate;
-8. on a PR only, the dependency-downgrade check against the PR base (feature 007);
-9. upload the `sast-report` artifact (always, kept 14 days);
-10. the failure digest. On a green run it publishes the job's step durations instead, so
+8. the gate;
+9. on a PR only, the dependency-downgrade check against the PR base (feature 007);
+10. upload the `sast-report` artifact (always, kept 14 days);
+11. the failure digest. On a green run it publishes the job's step durations instead, so
     `node scripts/ci-status.mjs durations --job sast` reads how long each step takes (feature 008).
 
 Read a failure with `node scripts/ci-status.mjs failure --pr <n> --job sast`. Every step runs

@@ -7,7 +7,7 @@ BELAY is a polyglot monorepo of tooling that other repositories share, so every 
 - **Never set `ANTHROPIC_API_KEY` where AI coding runs — it runs on the subscription** — Claude Code silently prefers that variable over a subscription login and bills per token; a tool that needs a model key takes it under another name, mapped only at the point of use — [secrets posture](openwiki/invariants/secrets-management.md)
 - **SDD is not optional for implementation** — code under `backend/`, `frontend/`, `agents/`, `mcp-servers/`, `packages/`, `tools/` or `infrastructure-as-code/` needs an existing `specs/NNN-*/` spec → plan → tasks set; write it first, or stop and ask. Docs, proposals and knowledge/index edits are exempt — [the lifecycle](openwiki/process/spec-driven-development.md)
 - **Other agents share this dev container — commit from a WORKTREE, never from `/workspaces/belay`** — a `git checkout -b`, `git add -A` or `git stash` there rewrites another session's work. `git worktree add -b <branch> /home/coder/worktrees/<slug> origin/main` (`/workspaces` is not writable); a symlinked `node_modules` serves `node --test` and gate scripts only, while any `pnpm nx` target needs a real `CI=true pnpm install --frozen-lockfile` in the worktree. It does not survive a rebuild — push first. Forge-API work needs no worktree — [procedure, traps, cleanup](docs/runbooks/devcontainer.md#shared-dev-container-commit-from-a-worktree)
-- **A structural decision is asked, not taken** — a new language toolchain, build plugin, top-level folder or dependency with an install script needs the maintainer's yes first; only pnpm + Nx is chosen — [the repository](openwiki/projects/repository.md)
+- **A structural decision is asked, not taken** — a new language toolchain, build plugin, top-level folder or dependency with an install script needs the maintainer's yes first, then an ADR recording it; only pnpm + Nx is chosen — [the repository](openwiki/projects/repository.md), [decision records](openwiki/process/decision-records.md)
 - **A PR's head MUST be a real branch — never an AGit push** — `git push origin HEAD:<branch>`, then `node scripts/forge-pr.mjs open`, `ci-status.mjs watch --pr <n>`, `forge-pr.mjs merge <n> --expect-head <sha>`; never hand-type a `git credential fill` recipe. An AGit (`refs/for/main`) head runs with NO Actions secrets — [the PR loop](openwiki/runbooks/ci.md)
 - **Commit or push only when asked; on `main`, branch first** — `main` is protected (no direct push, `guardrails` required) — [git](openwiki/projects/repository.md)
 - **Branch on `ci-status` exit codes: 3 is "still waiting", never a failure** — 0 mergeable, 1 required check failed, 2 bad arguments or missing token scope — [the PR loop](openwiki/runbooks/ci.md)
@@ -51,6 +51,14 @@ BELAY is a polyglot monorepo of tooling that other repositories share, so every 
 - [RTK (Rust Token Killer) token compression](openwiki/invariants/rtk-token-compression.md) **[canonical]**
 - [Secrets management posture](openwiki/invariants/secrets-management.md) **[canonical]** — the three forge credentials and their scopes
 - [Testing tiers and what gates a merge](openwiki/invariants/testing-tiers.md) **[canonical]**
+- [Rules stated but not mechanically enforced](openwiki/invariants/unenforced-rules.md) **[canonical]** — where enforcement is soft, and what would close it
+
+### Decisions
+
+- [ADR-0001 — pnpm and Nx only](openwiki/decisions/adr-0001-pnpm-and-nx-only.md)
+- [ADR-0002 — the session maintains the wiki, with no generator](openwiki/decisions/adr-0002-session-maintained-wiki.md)
+- [ADR-0003 — the dev container in a dedicated Docker Sandbox microVM](openwiki/decisions/adr-0003-docker-sandbox-devcontainer.md)
+- [ADR-0004 — a self-hosted Renovate bot proposes updates](openwiki/decisions/adr-0004-renovate-dependency-bot.md)
 
 ### Gotchas
 
@@ -69,6 +77,7 @@ BELAY is a polyglot monorepo of tooling that other repositories share, so every 
 ### Process
 
 - [The governing constitution](openwiki/process/constitution.md)
+- [Decision records (ADRs)](openwiki/process/decision-records.md) — when a structural decision needs an ADR, and why one is superseded, never rewritten
 - [PR batching — split only when a failure would be ambiguous](openwiki/process/pull-request-batching.md) **[canonical]**
 - [Proposal → spec → plan → tasks → implementation lifecycle](openwiki/process/spec-driven-development.md) **[canonical]** — Spec Kit 1.4.2, the `/speckit-*` order
 - [Test authoring conventions — the RED/GREEN format](openwiki/process/test-authoring-conventions.md) **[canonical]**

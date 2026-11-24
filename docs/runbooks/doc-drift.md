@@ -74,7 +74,10 @@ Those describe the past and stay as written.
    1,000 lines. The rate is expected to fall from one audit to the next.
 9. **Check for layer 2**: would a `describes:` link have caught any of the drift, on a feature whose
    sweep ran? If so, layer 1 is not enough. File layer 2 as a `status/needs-spec` item.
-10. **File the next audit, then close this one.** Use `node scripts/backlog.mjs create`, with the
+10. **Re-read the register of unenforced rules**
+    ([`openwiki/invariants/unenforced-rules.md`](../../openwiki/invariants/unenforced-rules.md)).
+    Remove each entry whose gate has landed, and add every rule the audit found stated but unchecked.
+11. **File the next audit, then close this one.** Use `node scripts/backlog.mjs create`, with the
     title `Drift audit YYYY-MM (quarterly, layer 3 of doc-drift prevention)` about three months on,
     labels `type/chore` and `priority/p2`, and this procedure as its acceptance criteria. Then close
     the current item.

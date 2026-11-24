@@ -4,8 +4,8 @@ title: "Doc drift: the doc-impact sweep and the quarterly audit"
 description: How BELAY keeps its procedure documents in step with the code — the doc-impact sweep every SDD feature runs at task generation and close-out, carried by a Spec Kit tasks-template override and required by the constitution; the three layers and which are live; and the quarterly drift audit that measures the result and files its own successor.
 tags: [documentation, drift, spec-kit, sdd, audit, runbook]
 resource: docs/runbooks/doc-drift.md
-resource-sha256: 139a10b5f52c42a3435157109f7ed3272eede3b5a64b1f876748488926219ac0
-timestamp: 2026-11-23T13:26:41.478Z
+resource-sha256: bfe1092fe36a81974f4de5005abe5e699d473b92fcc26022badf0a449c5a7018
+timestamp: 2026-11-23T23:53:09.107Z
 ---
 
 # Doc drift: the doc-impact sweep and the quarterly audit
@@ -27,8 +27,9 @@ source document. This runbook covers the other direction: keeping a source docum
    `describes:` link would have caught on a feature whose sweep ran.
 3. **The quarterly drift audit** (live). One session reads the procedure docs against a named commit
    and verifies only checkable claims. It makes the smallest true edit for each proven drift and
-   lists what it cannot prove. It records the drift rate per 1,000 lines, and its last step files
-   the next audit as a backlog item about three months on, so the cadence needs no scheduler.
+   lists what it cannot prove. It records the drift rate per 1,000 lines and re-reads the
+   [register of unenforced rules](../invariants/unenforced-rules.md). Its last step files the next
+   audit as a backlog item about three months on, so the cadence needs no scheduler.
 
 ## Gotchas
 

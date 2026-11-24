@@ -31,6 +31,7 @@ authoritative:
   - "invariants/rtk-token-compression.md"
   - "invariants/secrets-management.md"
   - "invariants/testing-tiers.md"
+  - "invariants/unenforced-rules.md"
   - "process/pull-request-batching.md"
   - "process/spec-driven-development.md"
   - "process/test-authoring-conventions.md"
