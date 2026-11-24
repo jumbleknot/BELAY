@@ -139,7 +139,10 @@ node scripts/forge-pr.mjs dispatch renovate.yml --ref main            # a DRY RU
 - The forge API shows neither a step's resolved expression nor its log. So the run posts two commit statuses on the
   commit it ran on, readable with `node scripts/ci-status.mjs status --sha <sha>`:
   - **`renovate/mode`**, on a dispatch: `DRY RUN (creates nothing)` or `LIVE`;
-  - **`renovate/verdict`**, on every run: `✅ renovate run: done, N PR(s) created`, or `❌` and the reason.
+  - **`renovate/verdict`**, on every run: `✅ renovate run: done, N PR(s) created; lock file: <result>; health report:
+    <state>`, or `❌` and the reason. The lock-file result is Renovate's own, for the lock-file-maintenance branch;
+    the weekly health check reads it. The health-report state is the watchdog (see [The health loop](#the-health-loop)),
+    and a stale report fails the verdict.
 - The log is uploaded as the `renovate-log` artifact for 7 days.
 
 **The verdict is the run's authority, not Renovate's exit code.** The run fails, through the failure digest, when any
@@ -154,6 +157,71 @@ of these is true:
 **Validating locally**: `npx --package renovate@<version> -- renovate-config-validator --strict --no-global renovate.json`
 installs Renovate's full dependency tree. In an 8 GB dev container that was killed with exit 137 (2026-11-24). The
 `sast` job runs it on the runner on every PR, so let CI validate.
+
+## The health loop
+
+The bot is not done until its health loop is (ADR-0004). A bot that silently stops is worse than no bot, because you
+believe you are covered. Feature 012 adds three checks, and they and the bot watch each other.
+
+| What | When (UTC) | Proves |
+| --- | --- | --- |
+| `renovate-health.yml`, step 1: `check-lockfile-refresh.mjs` | Wednesday 08:30 | that a bot run started inside the routine window, and what Renovate said happened to lock-file maintenance in it |
+| `renovate-health.yml`, step 2: `renovate-health.mjs` | Wednesday 08:30 | dashboard problems, bot-branch state, blocked bot PRs and the lock-file verdict, posted as **one comment** on the tracking issue |
+| the watchdog step in `renovate.yml` (`--check-freshness`) | every bot run | that the newest weekly report is at most 8 days old |
+| `branch-reaper.yml` (`reap-merged-branches.mjs`) | daily 03:30 | that no merged, unused branch is left for the bot to reuse |
+
+**The tracking issue** is titled `Dependency-bot health reports` and labelled `status/bot-managed`, so `backlog.mjs
+ready` hides it. The job creates it if it is missing, with this description (kept equal to `TRACKING_BODY` in
+`scripts/renovate-health.mjs`):
+
+> The dependency bot's weekly health report (feature 012). `.forgejo/workflows/renovate-health.yml` posts one comment
+> here every Wednesday after the routine window: one line when healthy, one line per finding otherwise.
+>
+> **A week with no comment means the health job itself stopped.** The bot's own run checks this, and fails its
+> `renovate/verdict` when the newest report is more than 8 days old. See docs/runbooks/renovate.md, "The health loop".
+>
+> Never close or relabel this issue: it is bot-managed, and `backlog.mjs ready` deliberately hides it.
+
+**Reading a report.** A healthy week is one line:
+`✅ <date> healthy: dashboard 0 problems · N bot branches active · M/6 open PRs, none blocked · lock file <state>`.
+Otherwise there is a header and one line per finding:
+
+| Finding | What it means | What to do |
+| --- | --- | --- |
+| `dashboard problem: WARN…/ERROR…` | the bot logged a repository problem, such as a refused lookup or a manager that died | read the dashboard's "Repository problems", and fix the cause (a missing toolchain, a token scope, a registry) |
+| `empty: renovate/x (PR #n adds nothing to main)` | a merged bot branch was reused, and the PR is empty | merge-close it the normal way, and check the head branch is deleted (the reaper does this daily) |
+| `stale: renovate/x` | a merged bot branch with no PR survives, and the bot will reuse it | let the reaper delete it, or dispatch the reaper with `apply` |
+| `unknown ancestry: renovate/x` | git could not say whether it is in `main` | check the job checked out full history |
+| `blocked: PR #n … · failing: <checks>` | a bot PR's required checks are red | read its failure digest (`ci-status.mjs failure --pr <n>`), and fix the update or hold it |
+| `lock file <state>: …` | the lock-file channel did not deliver in the last window | `no-window-run`: the window cron never ran. `not-scheduled`: the window and the schedule disagree. `starved`: the PR budget ran out first. `forced`: only a dashboard tick produced it. `unknown`: read the line |
+| `dashboard not found` | no open `Dependency Dashboard` labelled `status/bot-managed` | check the bot's last run, and never close the dashboard |
+| `branch protection unreadable` | blocked PRs could not be judged | check the run token's access to `/branch_protections` |
+| `tracking issue was closed` | someone closed the report issue | reopen it: reports still post there |
+
+A **failure comment** (`❌ <date> could not read …`) means the job could not read its inputs. The job is red, and the
+comment carries no report marker, so the watchdog does not count it as a report.
+
+**A missing week.** If no report is newer than 8 days, the next bot run's `renovate/verdict` fails with `health report:
+stale <N>d`. A tracking issue deleted after reports existed reads `missing`, which fails too. Look at the
+`renovate-health` workflow's runs: a schedule that stopped, a failed run, or a missing secret.
+
+**The reaper** deletes a remote branch only when all of these hold:
+- it is not `main`, and matches no branch-protection rule;
+- it is not the head of an open PR;
+- it is merged into `main`;
+- it is **not** on `main`'s first-parent history, because a branch just created from `main` would be;
+- its tip is at least 6 hours old.
+
+A short or unreadable listing deletes nothing. A scheduled run deletes; a dispatch is a dry run unless `apply` is
+ticked:
+
+```bash
+node scripts/forge-pr.mjs dispatch branch-reaper.yml --ref main                     # dry run: lists keep / would reap
+node scripts/forge-pr.mjs dispatch branch-reaper.yml --ref main --input apply=true  # deletes
+node scripts/reap-merged-branches.mjs                                                # the same dry run locally
+```
+
+A fast-forward or squash merge is never reaped. That is the safe direction, and BELAY merges with merge commits.
 
 ## The bot's version
 

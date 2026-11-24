@@ -196,11 +196,12 @@ A detected pin passes when one of these holds:
 Every custom manager must also capture at least one pin. A manager that matches nothing looks the same as one with no
 work to do, which MCM measured.
 
-The built-in `github-actions` manager extracts `actions/setup-node`'s `node-version` as the dependency `node`, with the
-`node-version` datasource, so it needs no custom manager. A custom one would extract it twice. This comes from
-[the github-actions manager documentation](https://docs.renovatebot.com/modules/manager/github-actions/) and
-[a renovate discussion](https://github.com/renovatebot/renovate/discussions/36129). The first dry run confirms it in
-"Detected Dependencies" (quickstart §3).
+The built-in `github-actions` manager extracts `actions/setup-node`'s `node-version` as the dependency `node`, so it
+needs no custom manager. A custom one would extract it twice. **Measured on the first dry run (run #83, 2026-11-24)**:
+the datasource is `github-releases` with package `actions/node-versions`. The `node-version` datasource that this
+paragraph first named is wrong; nothing behaves differently, because the `node toolchain` group matches by name.
+Sources: [the github-actions manager documentation](https://docs.renovatebot.com/modules/manager/github-actions/) and
+[a renovate discussion](https://github.com/renovatebot/renovate/discussions/36129). Feature 012 made this correction.
 
 **Today's inventory** is in [data-model.md](data-model.md#the-pin-inventory-measured-2026-11-24).
 

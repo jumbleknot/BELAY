@@ -4,8 +4,8 @@ title: CI guardrails, the failure digest, and the PR loop
 description: The single guardrails Forgejo Actions workflow required on main — what it runs and how to reproduce it locally, how a failure is read back from the redacted digest and its package bundle with ci-status.mjs, the dedicated repository runner and the one exception to it (the dev-container image job, which never runs pull-request code), the sast job beside guardrails, the report-only registry-retention job, branch protection, the terminal PR loop through forge-pr.mjs, and the rule every new job must follow.
 tags: [ci, forgejo, pull-requests, runbook]
 resource: docs/runbooks/ci.md
-resource-sha256: 4744f064aa7cab031562ab4a37893e822a1fef00be99c542f0c08a26b1eeb73b
-timestamp: 2026-11-24T11:26:01.482Z
+resource-sha256: bf378c7e8e570eb2f451d82ecd3b6b02e0e6a3a169f409cdcabb05b87c92d55f
+timestamp: 2026-11-24T12:34:46.639Z
 ---
 
 # CI guardrails, the failure digest, and the PR loop
@@ -83,5 +83,8 @@ node scripts/forge-pr.mjs merge <n> --expect-head "$(git rev-parse HEAD)"
   strict validator at the pinned version, and a version-and-checksum pair that moved must agree with
   its release. The bot's own `renovate` workflow is not a merge check; its record is the
   `renovate/verdict` status ([dependency bot](renovate.md)).
-- **The evidence floor is 150 versions**: 25 durations runs × 6 bundle-publishing jobs. A new job that
+- **The evidence floor is 200 versions**: 25 durations runs × 8 bundle-publishing jobs. A new job that
   publishes a bundle fails the retention config until the number is raised.
+- **The bot's health loop is two more scheduled workflows**: `renovate-health.yml` (Wednesday 08:30 UTC, one
+  report comment) and `branch-reaper.yml` (daily 03:30 UTC; a dispatch is a dry run). Neither is a merge check
+  ([dependency bot](renovate.md)).

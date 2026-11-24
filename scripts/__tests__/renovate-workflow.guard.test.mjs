@@ -110,3 +110,13 @@ test('no ANTHROPIC_API_KEY and no tailnet host literal', () => {
   assert.doesNotMatch(raw(), /ANTHROPIC_API_KEY/);
   assert.doesNotMatch(raw(), /\.ts\.net/);
 });
+
+test('freshness: the health-report watchdog runs before the verdict, always(), and the verdict reads its file (feature 012, R6)', () => {
+  const w = idx(/renovate-health\.mjs --check-freshness --out health-freshness\.txt/);
+  const v = idx(/--run-verdict/);
+  assert.ok(w >= 0, 'no freshness watchdog step');
+  assert.ok(w < v, 'the watchdog must run before the verdict, so one record tells the truth');
+  assert.match(String(steps()[w].if), /always\(\)/);
+  assert.equal(steps()[w].env.GITHUB_TOKEN, '${{ github.token }}');
+  assert.match(steps()[v].run, /--health-freshness health-freshness\.txt/);
+});
