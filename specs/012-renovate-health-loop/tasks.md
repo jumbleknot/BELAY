@@ -346,7 +346,7 @@ finding class renders.
   `node scripts/check-speckit-overrides.mjs`, and `node scripts/check-topology-scrub.mjs`. Quickstart §2–§4 run after
   the merge, and are recorded on item #48 (SC-006).
   - **Done when**: the offline commands pass, and the PR body lists the post-merge steps.
-- [ ] T045 **Open the PR** from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
+- [X] T045 **Open the PR** from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
   1. `git push origin HEAD:012-renovate-health-loop`
   2. `node scripts/forge-pr.mjs open --head 012-renovate-health-loop --title "Feature 012: the dependency bot's health loop (item #48)" --body-file <file>`
   3. `node scripts/ci-status.mjs watch --pr <n>`, until it exits 0
@@ -354,6 +354,7 @@ finding class renders.
 
   Tick this task in the branch's LAST commit and quote the branch and the PR number. CI evidence goes in the PR's
   closing comment and item #48's, never here.
+  - **Done**: branch `012-renovate-health-loop`, PR #66. CI evidence goes in the PR's closing comment and item #48's.
 
 ---
 
