@@ -95,6 +95,34 @@ jobs:
           docker build -f .devcontainer/toolchain.Dockerfile -t "$TAG" .
           CI_LOG_STEP
 
+      # Feature 010: the builder scans its own image BEFORE the push (spec clarification). A fixable
+      # Critical with no allowlist entry fails the gate, a failed step stops the job, and `Push` never
+      # runs, so no vulnerable digest exists for anyone to re-pin onto. The image is read from the
+      # local daemon, so no --platform is forced: it is whatever this runner built.
+      - name: Install Trivy (pinned, sha256-verified)
+        if: steps.gate.outputs.build == 'true'
+        run: |
+          bash scripts/ci-log-step.sh build-publish-install-trivy bash -e /dev/stdin <<'CI_LOG_STEP'
+          node scripts/install-trivy.mjs "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          CI_LOG_STEP
+
+      - name: Scan the built image (gates the push)
+        if: steps.gate.outputs.build == 'true'
+        run: |
+          bash scripts/ci-log-step.sh build-publish-image-scan bash -e /dev/stdin <<'CI_LOG_STEP'
+          node scripts/image-scan.mjs --image "$TAG" --image-src docker
+          node scripts/check-image-findings.mjs
+          CI_LOG_STEP
+
+      - name: Upload the image-scan report
+        if: always()
+        uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3
+        with:
+          name: image-scan-report
+          path: security/images/reports/
+          retention-days: 14
+
       - name: Push (tag + digest) and report the pinned reference
         if: steps.gate.outputs.build == 'true'
         env:

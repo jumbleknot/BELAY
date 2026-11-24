@@ -313,3 +313,61 @@ test('the run-8286 DENIED output (verbatim shape) is retried as a database-downl
     /DENIED/);
   assert.equal(n, 3);
 });
+
+// ── fail-closed, end to end, with a fake trivy on PATH (US4, T024) ──────────────────────────────
+import { chmodSync as chmodF } from 'node:fs';
+
+const CLI_PATH = resolvePath(ROOT, 'scripts/image-scan.mjs');
+
+function withFakeTrivy(body, fn) {
+  const bin = mkTmp(joinP(tmpDir(), 'belay-faketrivy-'));
+  const root = scanRoot();
+  try {
+    if (body !== null) {
+      writeF(joinP(bin, 'trivy'), `#!${process.execPath}\n${body}\n`);
+      chmodF(joinP(bin, 'trivy'), 0o755);
+    }
+    return fn({ bin, root });
+  } finally {
+    rmR(bin, { recursive: true, force: true });
+    rmR(root, { recursive: true, force: true });
+  }
+}
+const runCli = ({ bin, root }) => spawnReal(process.execPath, [CLI_PATH, '--image', 'x.example/y:1', '--image-src', 'remote', '--root', root],
+  { encoding: 'utf8', env: { PATH: bin, HOME: root } });
+
+test('fake trivy: a database-download blip on stderr is retried, then fails closed naming the database', () => {
+  withFakeTrivy('process.stderr.write("FATAL [vulndb] Failed to download artifact repo=ghcr.io/aquasecurity/trivy-db:2\\n"); process.exit(1);', (ctx) => {
+    const r = runCli(ctx);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /trivy-db:2/);
+    assert.match(r.stderr, /attempt/);
+    assert.equal(exists(joinP(ctx.root, 'security/images/reports/findings.json')), false);
+  });
+});
+
+test('fake trivy: output that is not JSON fails closed, "not parseable JSON", and writes no report', () => {
+  withFakeTrivy('process.stdout.write("this is not json"); process.exit(0);', (ctx) => {
+    const r = runCli(ctx);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /not parseable JSON/);
+    assert.equal(exists(joinP(ctx.root, 'security/images/reports/findings.json')), false);
+  });
+});
+
+test('no trivy on PATH fails closed, "is Trivy installed", and writes no report', () => {
+  withFakeTrivy(null, (ctx) => {
+    const r = runCli(ctx);
+    assert.equal(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /is Trivy installed/);
+    assert.equal(exists(joinP(ctx.root, 'security/images/reports/findings.json')), false);
+  });
+});
+
+test('fake trivy: a clean scan exits 0 and writes the report (the harness itself is sound)', () => {
+  withFakeTrivy('process.stdout.write(JSON.stringify({ Results: [] }));', (ctx) => {
+    const r = runCli(ctx);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.ok(exists(joinP(ctx.root, 'security/images/reports/findings.json')));
+  });
+});

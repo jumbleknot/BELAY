@@ -246,7 +246,7 @@ export function imageScanSelftest(deps = {}) {
 // ── CLI ─────────────────────────────────────────────────────────────────────────────────────────
 
 export const REPORT_DIR = 'security/images/reports';
-const USAGE = 'Usage: image-scan.mjs --list | (sweep) | --image <ref> [--image-src docker|remote] | --selftest';
+const USAGE = 'Usage: image-scan.mjs [--root <dir>] --list | (sweep) | --image <ref> [--image-src docker|remote] | --selftest';
 
 function writeReport(root, report, natives) {
   const dir = resolve(root, REPORT_DIR);
@@ -276,7 +276,8 @@ function scanOne({ root, image, imageSrc, spawn, log, retry }) {
   return 0;
 }
 
-export function main(argv, { root = REPO_ROOT, spawn = spawnSync, log = console.log, error = console.error, retry = {} } = {}) {
+export function main(argv, { root: rootDefault = REPO_ROOT, spawn = spawnSync, log = console.log, error = console.error, retry = {} } = {}) {
+  let root = rootDefault;
   try {
     const flags = new Set();
     let image = null;
@@ -284,7 +285,11 @@ export function main(argv, { root = REPO_ROOT, spawn = spawnSync, log = console.
     for (let i = 0; i < argv.length; i++) {
       const a = argv[i];
       if (a === '--list' || a === '--selftest') flags.add(a);
-      else if (a === '--image' || a === '--image-src') {
+      else if (a === '--root') {
+        const v = argv[++i];
+        if (v === undefined || v.startsWith('--')) throw new ImageScanError(`--root needs a directory\n${USAGE}`, 2);
+        root = resolve(v);
+      } else if (a === '--image' || a === '--image-src') {
         const v = argv[++i];
         if (v === undefined || v.startsWith('--')) throw new ImageScanError(`${a} needs a value\n${USAGE}`, 2);
         if (a === '--image') image = v; else imageSrc = v;
