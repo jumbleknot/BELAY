@@ -156,3 +156,102 @@ test('publishVerdict: a rejected POST, or a missing token, exits 1 naming the ca
   assert.equal(await publishVerdict('/nonexistent', { env: noToken, fetch: async () => ({ ok: true }), log, error: (m) => errors.push(m) }), 1);
   assert.match(errors.join('\n'), /GITHUB_TOKEN/);
 });
+
+// ── the allowlist (US3, T026) ───────────────────────────────────────────────────────────────────
+import { loadAllowlist } from '../check-image-findings.mjs';
+
+const entryYaml = (over = {}) => {
+  const e = { image: 'node:26-bookworm@sha256:b{64}', id: 'CVE-2026-0001', justification: 'no fixed base yet', addedBy: 'test', expiry: '2027-01-31', ...over };
+  return '- ' + Object.entries(e).filter(([, v]) => v !== undefined).map(([k, v]) => `${k}: '${v}'`).join('\n  ') + '\n';
+};
+const OTHER = 'node:26-bookworm@sha256:' + 'd'.repeat(64);
+
+test('allowlist: a digest-keyed entry suppresses its finding, which stays listed as suppressed', () => {
+  const v = evaluate(report([finding()]), loadAllowlist(entryYaml()), TODAY);
+  assert.equal(v.ok, true);
+  assert.equal(v.suppressed.length, 1);
+  assert.equal(v.blocking.length, 0);
+  assert.match(formatVerdict(v).at(-1), /✅ 1 image scanned: 0 blocking · 1 allowlisted/);
+});
+
+test('allowlist: the same entry against another digest matches nothing, so the finding blocks and the entry is UNMATCHED', () => {
+  // The re-pin case (spec US3-AC2): the scanned image is the SAME repository at a NEW digest. The entry is
+  // in scope by repository, so it is reported, never silently ignored as out of scope.
+  const v = evaluate(report([finding({ image: OTHER })], { scannedImages: [OTHER] }), loadAllowlist(entryYaml()), TODAY);
+  assert.equal(v.ok, false);
+  assert.equal(v.blocking.length, 1);
+  assert.equal(v.unmatched.length, 1);
+  assert.ok(formatVerdict(v).some((l) => /UNMATCHED allowlist entry 1/.test(l)));
+});
+
+test('allowlist: a bare-name key (no version or digest) is refused (exit 2): it could never end', () => {
+  for (const image of ['node', 'node:', 'docker\\.io/library/node', 'node:latest', 'node:.*']) {
+    assert.throws(() => loadAllowlist(entryYaml({ image })), (e) => e.exitCode === 2 && /version or a digest/.test(e.message), image);
+  }
+});
+
+test('allowlist: a missing expiry, a blank justification or addedBy, or an invalid regex is refused, naming the entry', () => {
+  const refused = (over, re) => assert.throws(() => loadAllowlist(entryYaml() + entryYaml(over)), (e) => e.exitCode === 2 && /entry 2/.test(e.message) && re.test(e.message));
+  refused({ expiry: undefined }, /expiry/);
+  refused({ expiry: '31/01/2027' }, /expiry/);
+  refused({ justification: '  ' }, /justification/);
+  refused({ addedBy: '' }, /addedBy/);
+  refused({ id: '(' }, /id .*regex/);
+  refused({ image: 'node:26[' }, /image .*regex/);
+});
+
+test('allowlist: an expiring entry warns and still suppresses; an expired entry stops suppressing', () => {
+  const soon = evaluate(report([finding()]), loadAllowlist(entryYaml({ expiry: '2026-12-01' })), TODAY);
+  assert.equal(soon.ok, true);
+  assert.ok(formatVerdict(soon).some((l) => /⚠ allowlist entry 1 expires 2026-12-01 \(7 days\)/.test(l)));
+  const gone = evaluate(report([finding()]), loadAllowlist(entryYaml({ expiry: '2026-11-01' })), TODAY);
+  assert.equal(gone.ok, false);
+  assert.equal(gone.blocking.length, 1);
+  assert.ok(formatVerdict(gone).some((l) => /allowlist entry 1 expired 2026-11-01/.test(l)));
+});
+
+test('allowlist: an entry whose image matched no scanned image is out of scope, not unmatched', () => {
+  const v = evaluate(report([], { scannedImages: ['redis:8'] }), loadAllowlist(entryYaml()), TODAY);
+  assert.equal(v.unmatched.length, 0);
+});
+
+// The REAL allowlist against the REAL tree: each entry still matches a reference the tree pins today,
+// and STOPS matching once that reference's digest changes. The later reference is derived from the
+// pin, never hand-written (MCM item #561: a hand-written "next version" drifted into equalling the pin).
+test('real allowlist: every entry keys to a live pin, and is discharged by a re-pin', async () => {
+  const { enumerateImages, collectTreeFiles } = await import('../image-scan.mjs');
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+  const refs = enumerateImages(collectTreeFiles(root)).map((r) => r.ref);
+  const entries = loadAllowlist(readFileSync(join(root, 'security/images/allowlist.yaml'), 'utf8'));
+  for (const e of entries) {
+    const live = refs.filter((r) => e.imageRe.test(r));
+    assert.ok(live.length > 0, `entry ${e.index} (${e.image}) matches no image the tree pins: re-key or delete it`);
+    for (const ref of live) {
+      const later = ref.includes('@sha256:') ? ref.replace(/@sha256:[0-9a-f]{64}/, `@sha256:${'0'.repeat(64)}`) : `${ref}.9999`;
+      assert.notEqual(later, ref);
+      assert.equal(e.imageRe.test(later), false, `entry ${e.index} still matches ${later}: a re-pin would not discharge it`);
+    }
+  }
+});
+
+// ── --selftest (US3, T028) ──────────────────────────────────────────────────────────────────────
+import { imageFindingsSelftest } from '../check-image-findings.mjs';
+
+test('selftest: the real gate passes it, and the CLI says so', () => {
+  assert.deepEqual(imageFindingsSelftest().failures, []);
+  const r = spawnSync(process.execPath, [CLI, '--selftest'], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /✓ check-image-findings --selftest passed/);
+});
+
+test('selftest: an allowlist matcher that ignores expiry is caught', () => {
+  const ignoresExpiry = (text) => loadAllowlist(text).map((e) => ({ ...e, suppresses: (f) => e.describes(f) }));
+  const { failures } = imageFindingsSelftest({ loadAllowlist: ignoresExpiry });
+  assert.ok(failures.some((f) => /expired/.test(f)), failures.join('\n'));
+});
+
+test('selftest: a loader that accepts a bare-name key is caught', () => {
+  const lax = (text) => { try { return loadAllowlist(text); } catch { return []; } };
+  const { failures } = imageFindingsSelftest({ loadAllowlist: lax });
+  assert.ok(failures.some((f) => /bare/.test(f)), failures.join('\n'));
+});

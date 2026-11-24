@@ -116,7 +116,7 @@ jobs:
           CI_LOG_STEP
 
       - name: Upload the image-scan report
-        if: always()
+        if: always() && steps.gate.outputs.build == 'true'
         uses: actions/upload-artifact@ff15f0306b3f739f7b6fd43fb5d26cd321bd4de5 # v3
         with:
           name: image-scan-report

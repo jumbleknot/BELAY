@@ -35,6 +35,16 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
         jq \
     && rm -rf /var/lib/apt/lists/*
 
+# --- security: a fixed advisory the upstream base has not picked up yet (feature 010) ------------
+# The builder scan (scripts/image-scan.mjs --image, in devcontainer-image.yml) refuses to push an image
+# with a FIXABLE Critical. When the pinned upstream base carries one and no newer base digest exists,
+# the fixed package is upgraded here. DELETE this layer once a re-pin of the FROM line above carries the
+# fix (security/images/allowlist.yaml's matching entry then goes UNMATCHED, which is the signal).
+#   CVE-2026-99083: linux-libc-dev 6.1.190-1 → 6.1.192-1 (measured 2026-11-24, sweep run 8290)
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+    && apt-get install -y --no-install-recommends --only-upgrade linux-libc-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # --- Claude Code CLI [root] ---------------------------------------------------------------------
 # Symlinks into the root-owned /usr/local prefix, so it must be installed as root here; installing
 # from a non-root lifecycle hook fails with EACCES. It is a tool, not a secret.

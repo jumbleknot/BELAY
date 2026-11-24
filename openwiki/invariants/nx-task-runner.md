@@ -17,7 +17,7 @@ Today the workspace has one project, `scripts` (`scripts/project.json`), with th
 
 | Target | What it runs |
 | --- | --- |
-| `pnpm nx run scripts:lint` | every gate and its selftest: the Spec Kit override gate, the CI digest-coverage gate, the secret-scan, redactor, digest, `ci-status`, `sast-scan` and `check-coverage` selftests, the egress allowlist check, and the tree scans (secret scan, topology scrub, toolchain consistency, inline and argv secrets, override floors, resource naming, OpenWiki OKF and governance) |
+| `pnpm nx run scripts:lint` | every gate and its selftest: the Spec Kit override gate, the CI digest-coverage gate, the secret-scan, redactor, digest, `ci-status`, `sast-scan`, `check-coverage`, `image-scan` and `check-image-findings` selftests, the egress allowlist check, and the tree scans (secret scan, topology scrub, toolchain consistency, inline and argv secrets, override floors, resource naming, OpenWiki OKF and governance) |
 | `pnpm nx run scripts:test` | `node scripts/check-coverage.mjs --run`: every `scripts/__tests__/*.test.mjs` under Node's built-in coverage, then the 70% line-coverage gate, with its verdict as the last line |
 | `pnpm nx run scripts:build-devcontainer-image` | a local build of the dev-container toolchain image. It needs an engine with **open egress** (CI, or a host engine such as Docker Desktop), never the sandbox; the normal path is the `devcontainer-image` workflow |
 

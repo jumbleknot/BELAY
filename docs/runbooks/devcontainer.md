@@ -187,7 +187,8 @@ This was measured at 31–41 s with 0 toolchain layers rebuilt, and no re-login.
 
 ## Re-pin the image
 
-`.forgejo/workflows/devcontainer-image.yml` publishes `belay-devcontainer:<commit sha>`. It runs on
+`.forgejo/workflows/devcontainer-image.yml` publishes `belay-devcontainer:<commit sha>`, but only after its
+image scan passes: a fixable Critical publishes nothing (see [image-scanning.md](image-scanning.md)). It runs on
 a push to `main` that touches an image input, on dispatch, and on Fridays (see
 [ci.md](ci.md#the-devcontainer-image-workflow)). The forge cannot read back the step summary, so
 resolve the digest from the registry:

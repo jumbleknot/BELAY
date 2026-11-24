@@ -11,6 +11,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 import { isMain } from './lib/is-main.mjs';
+import { classifyExpiry, daysUntil, selectUnmatched } from './allowlist-expiry.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 export const REPORT_PATH = 'security/images/reports/findings.json';
@@ -21,12 +22,47 @@ export class ImageFindingsError extends Error {
   constructor(message, exitCode = 1) { super(message); this.exitCode = exitCode; }
 }
 
-/** Parse the allowlist. Entries are validated and compiled (data-model.md, Allowlist entry). */
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+// A key must pin a VERSION (":" then a digit) or a DIGEST ("@sha256:"). A bare repository name, or a
+// floating tag, matches every future version of the image, so the entry could never end: it would
+// silently suppress every later advisory too (MCM's measured permanent hole). Refused, where MCM accepted it.
+const VERSIONED_KEY = /:\d|@sha256:/;
+
+/** The literal repository an entry keys to (`node`, `docker.io/library/node`), for scoping. */
+const entryRepo = (image) => image.split(/[:@]/)[0].replace(/\\(.)/g, '$1');
+/** The repository of a scanned reference: drop the digest, then a tag after the last path segment. */
+export function refRepo(ref) {
+  const name = String(ref).split('@')[0];
+  const slash = name.lastIndexOf('/');
+  const colon = name.lastIndexOf(':');
+  return colon > slash ? name.slice(0, colon) : name;
+}
+
+/** Parse, validate and compile the allowlist (data-model.md, Allowlist entry). Invalid → exit 2, naming the entry. */
 export function loadAllowlist(text) {
   const parsed = parseYaml(String(text)) ?? [];
   if (!Array.isArray(parsed)) throw new ImageFindingsError('the allowlist must be a YAML list', 2);
-  if (parsed.length > 0) throw new Error('not implemented');   // entries arrive with T027
-  return [];
+  return parsed.map((e, i) => {
+    const index = i + 1;
+    const bad = (msg) => { throw new ImageFindingsError(`allowlist entry ${index}: ${msg}`, 2); };
+    if (!e || typeof e !== 'object') bad('must be a mapping');
+    for (const f of ['image', 'id', 'justification', 'addedBy', 'expiry']) {
+      if (typeof e[f] !== 'string' || e[f].trim() === '') bad(`"${f}" is required and must not be blank`);
+    }
+    if (!ISO_DATE.test(e.expiry)) bad(`expiry must be a YYYY-MM-DD date (got "${e.expiry}")`);
+    if (!VERSIONED_KEY.test(e.image)) bad(`image "${e.image}" must carry a version or a digest (":<digit>…" or "@sha256:"); a bare name matches every future version and could never end`);
+    let imageRe;
+    let idRe;
+    try { imageRe = new RegExp(e.image); } catch (err) { bad(`image is not a valid regex: ${err.message}`); }
+    try { idRe = new RegExp(e.id); } catch (err) { bad(`id is not a valid regex: ${err.message}`); }
+    const entry = {
+      index, key: `${index}`, scanner: 'trivy', image: e.image, id: e.id, justification: e.justification, addedBy: e.addedBy, expiry: e.expiry,
+      imageRe, idRe, repo: entryRepo(e.image),
+      describes: (f) => imageRe.test(f.image) && idRe.test(f.id),
+      suppresses: (f, today) => entry.describes(f) && classifyExpiry(e.expiry, today) !== 'expired',
+    };
+    return entry;
+  });
 }
 
 const short = (layer) => (layer ? `${layer.slice(0, 'sha256:'.length + 12)}…` : 'unknown');
@@ -47,9 +83,22 @@ export function evaluate(report, allowlist, today) {
   }
   const notScannable = report.notScannable ?? [];
   const scanned = report.scannedImages.length;
+  const expiring = allowlist.filter((e) => classifyExpiry(e.expiry, today) === 'expiring').map((e) => ({ ...e, days: daysUntil(e.expiry, today) }));
+  const expired = allowlist.filter((e) => classifyExpiry(e.expiry, today) === 'expired');
+  // Scope by REPOSITORY, not by the entry's own regex. After a re-pin the entry's regex matches no
+  // scanned image at all, and scoping by it would call the stale entry "out of scope" and stay silent,
+  // which is the exact case spec US3-AC2 requires to be reported. A scanned image of the same
+  // repository puts the entry in scope.
+  const scannedRepos = new Set(report.scannedImages.map(refRepo));
+  const matchedKeys = new Set(allowlist.filter((e) => (report.findings ?? []).some((f) => e.describes(f))).map((e) => e.key));
+  const unmatched = selectUnmatched(
+    allowlist.filter((e) => classifyExpiry(e.expiry, today) !== 'expired').map((e) => ({ ...e, inScope: scannedRepos.has(e.repo) })),
+    matchedKeys,
+    scanned > 0 ? new Set(['trivy']) : new Set(),
+  );
   return {
     scanned, blocking, suppressed, warnings, notScannable,
-    unmatched: [], expiring: [], expired: [],
+    unmatched, expiring, expired,
     ok: blocking.length === 0 && notScannable.length === 0 && scanned > 0,
   };
 }
@@ -82,7 +131,6 @@ export function formatVerdict(v) {
   return lines;
 }
 
-// ── not yet implemented (its tests come first: T028) ────────────────────────────────────────────
 /**
  * Post the `sweep/verdict` commit status from a verdict file (contracts/workflows.md, step 8).
  *
@@ -120,8 +168,44 @@ export async function publishVerdict(verdictPath, { env = process.env, fetch: do
   return 0;
 }
 
-export function imageFindingsSelftest() {
-  throw new Error('not implemented');
+// ── --selftest ──────────────────────────────────────────────────────────────────────────────────
+// The contract's gate scenarios, judged with no scan, before CI trusts a real verdict. `deps` lets the
+// tests break one stage and watch the selftest name it.
+const ST_TODAY = '2026-11-24';
+const ST_IMG = `node:26-bookworm@sha256:${'b'.repeat(64)}`;
+const ST_NEW = `node:26-bookworm@sha256:${'d'.repeat(64)}`;
+const stFinding = (over = {}) => ({ image: ST_IMG, locations: [], id: 'CVE-ST-1', pkg: 'p', installed: '1', fixedVersion: '2',
+  layer: '', severity: 'Critical', fixAvailable: true, blocking: true, ...over });
+const stReport = (findings, scannedImages = [ST_IMG]) => ({ schemaVersion: 1, mode: 'sweep', scannedImages, notScannable: [], findings });
+const stEntry = (over = {}) => `- image: '${over.image ?? 'node:26-bookworm@sha256:b{64}'}'\n  id: 'CVE-ST-1'\n  justification: '${over.justification ?? 'selftest'}'\n  addedBy: 'selftest'\n${over.expiry === null ? '' : `  expiry: '${over.expiry ?? '2027-06-30'}'\n`}`;
+
+export function imageFindingsSelftest(deps = {}) {
+  const d = { loadAllowlist, evaluate, ...deps };
+  const failures = [];
+  const judge = (name, report, allowYaml, check) => {
+    try {
+      const problem = check(d.evaluate(report, d.loadAllowlist(allowYaml), ST_TODAY));
+      if (problem) failures.push(`${name}: ${problem}`);
+    } catch (e) { failures.push(`${name}: threw ${e.message}`); }
+  };
+  const refused = (name, allowYaml) => {
+    try { d.loadAllowlist(allowYaml); failures.push(`${name}: accepted, expected a refusal (exit 2)`); } catch (e) {
+      if (e.exitCode !== 2) failures.push(`${name}: refused with exit ${e.exitCode}, expected 2`);
+    }
+  };
+  judge('a clean report', stReport([]), '[]', (v) => (v.ok ? null : 'failed'));
+  judge('a fixable Critical', stReport([stFinding()]), '[]', (v) => (!v.ok && v.blocking.length === 1 ? null : 'passed'));
+  judge('an unfixable Critical', stReport([stFinding({ fixedVersion: '', fixAvailable: false, blocking: false })]), '[]', (v) => (v.ok ? null : 'blocked (it must warn)'));
+  judge('a version-keyed entry', stReport([stFinding()]), stEntry(), (v) => (v.ok && v.suppressed.length === 1 ? null : 'did not suppress'));
+  judge('a re-pinned image', stReport([stFinding({ image: ST_NEW })], [ST_NEW]), stEntry(),
+    (v) => (!v.ok && v.unmatched.length === 1 ? null : 'the stale entry still suppressed, or was not reported UNMATCHED'));
+  judge('an expired entry', stReport([stFinding()]), stEntry({ expiry: '2026-11-01' }), (v) => (!v.ok ? null : 'an expired entry still suppressed'));
+  judge('zero images scanned', stReport([], []), '[]', (v) => (!v.ok ? null : 'a scan of nothing passed'));
+  refused('a bare-name key', stEntry({ image: 'node' }));
+  refused('a missing expiry', stEntry({ expiry: null }));
+  refused('a blank justification', stEntry({ justification: ' ' }));
+  try { d.evaluate({ schemaVersion: 1, findings: [] }, [], ST_TODAY); failures.push('a report without scannedImages: accepted'); } catch { /* refused, as it must be */ }
+  return { failures };
 }
 
 // ── CLI ─────────────────────────────────────────────────────────────────────────────────────────
@@ -150,7 +234,10 @@ export async function main(argv, { root = REPO_ROOT, today = new Date().toISOStr
         if (v === undefined || v.startsWith('--')) throw new ImageFindingsError(`--publish-verdict needs a path\n${USAGE}`, 2);
         return await publishVerdict(resolve(root, v), { log, error });
       } else if (a === '--selftest') {
-        imageFindingsSelftest();
+        const { failures } = imageFindingsSelftest();
+        for (const f of failures) error(`✗ check-image-findings --selftest: ${f}`);
+        if (failures.length) return 1;
+        log('✓ check-image-findings --selftest passed (clean, fixable and unfixable Critical, version-keyed suppression, re-pin discharge reported UNMATCHED, expired entry, zero images, bare-name / missing-expiry / blank-justification refused, report without scannedImages refused)');
         return 0;
       } else throw new ImageFindingsError(`unknown argument ${a}\n${USAGE}`, 2);
     }

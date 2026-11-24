@@ -4,8 +4,8 @@ title: The dev container — Docker Sandbox, credentials, egress and the worktre
 description: BELAY's dev container in the dedicated belay Docker Sandbox microVM — the one-step launcher, what survives a recreate versus sbx rm, how forge tokens reach the container without entering an image, bring-up from nothing (including the kit's missing Node), recreate and re-pin from the CI-published digest and recording the pin so retention keeps it, the default-deny egress allowlist and its approval-queue rule, the sbx upgrade ritual, the worktree rule, and the measured traps.
 tags: [devcontainer, sandbox, egress, credentials, worktree, runbook]
 resource: docs/runbooks/devcontainer.md
-resource-sha256: c1dc351d2723008e473e023cce7a24635f2381ecb2b631b29a6f363f7bb70c16
-timestamp: 2026-11-23T13:26:41.480Z
+resource-sha256: 51dfe9505a14a26f2cad18443b016ec976d5b9467e76743aab838b832d1144cb
+timestamp: 2026-11-24T01:31:07.373Z
 ---
 
 # The dev container — Docker Sandbox, credentials, egress and the worktree rule
@@ -13,7 +13,7 @@ timestamp: 2026-11-23T13:26:41.480Z
 BELAY's environment is a dev container inside the dedicated `belay` Docker Sandbox microVM (8 GiB)
 on the Windows host, with the checkout at `/workspaces/belay`. Outbound traffic is default-deny,
 governed host-side by `.devcontainer/egress-allowlist.json`. The container is built from the
-digest-pinned `belay-devcontainer` image that CI publishes. `.\scripts\open-sandbox.ps1` takes you
+digest-pinned `belay-devcontainer` image that CI publishes, only after its image scan passes. `.\scripts\open-sandbox.ps1` takes you
 from a stopped sandbox into VS Code in the container, measured at 9 s. Full procedure:
 [docs/runbooks/devcontainer.md](../../docs/runbooks/devcontainer.md).
 

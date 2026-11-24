@@ -100,9 +100,9 @@ test('feature 010: the scan step scans "$TAG" from the local daemon, then runs t
   assert.ok(scanAt >= 0 && gateAt > scanAt, run);
 });
 
-test('feature 010: the image-scan report is uploaded always(), even when the gate fails', () => {
+test('feature 010: the image-scan report is uploaded always() when the image was built, even when the scan fails', () => {
   const s = steps010().find((x) => x.name === 'Upload the image-scan report');
-  assert.equal(s.if, 'always()');
+  assert.equal(s.if, "always() && steps.gate.outputs.build == 'true'");
   assert.match(String(s.with?.path), /security\/images\/reports/);
 });
 

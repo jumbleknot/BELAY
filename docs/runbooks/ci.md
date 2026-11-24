@@ -117,6 +117,10 @@ The repository is private, and Forgejo gives no secrets (`CI_DIGEST_TOKEN`) to f
 - **Triggers:** a push to `main` (only `main`: `branches: [main]`) that touches an image input (`.devcontainer/toolchain.Dockerfile`, `.devcontainer/Dockerfile`, the workflow itself, `scripts/install-pnpm.sh`, `scripts/devcontainer-image-gate.mjs`) or `package.json`; manual dispatch; and Fridays at 06:00 UTC. Never pull requests (see [Runner](#runner)).
 - **The gate:** `scripts/devcontainer-image-gate.mjs` decides `build=true|false`. A `package.json` change builds only when its `packageManager` value moved, because the image installs pnpm at that pin. Anything it cannot establish (no `before` sha, an unreadable diff) builds. Dispatch and the schedule always build.
 - **Configuration:** the repository variables `REGISTRY` (the registry host and port), `NS` (the owner) and `REGISTRY_USER`, and the secret `REGISTRY_TOKEN` (`write:package`). A missing one fails the build step with a message naming it.
+- **The scan gates the push** (feature 010): after `Build`, the job installs the pinned Trivy and scans the built image
+  from the local daemon. A fixable Critical with no allowlist entry fails the step, so `Push` never runs and no
+  vulnerable digest is published. The report is uploaded as the `image-scan-report` artifact either way. See
+  [image-scanning.md](image-scanning.md).
 - **Dispatch on a branch:** `node scripts/forge-pr.mjs dispatch devcontainer-image.yml --ref <branch>`. A dispatched run posts no commit status, so follow it in the Actions tab.
 - **The result:** the job writes the digest-pinned reference to the step summary, which this forge cannot read back. Resolve the digest from the registry instead (the recipe is in [devcontainer.md](devcontainer.md)).
 - **Failure digest:** the job ends with the standard failure-digest step, like every job here.

@@ -4,15 +4,16 @@ title: CI guardrails, the failure digest, and the PR loop
 description: The single guardrails Forgejo Actions workflow required on main — what it runs and how to reproduce it locally, how a failure is read back from the redacted digest and its package bundle with ci-status.mjs, the dedicated repository runner and the one exception to it (the dev-container image job, which never runs pull-request code), the sast job beside guardrails, the report-only registry-retention job, branch protection, the terminal PR loop through forge-pr.mjs, and the rule every new job must follow.
 tags: [ci, forgejo, pull-requests, runbook]
 resource: docs/runbooks/ci.md
-resource-sha256: ce82aad229c64dfadc245582af18fdb347e4bd5d0a79eba0545d05e855b703f7
-timestamp: 2026-11-24T00:42:12.757Z
+resource-sha256: 458c246ce1351f3ae2b1a1fb2585cecc1ba34197290b4e74e1bb0920117ca435
+timestamp: 2026-11-24T01:31:07.328Z
 ---
 
 # CI guardrails, the failure digest, and the PR loop
 
-BELAY's required CI is one workflow, `.forgejo/workflows/guardrails.yml`. Two others are not merge
-checks: `devcontainer-image.yml` publishes the dev-container image, and `registry-retention.yml`
-reports which old package versions would be deleted. Guardrails runs on every pull request,
+BELAY's required CI is one workflow, `.forgejo/workflows/guardrails.yml`. Three others are not merge
+checks: `devcontainer-image.yml` publishes the dev-container image after scanning it,
+`registry-retention.yml` reports which old package versions would be deleted, and `image-scan.yml`
+sweeps third-party images for CVEs ([image scanning](image-scanning.md)). Guardrails runs on every pull request,
 every push to `main` and manual dispatch, and branch protection on `main` requires its
 `guardrails / guardrails (pull_request)` and `guardrails / sast (pull_request)` contexts. Its `guardrails` job installs Node and the pinned pnpm, then
 runs `pnpm nx run scripts:lint` (every gate: Spec Kit overrides, digest coverage, egress allowlist,
@@ -64,7 +65,8 @@ node scripts/forge-pr.mjs merge <n> --expect-head "$(git rev-parse HEAD)"
     Docker, so it **must never run pull-request code**. Its triggers are push to `main`, dispatch and
     the weekly schedule, and a guard test fails on any `pull_request` trigger.
   - **Its result is not readable from the run.** The forge cannot read back the step summary, so the
-    published digest is resolved from the registry (see the [dev container](./devcontainer.md)).
+    published digest is resolved from the registry (see the [dev container](./devcontainer.md)). It scans the
+    built image **before** `Push`, and a fixable Critical publishes nothing ([image scanning](image-scanning.md)).
 - **Registry retention deletes only with two keys.** The weekly run only reports. `--apply` reaches
   the script only on a dispatch with `apply: true`, and the script refuses it unless the committed
   config says `mode: apply`; it ships in `mode: report`. A package the config does not list (another
