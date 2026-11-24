@@ -299,7 +299,7 @@ to FR-012).
     `count-repo-metrics.mjs` 98.78% lines; total 92.74%. OKF, governance and topology-scrub gates pass;
     `wiki-refresh.mjs --stale` lists nothing.
 - [x] T028 Run quickstart.md §1–§5 and tick its §5 boxes.
-- [ ] T029 **Open the PR** from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
+- [x] T029 **Open the PR** (branch `013-learnings-ledger`, PR #71) from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
   1. `git push origin HEAD:013-learnings-ledger`
   2. `node scripts/forge-pr.mjs open --head 013-learnings-ledger --title "Feature 013: the learnings ledger and its scripted measurement log (item #51)" --body-file <file>`
   3. `node scripts/ci-status.mjs watch --pr <n>`, until it exits 0 (exit 3 means still waiting)
