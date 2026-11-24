@@ -46,7 +46,7 @@ proposing the fixed version appears, and the required checks run on it.
 
 **Acceptance Scenarios**:
 
-1. **Given** a pinned dependency with a published advisory and a fixed version, **When** the nightly run happens,
+1. **Given** a pinned dependency with a published advisory and a fixed version, **When** the next security run happens,
    **Then** a PR proposing the fix exists, labelled as security, outside the routine schedule window.
 2. **Given** such a PR, **When** CI runs, **Then** the same required checks run as on a human PR, and nothing merges it
    automatically.
@@ -61,8 +61,8 @@ arrive. A brand-new release is held for a cooling-off period before it is propos
 
 **Why this priority**: an unbounded stream of bot PRs is ignored. A bounded, grouped weekly set is reviewed.
 
-**Independent Test**: read the configuration and the guard tests. The window intersects the trigger's schedule under
-both daylight-saving offsets. Lockstep groups are one group each. Lockfile maintenance is on. The release-age cooling-off
+**Independent Test**: read the configuration and the guard tests. The window is in UTC, so daylight saving cannot move it, and it
+intersects the trigger's schedule. Lockstep groups are one group each. Lockfile maintenance is on. The release-age cooling-off
 is set, with a shorter value for security fixes.
 
 **Acceptance Scenarios**:
@@ -93,7 +93,8 @@ reports it manages. Every pin is either managed or named in a recorded exclusion
 **Acceptance Scenarios**:
 
 1. **Given** the Trivy pin (a version **and** a sha256 that must move together), **When** a new Trivy release appears,
-   **Then** one PR moves both, or no PR is opened. Never the version alone, which the installer would refuse.
+   **Then** one PR moves both. If the bot cannot move both, the PR cannot merge: a required check fails, naming the
+   pair. A PR that moves the version alone never lands, because the installer would refuse it.
 2. **Given** a guard over the tree, **When** a new pinned constant is added that the bot does not manage, **Then** the
    guard fails, naming it, until it is managed or excluded with a reason.
 
@@ -165,12 +166,14 @@ appear in the agent-driven backlog's "ready" list as work. Its run verdict is vi
 - **FR-007**: Lockstep groups MUST move as one PR each, and every bot PR MUST pass the toolchain-consistency gate.
 - **FR-008**: Every pinned version or digest in the tree MUST be managed by the bot, or listed in a recorded exclusion
   with a reason. A guard MUST fail on an unmanaged, unexcluded pin.
-- **FR-009**: A pin made of a version and a checksum (the Trivy pin) MUST move both together, or not at all.
+- **FR-009**: A pin made of a version and a checksum (the Trivy pin) MUST move both together. A PR that moves only one
+  MUST be unable to merge: a required check fails, naming the pair.
 - **FR-010**: Every hold or disabled rule MUST carry a written justification, a backlog reference and a re-check rule. A
   guard MUST fail otherwise.
 - **FR-011**: Major upgrades of toolchain and stateful components MUST require dashboard approval before a PR opens.
 - **FR-012**: The configuration MUST be validated strictly before each run and in CI on any change to it.
-- **FR-013**: A guard MUST check that the window intersects the workflow's cron under both daylight-saving offsets.
+- **FR-013**: The window MUST be in UTC, so daylight saving cannot move it, and a guard MUST check that every schedule
+  in the configuration intersects the workflow's cron.
 - **FR-014**: The dashboard issue MUST NOT be listed as ready work by the backlog tool.
 - **FR-015**: A run MUST fail loudly, through the failure digest, when the token is missing or invalid, or when the
   forge or a registry refuses it. It must never report success having done nothing.
@@ -202,7 +205,11 @@ appear in the agent-driven backlog's "ready" list as work. Its run verdict is vi
 ### Measurable Outcomes
 
 - **SC-001**: A pin with a published fix is proposed as a PR within 24 hours of the fixed version existing (security) or
-  within the next weekly window (routine). This is demonstrated on the first run against today's tree.
+  within the next weekly window (routine). It is demonstrated on the first runs against today's tree, by two pieces of
+  evidence. First, the first window opens a routine PR for a pin that has a newer release. Second, the dry-run log
+  shows the vulnerability lookup ran for every package manager. If no pin has an open advisory with a fix at that
+  point, the security channel's first real PR is recorded on item #47 when one arrives. The expected first is the
+  CVE-2026-99083 base re-pin, once upstream rebuilds.
 - **SC-002**: Every pinned version and digest in the tree is either managed or excluded with a reason. A guard proves it
   and fails on a new unmanaged pin.
 - **SC-003**: Zero bot PRs merge without a human. Automerge is off everywhere, and a guard proves it.
@@ -219,8 +226,8 @@ appear in the agent-driven backlog's "ready" list as work. Its run verdict is vi
   what the bot needs) and stores the token as an Actions secret. The feature cannot create an account. Implementation
   stops at the first live run until the secret exists.
 - **The bot runs on BELAY's containerized `belay` runner**, never the `kvm` host runner. It runs no PR code.
-- **The schedule follows MovieCollectionManager's measured shape** unless planning finds a reason not to: a nightly run
-  for security updates and one weekly window for routine ones. The exact times are a plan decision, ordered after feature
+- **The schedule follows MovieCollectionManager's measured shape** unless planning finds a reason not to: frequent runs
+  for security updates and one weekly window for routine ones. Planning chose a run every six hours (research R4). The exact times are a plan decision, ordered after feature
   010's Tuesday and Friday image sweep.
 - **The health loop is a separate feature** (backlog item 48): the weekly health job, the lockfile-refresh check and the
   branch reaper. This feature leaves the dashboard and statuses those checks will read.

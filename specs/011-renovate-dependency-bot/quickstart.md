@@ -12,8 +12,8 @@ pnpm nx run scripts:test      # the guard tests run C1–C11 against the real re
 node scripts/check-renovate-config.mjs
 ```
 
-**Expect**: `✅ renovate config: N pins managed, M excluded, K holds justified`, with N + M equal to the inventory in
-data-model.md. There must be **0 skipped** tests.
+**Expect**: `✅ renovate config: N pins managed, M excluded, K holds justified`, with N + M equal to the site total in
+data-model.md's inventory. There must be **0 skipped** tests.
 
 **Negative checks**, one at a time on a scratch branch, each reverted afterwards:
 - set `"automerge": true` on any rule: C1 fails;
@@ -80,7 +80,8 @@ node scripts/forge-pr.mjs dispatch renovate.yml --ref main     # dryRun defaults
 1. The `renovate/mode` status on main's tip reads `DRY RUN (creates nothing)`.
 2. Preflight passes. A failure names the missing secret or the refused call, never the token.
 3. The validator passes.
-4. The verdict reads `✅ renovate run: done …`.
+4. The verdict reads `✅ renovate run: done …`, and the commit status `renovate/verdict` on main's tip is `success`
+   (`node scripts/ci-status.mjs status --sha <tip>`).
 5. In the uploaded log, "Detected Dependencies" lists:
    - `node` under `github-actions`, which confirms research R8;
    - every custom manager's dependency;

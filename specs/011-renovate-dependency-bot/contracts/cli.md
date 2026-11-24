@@ -11,6 +11,7 @@ input. Every script exports its functions so that tests can inject `fetch` and t
 | `--selftest` | Proves that each rule fails on a built-in bad fixture. It runs in `scripts:lint`. |
 | `--print-renovate-version` | Prints `RENOVATE_VERSION`, the one source of truth for both workflows. |
 | `--run-verdict <log.ndjson>` | Reads Renovate's JSON log and applies the RunVerdict rules ([data-model.md](../data-model.md#run-verdict)). It prints `✅ renovate run: <result>, N branches, M PRs` or `❌ renovate run: <reason>`, and exits `0` or `1`. An unreadable or empty log exits `1` with "the run produced no log", never `0`. |
+| `--run-verdict <log> --publish-verdict` | As above, then posts the verdict as the commit status `renovate/verdict` (state `success` or `failure`, with the printed line as its description) on `$GITHUB_SHA`. It uses `GITHUB_TOKEN`, never `RENOVATE_TOKEN`. A failed post is reported but never changes the exit code. |
 | `--root <dir>` | Scans another root (tests). |
 
 Exports:
@@ -19,6 +20,7 @@ Exports:
 - `classifyPins(pins, config, exclusions)`
 - `checkRules({ config, workflow, root })`
 - `judgeRun(records)`
+- `publishVerdict(verdict, { fetch, env })`
 - `cronIntersects(windowCron, triggerCron)`
 
 ## `scripts/refresh-pin-checksum.mjs` (new)

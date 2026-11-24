@@ -64,7 +64,7 @@ the offline checks.
 - the run fails loudly (FR-015);
 - dispatch defaults to a dry run.
 
-**Scale/Scope**: about 20 managed dependencies and 13 custom-manager sites (data-model.md inventory), with 4 PRs a
+**Scale/Scope**: about 20 managed dependencies and 12 custom-manager sites (data-model.md inventory), with 4 PRs a
 week at most.
 
 ## Constitution Check

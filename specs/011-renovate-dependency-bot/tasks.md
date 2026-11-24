@@ -135,9 +135,13 @@ having done nothing.
   - one ERROR record fails (`RunVerdict.errors`);
   - no `repository finished` record for `jumbleknot/BELAY` fails as "the run never reached the repository"
     (`RunVerdict.repository`);
-  - an empty log fails with "the run produced no log".
-  - **Scenarios covered**: US1-AC1, FR-015
-  - **Verify RED**: `node --test --test-name-pattern "judgeRun" scripts/__tests__/check-renovate-config.test.mjs` → expected: ≥6 failing — `not implemented`
+  - an empty log fails with "the run produced no log";
+  - a WARN record reporting a refused lookup (`Failed to look up`, 401/403, `authentication`) fails
+    (`RunVerdict.refusals`), and a `logLevelRemap`-downgraded message does not;
+  - `publishVerdict` posts `renovate/verdict` with `GITHUB_TOKEN`, to an injected `fetch`, and a failed post leaves
+    the exit code unchanged.
+  - **Scenarios covered**: US1-AC1, US5 ("its run verdict is visible"), FR-015
+  - **Verify RED**: `node --test --test-name-pattern "judgeRun" scripts/__tests__/check-renovate-config.test.mjs` → expected: ≥9 failing — `not implemented`
 - [ ] T012 [P] [US1] Tests in `RC` for rule **C3** ([contracts/renovate-config.md](contracts/renovate-config.md)):
   - `vulnerabilityAlerts.schedule` is not `[]`: fails;
   - its `minimumReleaseAge` ≥ the `*` rule's: fails;
@@ -150,14 +154,16 @@ having done nothing.
   `.forgejo/workflows/renovate.yml`, plus:
   - `RENOVATE_ONBOARDING=false` and `RENOVATE_REQUIRE_CONFIG=required`. This narrows the contract: a missing
     `renovate.json` must fail the run, never open an onboarding PR.
-  - the preflight step names `RENOVATE_TOKEN` and never echoes it.
+  - the preflight step names `RENOVATE_TOKEN` and never echoes it;
+  - the verdict step has `always()` and `--publish-verdict` (research R11).
   - **Scenarios covered**: US1-AC1, US1-AC2, FR-001, FR-015, FR-016, FR-017
   - **Verify RED**: `node --test scripts/__tests__/renovate-workflow.guard.test.mjs` → expected: every test failing — `ENOENT … renovate.yml`
 
 ### Implementation for User Story 1
 
-- [ ] T014 [US1] Implement `judgeRun` and `--run-verdict <log>` in `scripts/check-renovate-config.mjs`, per
-  data-model.md `RunVerdict.result`, `RunVerdict.errors` and `RunVerdict.repository`.
+- [ ] T014 [US1] Implement `judgeRun`, `publishVerdict` and `--run-verdict <log> [--publish-verdict]` in
+  `scripts/check-renovate-config.mjs`, per data-model.md `RunVerdict.result`, `RunVerdict.errors`,
+  `RunVerdict.refusals` and `RunVerdict.repository`, and [contracts/cli.md](contracts/cli.md).
   - **Verify GREEN**: T011's command → expected: 0 failures, 0 skipped
 - [ ] T015 [US1] Implement rule C3 in `scripts/check-renovate-config.mjs`, reading the security crons from the parsed
   workflow.
@@ -305,7 +311,8 @@ fails it.
   inventory. Each row carries `Exclusion.file`, `Exclusion.match`, `Exclusion.reason` and `Exclusion.addedBy`, as
   data-model.md defines them.
   - **Done when**: `node scripts/check-renovate-config.mjs` prints `✅ … N pins managed, M excluded`, with N + M equal
-    to the inventory.
+    to the site total of data-model.md's inventory. If the measured tree differs, update the inventory in the same
+    change, saying which sites were added.
 - [ ] T036 [US3] Add the "Verify version-and-checksum pairs" step to the `guardrails` job in
   `.forgejo/workflows/guardrails.yml` (contracts/workflow.md), through `ci-log-step.sh`. Extend
   `scripts/__tests__/guardrails-workflow.test.mjs` to assert it first.
@@ -349,8 +356,10 @@ citing a bot-rewritten file.
 
 ### Implementation for User Story 4
 
-- [ ] T040 [US4] Implement rules C1, C7 and C11 in `scripts/check-renovate-config.mjs`. Add the holds and approvals
-  of research R9 to `renovate.json`, each with its `description`:
+- [ ] T040 [US4] Implement rules C1, C7 and C11 in `scripts/check-renovate-config.mjs`. C7 checks data-model.md
+  `Hold.description` (`Why:`, `item #N`, `Re-check:`) and `Hold.matcher` (at least one `match*` key). Add the holds
+  and approvals of research R9 to `renovate.json`, each satisfying data-model.md `Hold.description` and
+  `Hold.matcher`:
   - `actions/upload-artifact` `allowedVersions: "<4"`, citing T002's item;
   - `engines` disabled, citing item #47;
   - `belay-devcontainer` disabled, citing item #47;
@@ -387,10 +396,11 @@ the forge.
 
 ### Implementation for User Story 5
 
-- [ ] T044 [US5] Exclude `status/bot-managed` in `selectReadyItems` and in the `ready` output of `scripts/backlog.mjs`.
+- [ ] T044 [US5] Exclude data-model.md `Dashboard.label` (`status/bot-managed`) in `selectReadyItems`, and in the
+  `ready` output of `scripts/backlog.mjs`.
   - **Verify GREEN**: T042's command → expected: 0 failures; then `node --test scripts/__tests__/backlog.test.mjs` passes with 0 skipped
 - [ ] T045 [US5] Implement rule C9 in `scripts/check-renovate-config.mjs`. Add `dependencyDashboard` and
-  `dependencyDashboardLabels` to `renovate.json`.
+  `dependencyDashboardLabels`, set to data-model.md `Dashboard.label`, to `renovate.json`.
   - **Verify GREEN**: T043's command → expected: 0 failures; then `RG` passes with all eleven rules registered
 
 **Checkpoint**: every story is functional offline. The live proof follows the merge (T061).

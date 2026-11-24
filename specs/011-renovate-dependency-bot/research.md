@@ -89,7 +89,8 @@ into the workspace, so no `allowBuilds` entry, lock file change or new toolchain
 **Decision**:
 - `osvVulnerabilityAlerts: true`.
 - `vulnerabilityAlerts` set to `{ "labels": ["security"], "minimumReleaseAge": "12 hours", "schedule": [] }`.
-- No `dependencyDashboardApproval` on any patch or minor track.
+- No `dependencyDashboardApproval` on any patch or minor track. The one exception is the `spec kit` group (R9), whose
+  every update needs `specify integration upgrade`, so it cannot be a raw bump.
 
 **Rationale**:
 - Forgejo has no advisory API, so native `vulnerabilityAlerts` alone does nothing there. MCM measured this; OSV is the
@@ -267,11 +268,18 @@ The built-in `github-actions` manager extracts `actions/setup-node`'s `node-vers
   refused.
 - **Verdict**: Renovate runs with `LOG_FORMAT=json` and `RENOVATE_LOG_FILE`. Then
   `check-renovate-config.mjs --run-verdict <log>` passes only when:
-  - a `repository finished` record for this repository has `result: done`;
-  - the log has no `ERROR` or `FATAL` record.
+  - a `repository finished` record for this repository has a passing result (data-model.md RunVerdict);
+  - the log has no `ERROR` or `FATAL` record;
+  - the log has no WARN record that reports a refused lookup or credential (`Failed to look up`, HTTP 401 or 403,
+    `authentication`). Renovate logs a refused registry or datasource at WARN, not ERROR, so a run whose every lookup
+    was refused would otherwise pass.
 
   Otherwise it exits 1 and names the record. Missing or refused credentials, an unreachable registry and an invalid
   config therefore fail through the failure digest, never as "nothing to update".
+- **Publishing the verdict**: `--publish-verdict` posts the result as the commit status `renovate/verdict` on the
+  run's commit, with `always()`. A scheduled run posts no commit status of its own (measured on 2026-11-24: `ci-status`
+  reported "posted NO commit status" for run 8291). Without this, a failing nightly run has nowhere readable to report.
+  This is feature 010's `sweep/verdict` fix, with the same `<job>/<label>` name shape, so `ci-status` resolves the job.
 
 **Rationale**: Renovate can finish a repository with a non-`done` result and still exit 0. The spec rules out "success
 having done nothing". The verdict makes the run's own record the authority, not the exit code.

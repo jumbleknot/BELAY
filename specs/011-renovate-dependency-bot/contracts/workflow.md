@@ -38,7 +38,11 @@ The steps, in order:
    - `RENOVATE_DOCKER_MAX_PAGES=10`
    - `RENOVATE_ALLOWED_COMMANDS`, the C8 regex
    - `LOG_FORMAT=json`, `RENOVATE_LOG_FILE`, `RENOVATE_LOG_FILE_LEVEL=debug`
-8. The verdict: `check-renovate-config.mjs --run-verdict <log>`.
+8. The verdict: `check-renovate-config.mjs --run-verdict <log> --publish-verdict`, with `always()`, so a failed run
+   still posts `renovate/verdict` (research R11). The step env has `GITHUB_TOKEN: ${{ github.token }}`.
+
+Also in step 7's environment: `RENOVATE_ONBOARDING=false` and `RENOVATE_REQUIRE_CONFIG=required`. A missing
+`renovate.json` fails the run; it never opens an onboarding PR.
 9. Publish the failure digest, last, with `always()`.
 
 No host literal appears: the endpoint comes from `github.server_url`, and the repository from `github.repository`.
@@ -64,4 +68,6 @@ These assert the following against the parsed YAML:
 - `RENOVATE_DOCKER_MAX_PAGES` is ≤ 10;
 - every `run:` goes through `ci-log-step.sh`, and the failure digest is last;
 - no `ANTHROPIC_API_KEY`, and no `*.ts.net` literal;
-- the validator and the run use the same version expression.
+- the validator and the run use the same version expression;
+- the verdict step has `always()` and `--publish-verdict`;
+- `RENOVATE_ONBOARDING` is `'false'` and `RENOVATE_REQUIRE_CONFIG` is `required`.
