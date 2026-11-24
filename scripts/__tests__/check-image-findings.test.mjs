@@ -112,12 +112,12 @@ test('the CLI: --verdict-out writes the verdict line to a file, for the status s
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-// ── --publish-verdict: the image-scan / verdict commit status ──────────────────────────────────
+// ── --publish-verdict: the sweep/verdict commit status ──────────────────────────────────
 import { publishVerdict } from '../check-image-findings.mjs';
 
 const ENV = { GITHUB_SERVER_URL: 'https://forge.example', GITHUB_REPOSITORY: 'o/r', GITHUB_SHA: 'a'.repeat(40), GITHUB_RUN_NUMBER: '7', GITHUB_TOKEN: 'tok', JOB_STATUS: 'success' };
 
-test('publishVerdict: posts image-scan / verdict with the verdict line as its description, on the run sha', async () => {
+test('publishVerdict: posts sweep/verdict with the verdict line as its description, on the run sha', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'belay-imgverdict-'));
   try {
     const f = join(dir, 'v.txt');
@@ -128,7 +128,7 @@ test('publishVerdict: posts image-scan / verdict with the verdict line as its de
     assert.equal(call.url, `https://forge.example/api/v1/repos/o/r/statuses/${'a'.repeat(40)}`);
     assert.equal(call.init.headers.Authorization, 'token tok');
     const body = JSON.parse(call.init.body);
-    assert.deepEqual([body.state, body.context, body.description], ['success', 'image-scan / verdict', '✅ 1 image scanned: 0 blocking · 0 allowlisted · 0 warnings']);
+    assert.deepEqual([body.state, body.context, body.description], ['success', 'sweep/verdict', '✅ 1 image scanned: 0 blocking · 0 allowlisted · 0 warnings']);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 

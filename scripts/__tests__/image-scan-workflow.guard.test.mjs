@@ -56,16 +56,16 @@ test('install, enumerate, sweep, then gate, in that order', () => {
   assert.ok(install >= 0 && list > install && sweep > list && gate > sweep, `order: install ${install}, list ${list}, sweep ${sweep}, gate ${gate}`);
 });
 
-test('the verdict status: image-scan / verdict, always(), on schedule, push and dispatch, with the run token', () => {
+test('the verdict status: sweep/verdict, always(), on schedule, push and dispatch, with the run token', () => {
   const s = stepNamed(/verdict status/i);
   assert.ok(s, 'a verdict-status step exists');
   assert.match(s.if, /always\(\)/);
   for (const ev of ['schedule', 'push', 'workflow_dispatch']) assert.match(s.if, new RegExp(`'${ev}'`), `if: covers ${ev}`);
   assert.doesNotMatch(s.if, /pull_request/);
   assert.equal(s.env?.GITHUB_TOKEN, '${{ github.token }}');
-  // The context name (image-scan / verdict) lives in check-image-findings.mjs publishVerdict, tested there.
+  // The context name (sweep/verdict) lives in check-image-findings.mjs publishVerdict, tested there.
   assert.match(s.run, /check-image-findings\.mjs --publish-verdict security\/images\/reports\/verdict\.txt/);
-  assert.match(s.name, /image-scan \/ verdict/);
+  assert.match(s.name, /sweep\/verdict/);
 });
 
 test('the report is uploaded even when the gate fails', () => {

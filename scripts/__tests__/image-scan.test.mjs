@@ -45,14 +45,15 @@ test('normalizeTrivy: an unmapped severity is an error, never a silent default',
 
 const ok = (json) => () => ({ status: 0, stdout: JSON.stringify(json), stderr: '' });
 
-test('scanImage (sweep): remote source, linux/amd64, both ghcr databases, vuln scanner only, JSON', () => {
+test('scanImage (sweep): remote source, linux/amd64, both databases (ghcr then mirror), vuln scanner only, JSON', () => {
   let seen;
   scanImage(IMG, { imageSrc: 'remote', spawn: (cmd, args) => { seen = [cmd, args]; return ok(trivyJson([]))(); } });
   const [cmd, args] = seen;
   assert.equal(cmd, 'trivy');
   assert.equal(args[0], 'image');
   for (const pair of [['--format', 'json'], ['--scanners', 'vuln'], ['--image-src', 'remote'], ['--platform', 'linux/amd64'],
-    ['--db-repository', 'ghcr.io/aquasecurity/trivy-db:2'], ['--java-db-repository', 'ghcr.io/aquasecurity/trivy-java-db:1']]) {
+    ['--db-repository', 'ghcr.io/aquasecurity/trivy-db:2,mirror.gcr.io/aquasec/trivy-db:2'],
+    ['--java-db-repository', 'ghcr.io/aquasecurity/trivy-java-db:1,mirror.gcr.io/aquasec/trivy-java-db:1']]) {
     const i = args.indexOf(pair[0]);
     assert.ok(i >= 0 && args[i + 1] === pair[1], `${pair.join(' ')} missing from ${args.join(' ')}`);
   }
@@ -232,4 +233,83 @@ test('selftest: a normalizer that blocks an unfixable Critical is caught', () =>
   const overBlocks = (json, ctx) => normalizeTrivy(json, ctx).map((f) => ({ ...f, blocking: f.severity === 'Critical' }));
   const { failures } = imageScanSelftest({ normalizeTrivy: overBlocks });
   assert.ok(failures.some((f) => /unfixable/.test(f)), failures.join('\n'));
+});
+
+// ── --image: the builder's single-image scan (US1, T019) ────────────────────────────────────────
+import { main as imageScanMain } from '../image-scan.mjs';
+import { mkdtempSync as mkTmp, mkdirSync as mkDir, writeFileSync as writeF, rmSync as rmR, readFileSync as readF, existsSync as exists } from 'node:fs';
+import { tmpdir as tmpDir } from 'node:os';
+import { join as joinP } from 'node:path';
+
+function scanRoot() {
+  const root = mkTmp(joinP(tmpDir(), 'belay-imgscan-'));
+  mkDir(joinP(root, 'security/images'), { recursive: true });
+  writeF(joinP(root, 'security/images/severity-map.yaml'), readF(resolvePath(ROOT, 'security/images/severity-map.yaml'), 'utf8'));
+  return root;
+}
+
+test('--image <ref> --image-src docker: scans exactly that ref, no enumeration, records the built platform', () => {
+  const root = scanRoot();
+  try {
+    const calls = [];
+    const spawn = (cmd, args) => {
+      calls.push([cmd, ...args].join(' '));
+      if (cmd === 'docker') return { status: 0, stdout: 'linux/arm64\n', stderr: '' };
+      if (cmd === 'trivy') return { status: 0, stdout: JSON.stringify(trivyJson([vuln()])), stderr: '' };
+      return { status: 1, stdout: '', stderr: `unexpected ${cmd}` };
+    };
+    assert.equal(imageScanMain(['--image', 'reg.example/ns/belay-devcontainer:abc', '--image-src', 'docker'], { root, spawn, log: () => {}, error: () => {} }), 0);
+    assert.ok(!calls.some((c) => c.startsWith('git ')), 'no enumeration (git ls-files) for a single-image scan');
+    const trivyCall = calls.find((c) => c.startsWith('trivy '));
+    assert.match(trivyCall, /--image-src docker/);
+    assert.doesNotMatch(trivyCall, /--platform/);
+    const report = JSON.parse(readF(joinP(root, 'security/images/reports/findings.json'), 'utf8'));
+    assert.equal(report.mode, 'image');
+    assert.deepEqual(report.scannedImages, ['reg.example/ns/belay-devcontainer:abc']);
+    assert.equal(report.platform, 'linux/arm64');
+    assert.deepEqual(report.notScannable, []);
+    assert.deepEqual(report.findings[0].locations, []);
+  } finally { rmR(root, { recursive: true, force: true }); }
+});
+
+test('--image with an unknown --image-src, or no ref, is a usage error (exit 2)', () => {
+  const root = scanRoot();
+  try {
+    const quiet = { root, spawn: () => ({ status: 0, stdout: '{}' }), log: () => {}, error: () => {} };
+    assert.equal(imageScanMain(['--image', 'x:1', '--image-src', 'podman'], quiet), 2);
+    assert.equal(imageScanMain(['--image'], quiet), 2);
+    assert.equal(exists(joinP(root, 'security/images/reports/findings.json')), false);
+  } finally { rmR(root, { recursive: true, force: true }); }
+});
+
+// ── Measured 2026-11-24 (run 8286): ghcr answered DENIED to the runner while an anonymous token request
+// from the dev container got HTTP 200. Trivy sends a GITHUB_TOKEN it finds in its environment to ghcr,
+// and a Forgejo token means nothing there. So Trivy runs WITHOUT GitHub tokens, pulling anonymously, and
+// mirror.gcr.io is a fallback after ghcr (unreachable from the dev container, so ghcr stays first).
+test('scanImage: Trivy runs with no GITHUB_TOKEN / GH_TOKEN in its environment (anonymous ghcr pulls)', () => {
+  let env;
+  scanImage(IMG, { imageSrc: 'remote', env: { PATH: '/bin', GITHUB_TOKEN: 'forgejo-token', GH_TOKEN: 'x', HOME: '/h' },
+    spawn: (_c, _a, opts) => { env = opts.env; return ok(trivyJson([]))(); } });
+  assert.equal(env.GITHUB_TOKEN, undefined);
+  assert.equal(env.GH_TOKEN, undefined);
+  assert.equal(env.PATH, '/bin');
+  assert.equal(env.HOME, '/h');
+});
+
+test('scanImage: both databases list ghcr first, then mirror.gcr.io as a fallback', () => {
+  let args;
+  scanImage(IMG, { imageSrc: 'remote', spawn: (_c, a) => { args = a; return ok(trivyJson([]))(); } });
+  assert.equal(args[args.indexOf('--db-repository') + 1], 'ghcr.io/aquasecurity/trivy-db:2,mirror.gcr.io/aquasec/trivy-db:2');
+  assert.equal(args[args.indexOf('--java-db-repository') + 1], 'ghcr.io/aquasecurity/trivy-java-db:1,mirror.gcr.io/aquasec/trivy-java-db:1');
+});
+
+test('the run-8286 DENIED output (verbatim shape) is retried as a database-download failure, then fails closed', () => {
+  // The real stderr carries "failed to download vulnerability DB", which scanner-retry.mjs classifies
+  // as transient. So it is retried; exhausting the attempts still fails closed, never a clean report.
+  let n = 0;
+  const stderr = 'FATAL\tFatal error\trun error: init error: DB error: failed to download vulnerability DB: OCI artifact error: '
+    + 'failed to download artifact from ghcr.io/aquasecurity/trivy-db:2: GET https://ghcr.io/token?scope=x: DENIED: denied';
+  assert.throws(() => scanImage(IMG, { imageSrc: 'remote', spawn: () => { n += 1; return { status: 1, stdout: '', stderr }; }, attempts: 3, sleep: () => {}, onRetry: () => {} }),
+    /DENIED/);
+  assert.equal(n, 3);
 });

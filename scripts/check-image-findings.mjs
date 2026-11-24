@@ -84,7 +84,12 @@ export function formatVerdict(v) {
 
 // ── not yet implemented (its tests come first: T028) ────────────────────────────────────────────
 /**
- * Post the `image-scan / verdict` commit status from a verdict file (contracts/workflows.md, step 8).
+ * Post the `sweep/verdict` commit status from a verdict file (contracts/workflows.md, step 8).
+ *
+ * NAMED `<job>/<label>` WITH NO SPACES, deliberately (ci-status.mjs bundleJobName): a context with
+ * ` / ` is read as `<workflow> / <job>`, so `image-scan / verdict` sent ci-status looking for a job called
+ * `verdict` and reporting its bundle absent (measured on run 8286). `sweep/verdict` resolves to the
+ * `sweep` job that owns the bundle, and cannot match a branch-protection `workflow / job` glob.
  *
  * The ONLY readable record of a green run's counts: the forge has no log or artifact endpoint, and
  * the failure digest publishes only on failure. `success` needs BOTH a successful job and a ✅ line;
@@ -105,13 +110,13 @@ export async function publishVerdict(verdictPath, { env = process.env, fetch: do
     headers: { Authorization: `token ${env.GITHUB_TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       state,
-      context: 'image-scan / verdict',
+      context: 'sweep/verdict',
       description: line.replace(/^\[image-scan\] /, '').slice(0, 250),
       target_url: `${env.GITHUB_SERVER_URL}/${env.GITHUB_REPOSITORY}/actions/runs/${env.GITHUB_RUN_NUMBER ?? ''}`,
     }),
   });
   if (!res.ok) { error(`[image-scan] ✗ the status POST was refused: HTTP ${res.status}`); return 1; }
-  log(`[image-scan] image-scan / verdict → ${state}: ${line}`);
+  log(`[image-scan] sweep/verdict → ${state}: ${line}`);
   return 0;
 }
 

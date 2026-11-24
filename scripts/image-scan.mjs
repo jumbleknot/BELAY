@@ -18,8 +18,16 @@ export const SEVERITY_MAP_PATH = 'security/images/severity-map.yaml';
 // Research R2: Trivy's default mirror (mirror.gcr.io) is not in the dev container's egress list, and
 // MCM measured the scan dying with a DNS error that named a host nobody chose. ghcr is allowlisted,
 // so BOTH databases come from it, in CI and locally alike.
-export const DB_REPOSITORY = 'ghcr.io/aquasecurity/trivy-db:2';
-export const JAVA_DB_REPOSITORY = 'ghcr.io/aquasecurity/trivy-java-db:1';
+// ghcr first (reachable from the dev container), then mirror.gcr.io (Trivy's own default) as a fallback,
+// so one registry's refusal does not fail the sweep. Trivy tries the list in order.
+export const DB_REPOSITORY = 'ghcr.io/aquasecurity/trivy-db:2,mirror.gcr.io/aquasec/trivy-db:2';
+export const JAVA_DB_REPOSITORY = 'ghcr.io/aquasecurity/trivy-java-db:1,mirror.gcr.io/aquasec/trivy-java-db:1';
+
+// MEASURED 2026-11-24 (run 8286): ghcr answered `DENIED: denied` to the runner, while the same anonymous
+// token request from the dev container got HTTP 200. Trivy sends a GITHUB_TOKEN it finds in its
+// environment to ghcr, and the CI runner's token is a Forgejo token, meaningless there. Trivy therefore
+// runs WITHOUT these, so its registry pulls are anonymous. Public images and databases need no credential.
+const TOKENS_TRIVY_MUST_NOT_SEE = ['GITHUB_TOKEN', 'GH_TOKEN'];
 export const SWEEP_PLATFORM = 'linux/amd64';
 
 export class ImageScanError extends Error {
@@ -75,7 +83,7 @@ export function normalizeTrivy(trivyJson, { image, locations, map }) {
  * `--platform` only for a REMOTE pull, where it selects a manifest. A builder scan reads the image
  * the runner just built, whatever its architecture (research, analyze finding U2).
  */
-export function scanImage(ref, { imageSrc, spawn = spawnSync, ...retryOpts } = {}) {
+export function scanImage(ref, { imageSrc, spawn = spawnSync, env = process.env, ...retryOpts } = {}) {
   if (imageSrc !== 'remote' && imageSrc !== 'docker') throw new ImageScanError(`--image-src must be remote or docker (got ${imageSrc})`, 2);
   const args = [
     'image', '--format', 'json', '--no-progress', '--scanners', 'vuln',
@@ -85,7 +93,9 @@ export function scanImage(ref, { imageSrc, spawn = spawnSync, ...retryOpts } = {
     ref,
   ];
   return retryTransient(`trivy ${ref}`, () => {
-    const res = spawn('trivy', args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+    const childEnv = { ...env };
+    for (const k of TOKENS_TRIVY_MUST_NOT_SEE) delete childEnv[k];
+    const res = spawn('trivy', args, { encoding: 'utf8', maxBuffer: 256 * 1024 * 1024, env: childEnv });
     if (res.error) throw new ImageScanError(`trivy failed to run for ${ref}: ${res.error.message} (is Trivy installed and on PATH?)`);
     if (res.status !== 0) {
       throw transientOr(`trivy exited ${res.status} for ${ref} (fail-closed): ${readTail(res.stderr ?? '')}`, res.stderr ?? '', ImageScanError);
@@ -245,14 +255,43 @@ function writeReport(root, report, natives) {
   writeFileSync(resolve(dir, 'findings.json'), JSON.stringify(report, null, 2));
 }
 
+/**
+ * The BUILDER path (US1): scan exactly one image, with no enumeration. A docker-source scan records
+ * the built image's real platform, because no --platform is forced on a local image (analyze U2).
+ */
+function scanOne({ root, image, imageSrc, spawn, log, retry }) {
+  if (imageSrc !== 'remote' && imageSrc !== 'docker') throw new ImageScanError(`--image-src must be remote or docker (got ${imageSrc})`, 2);
+  rmSync(resolve(root, REPORT_DIR, 'findings.json'), { force: true });
+  const map = loadSeverityMap(resolve(root, SEVERITY_MAP_PATH));
+  let platform = SWEEP_PLATFORM;
+  if (imageSrc === 'docker') {
+    const r = spawn('docker', ['image', 'inspect', '--format', '{{.Os}}/{{.Architecture}}', image], { encoding: 'utf8' });
+    if (r.error || r.status !== 0) throw new ImageScanError(`docker image inspect failed for ${image}: ${r.error?.message ?? readTail(r.stderr ?? '')}`);
+    platform = String(r.stdout).trim();
+  }
+  const json = scanImage(image, { imageSrc, spawn, ...retry });
+  const findings = normalizeTrivy(json, { image, locations: [], map });
+  writeReport(root, { schemaVersion: 1, mode: 'image', scannedImages: [image], platform, notScannable: [], findings }, [json]);
+  log(`[image-scan] scanned ${image} (${platform}): ${findings.length} finding(s), ${findings.filter((f) => f.blocking).length} fixable Critical`);
+  return 0;
+}
+
 export function main(argv, { root = REPO_ROOT, spawn = spawnSync, log = console.log, error = console.error, retry = {} } = {}) {
   try {
     const flags = new Set();
-    for (const a of argv) {
+    let image = null;
+    let imageSrc = null;
+    for (let i = 0; i < argv.length; i++) {
+      const a = argv[i];
       if (a === '--list' || a === '--selftest') flags.add(a);
-      else if (a === '--image' || a === '--image-src') throw new Error('not implemented');
-      else throw new ImageScanError(`unknown argument ${a}\n${USAGE}`, 2);
+      else if (a === '--image' || a === '--image-src') {
+        const v = argv[++i];
+        if (v === undefined || v.startsWith('--')) throw new ImageScanError(`${a} needs a value\n${USAGE}`, 2);
+        if (a === '--image') image = v; else imageSrc = v;
+      } else throw new ImageScanError(`unknown argument ${a}\n${USAGE}`, 2);
     }
+    if (imageSrc !== null && image === null) throw new ImageScanError(`--image-src needs --image\n${USAGE}`, 2);
+    if (image !== null) return scanOne({ root, image, imageSrc: imageSrc ?? 'docker', spawn, log, retry });
     if (flags.has('--selftest')) {
       const { failures } = imageScanSelftest();
       for (const f of failures) error(`✗ image-scan --selftest: ${f}`);
