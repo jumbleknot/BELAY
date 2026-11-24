@@ -44,7 +44,7 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const IS_WIN = process.platform === 'win32';
 // The Semgrep version every scan and `--test-rules` run (FR-023). One home on purpose: a second copy
 // of the version in workflow YAML is the half-bump shape MCM was bitten by three times.
-export const SEMGREP_PIN = '1.185.0';
+export const SEMGREP_PIN = '1.186.0';
 export const ALL_SCANNERS = ['semgrep', 'cargo-audit', 'pnpm-audit', 'pip-audit'];
 /** The committed enabled-scanner list, repo-relative (research R1). */
 export const SCAN_CONFIG = 'security/sast/scan.yaml';
