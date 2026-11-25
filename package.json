@@ -2,7 +2,7 @@
   "name": "@belay/workspace",
   "version": "0.0.0",
   "private": true,
-  "packageManager": "pnpm@12.21.0",
+  "packageManager": "pnpm@12.22.0",
   "//engines": "Node floor for local development. CI runs Node 26.13.1 (constitution) via actions/setup-node in .forgejo/workflows/guardrails.yml. The Spec Kit gate's tests rely on Node 24 behaviour.",
   "engines": {
     "node": ">=24"
