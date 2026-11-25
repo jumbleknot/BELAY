@@ -916,7 +916,7 @@ live check is quickstart §7, after MCM's own feature merges, outside this PR.
     - `backlog.mjs ready`, `status/needs-spec`, `issue_template`, `after_specify`: every remaining hit is either
       updated in T063, T068 or T075, or one of T001's "no change" justifications (renovate pages, doc-drift,
       Spec Kit-owned skills and extension READMEs).
-- [ ] T078 Run every check the diff touches, before the push. Each must pass with skip count 0:
+- [X] T078 *(2026-11-25: every command passed with skip 0, and quickstart §4 passed on the workstation; the summary lines are in the PR body.)* Run every check the diff touches, before the push. Each must pass with skip count 0:
   - `node scripts/check-speckit-overrides.mjs`
   - `pnpm nx run scripts:lint`
   - `pnpm nx run scripts:test`

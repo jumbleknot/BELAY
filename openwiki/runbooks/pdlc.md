@@ -4,8 +4,8 @@ title: The pdlc server — proposal intake from Claude Desktop
 description: How the pdlc operator-tool MCP server lets a Claude Desktop session on the workstation file and refine feature proposals as forge issues and keep read-only local copies — building and installing the .mcpb with its four settings, the dedicated pdlc token and its two scopes, the skill update rule, the audit trail in the host's stderr log joined to the forge timeline by correlation_id, the refusal codes, and the hand-off that makes another repository (MCM) accept proposals.
 tags: [pdlc, mcp, claude-desktop, proposals, runbook]
 resource: docs/runbooks/pdlc.md
-resource-sha256: ecf2c45c5a5b342ca6fb44e998206b08a75f64ae5d9597fe9335ebd1ca85ae65
-timestamp: 2026-11-25T13:40:22.024Z
+resource-sha256: c5acca448ef17cc9d1997257ce502fc8b7a39a803b07da9e448398d216574ea7
+timestamp: 2026-11-25T17:51:45.302Z
 ---
 
 # The pdlc server — proposal intake from Claude Desktop
@@ -31,7 +31,8 @@ Full detail is in [docs/runbooks/pdlc.md](../../docs/runbooks/pdlc.md).
   forge's issue timeline by `correlation_id`. Measured: it lands in Claude Desktop's general
   `%LOCALAPPDATA%\Claude\logs\main.log`, which rolls at about 10 MiB through five files, so retention is by
   volume (about five weeks when measured) and lines are picked out by `"service":"pdlc"`. The per-server log is
-  named from the manifest's `display_name`, which must therefore be a valid Windows file name.
+  named from the manifest's `display_name`, which must therefore be a valid Windows file name. It says "connected" even when
+  the server refused to start, so a startup failure is read from `main.log`.
 - **The workstation needs only Git for Windows.** Measured on the Microsoft Store build: the server runs on
   Claude Desktop's own Node (v24), and finds `git` on the user's inherited `PATH`. Its data folder is under
   `%LOCALAPPDATA%\Claude-Data`, not `%APPDATA%\Claude`.

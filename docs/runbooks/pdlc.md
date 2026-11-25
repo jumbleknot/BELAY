@@ -146,8 +146,12 @@ Every refusal says what was refused and why, and changes nothing (FR-019).
 | `forge_unreachable` | The forge could not be reached, or failed | Check the tailnet; nothing was written |
 | `not_found` | No such issue | Check the number |
 
-If the server does not start at all, its log names the missing or invalid setting (`PDLC_FORGE_URL`,
-`PDLC_FORGE_OWNER`, `PDLC_FORGE_TOKEN` or `PDLC_CLONE_ROOT`); the token's value is never printed.
+If the server does not start at all, `main.log` has one `"level":"ERROR"` line from it naming the missing or invalid
+setting (`PDLC_FORGE_URL`, `PDLC_FORGE_OWNER`, `PDLC_FORGE_TOKEN` or `PDLC_CLONE_ROOT`), for example
+`cannot start: PDLC_CLONE_ROOT does not exist`; the token's value is never printed. Find it with
+`Select-String -Path "$env:LOCALAPPDATA\Claude\logs\main.log" -SimpleMatch '"service":"pdlc"' | Select-Object -Last 3`.
+**Do not trust the per-server log for this**: measured, `mcp-server-pdlc proposal intake.log` still says `Server
+started and connected successfully` and logs the client's `initialize` after the server has exited.
 
 ## Hand off to a target repository (worked example: MCM)
 
