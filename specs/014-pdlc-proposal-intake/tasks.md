@@ -191,18 +191,18 @@ contract with its server factory.
 
 **⚠️ CRITICAL**: no user-story work begins until this phase is complete.
 
-- [ ] T007 [P] Add tests for `--policy <file>` to `scripts/__tests__/check-coverage.test.mjs`:
+- [X] T007 [P] Add tests for `--policy <file>` to `scripts/__tests__/check-coverage.test.mjs`:
   - a policy file outside `scripts/` sets the floor and the module glob;
   - without the flag, the default `scripts/coverage-policy.yaml` behaviour is unchanged;
   - an unreadable policy file exits non-zero and names the file.
   - **Scenarios covered**: plan "Testing" (the 70% floor for `pdlc:test`); research R16
   - **Verify RED**: `node --test --test-name-pattern "policy" scripts/__tests__/check-coverage.test.mjs` → expected:
     the 3 new tests fail, because `--policy` is an unknown argument
-- [ ] T008 Implement `--policy <file>` in `scripts/check-coverage.mjs`, and document it in its `--help`
+- [X] T008 Implement `--policy <file>` in `scripts/check-coverage.mjs`, and document it in its `--help`
   (prerequisite: T007 verified RED).
   - **Verify GREEN**: the T007 command → expected: 0 failures, 3 new tests passing. Then
     `node --test scripts/__tests__/check-coverage.test.mjs` still passes in full.
-- [ ] T009 [P] Create the master contract files:
+- [X] T009 [P] Create the master contract files:
   - `mcp-servers/pdlc/contract/proposal.yaml`: a byte copy of
     `docs/proposals/claude-desktop-proposal-intake/proposal.yaml`, unchanged (spec FR-021; contracts/proposal-body.md);
   - `mcp-servers/pdlc/contract/proposal-labels.json`, from `data-model.md` Proposal labels.Name, Proposal
@@ -211,7 +211,7 @@ contract with its server factory.
     `scripts/backlog.mjs`.
   - **Done when**: `cmp` of the two form files exits 0, and the JSON parses with exactly the rows of the data-model
     table.
-- [ ] T010 [P] Write tests for the redactor and the JSON-lines logger in `mcp-servers/pdlc/tests/unit/redact.test.mjs`
+- [X] T010 [P] Write tests for the redactor and the JSON-lines logger in `mcp-servers/pdlc/tests/unit/redact.test.mjs`
   and `mcp-servers/pdlc/tests/unit/log.test.mjs`.
   - The redactor removes the configured token, `Authorization: token …` and `Bearer …` values, and URL userinfo from
     strings and nested objects.
@@ -222,10 +222,10 @@ contract with its server factory.
   - **Scenarios covered**: FR-018 (log sink), SC-008, research R17
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/redact.test.mjs mcp-servers/pdlc/tests/unit/log.test.mjs`
     → expected: 2 failing files, `ERR_MODULE_NOT_FOUND` for `src/redact.mjs` and `src/log.mjs`
-- [ ] T011 Implement `mcp-servers/pdlc/src/redact.mjs` and `mcp-servers/pdlc/src/log.mjs`. Every log call passes
+- [X] T011 Implement `mcp-servers/pdlc/src/redact.mjs` and `mcp-servers/pdlc/src/log.mjs`. Every log call passes
   through the redactor (prerequisite: T010 verified RED).
   - **Verify GREEN**: the T010 command → expected: 0 failures, and every named test passes
-- [ ] T012 [P] Write tests for configuration loading in `mcp-servers/pdlc/tests/unit/config.test.mjs`. Each field
+- [X] T012 [P] Write tests for configuration loading in `mcp-servers/pdlc/tests/unit/config.test.mjs`. Each field
   follows its validation and failure rule from `data-model.md`: Configuration.forgeUrl, Configuration.owner,
   Configuration.token, Configuration.cloneRoot. Also cover the derived `apiBase`.
   - A missing or invalid value throws an error naming the variable (`PDLC_FORGE_URL`, `PDLC_FORGE_OWNER`,
@@ -235,10 +235,10 @@ contract with its server factory.
   - **Scenarios covered**: US5-AC2, FR-004, FR-018
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/config.test.mjs` → expected: 1 failing file,
     `ERR_MODULE_NOT_FOUND` for `src/config.mjs`
-- [ ] T013 Implement `mcp-servers/pdlc/src/config.mjs` as `loadConfig(env)`, a pure function returning a frozen
+- [X] T013 Implement `mcp-servers/pdlc/src/config.mjs` as `loadConfig(env)`, a pure function returning a frozen
   config, or throwing `ConfigError(variable, reason)` (prerequisite: T012 verified RED).
   - **Verify GREEN**: the T012 command → expected: 0 failures
-- [ ] T014 [P] Write tests for the forge client in `mcp-servers/pdlc/tests/unit/forge-client.test.mjs`, using an
+- [X] T014 [P] Write tests for the forge client in `mcp-servers/pdlc/tests/unit/forge-client.test.mjs`, using an
   injected `fetch` double. Cover:
   - the `Authorization: token` header is sent and appears in no returned value;
   - paging follows `x-total-count`, with `limit` at most 50, and a page cap sets `truncated: true`;
@@ -249,11 +249,11 @@ contract with its server factory.
   - **Scenarios covered**: edge cases (forge unreachable, missing scope, more than one page), FR-015 (paging), FR-018
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/forge-client.test.mjs` → expected: 1 failing file,
     `ERR_MODULE_NOT_FOUND`
-- [ ] T015 Implement `mcp-servers/pdlc/src/forge-client.mjs`: `createForgeClient({config, fetch, log})` with `get`,
+- [X] T015 Implement `mcp-servers/pdlc/src/forge-client.mjs`: `createForgeClient({config, fetch, log})` with `get`,
   `getAll` (paging), `post`, `patch`, `delete` and `raw`. Each failure throws a `Refusal(code, reason)`
   (prerequisite: T014 verified RED).
   - **Verify GREEN**: the T014 command → expected: 0 failures
-- [ ] T016 [P] Write tests for the owner allowlist in `mcp-servers/pdlc/tests/unit/repo-allowlist.test.mjs`. Cover:
+- [X] T016 [P] Write tests for the owner allowlist in `mcp-servers/pdlc/tests/unit/repo-allowlist.test.mjs`. Cover:
   - `GET /repos/search` rows are filtered to `owner.login` equal to the configured owner, compared case-insensitively
     (`data-model.md` Repository.name, Repository.default_branch);
   - the canonical name is returned for a case-different request;
@@ -264,9 +264,9 @@ contract with its server factory.
   - **Scenarios covered**: US1-AC1, US3-AC1, FR-012, research R1
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/repo-allowlist.test.mjs` → expected: 1 failing file,
     `ERR_MODULE_NOT_FOUND`
-- [ ] T017 Implement `mcp-servers/pdlc/src/repo-allowlist.mjs` (prerequisite: T016 verified RED).
+- [X] T017 Implement `mcp-servers/pdlc/src/repo-allowlist.mjs` (prerequisite: T016 verified RED).
   - **Verify GREEN**: the T016 command → expected: 0 failures
-- [ ] T018 [P] Write tests for label resolution in `mcp-servers/pdlc/tests/unit/labels.test.mjs`. Cover:
+- [X] T018 [P] Write tests for label resolution in `mcp-servers/pdlc/tests/unit/labels.test.mjs`. Cover:
   - every label page is loaded, and names resolve to ids;
   - an unknown name refuses with `unknown_label`, naming it, before any filtered or write request;
   - `planStatusSwap(current, target)` and `planPrioritySwap(current, target)` return exactly one id to remove and one
@@ -276,9 +276,9 @@ contract with its server factory.
   - **Scenarios covered**: US3-AC3, FR-006, FR-007, FR-014, research R8
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/labels.test.mjs` → expected: 1 failing file,
     `ERR_MODULE_NOT_FOUND`
-- [ ] T019 Implement `mcp-servers/pdlc/src/labels.mjs` (prerequisite: T018 verified RED).
+- [X] T019 Implement `mcp-servers/pdlc/src/labels.mjs` (prerequisite: T018 verified RED).
   - **Verify GREEN**: the T018 command → expected: 0 failures
-- [ ] T020 [P] Write tests for the git runner in `mcp-servers/pdlc/tests/unit/git-runner.test.mjs`, with an injected
+- [X] T020 [P] Write tests for the git runner in `mcp-servers/pdlc/tests/unit/git-runner.test.mjs`, with an injected
   `execFile` double. Cover:
   - only the verbs listed under `data-model.md` Local proposal copy (git verbs) run;
   - `commit`, `push`, `branch`, `checkout`, `stash`, `reset`, `rebase`, `pull`, `tag`, `config` without `--get`, and
@@ -290,10 +290,10 @@ contract with its server factory.
   - **Scenarios covered**: US3-AC5 (no history), FR-017, FR-018, research R2
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/git-runner.test.mjs` → expected: 1 failing file,
     `ERR_MODULE_NOT_FOUND`
-- [ ] T021 Implement `mcp-servers/pdlc/src/git-runner.mjs`, with the git binary taken from `PATH` (or from the
+- [X] T021 Implement `mcp-servers/pdlc/src/git-runner.mjs`, with the git binary taken from `PATH` (or from the
   `git_path` setting if T053 applies) (prerequisite: T020 verified RED).
   - **Verify GREEN**: the T020 command → expected: 0 failures
-- [ ] T022 [P] Write the tool contract test in `mcp-servers/pdlc/tests/unit/tool-contract.test.mjs`. It connects an
+- [X] T022 [P] Write the tool contract test in `mcp-servers/pdlc/tests/unit/tool-contract.test.mjs`. It connects an
   MCP `Client` to `createServer(deps)` over the SDK's `InMemoryTransport` and calls `tools/list`.
   - The names are exactly the nine in [contracts/tools.md](contracts/tools.md).
   - Each input schema's property names, required set and enum values match the contract.
@@ -305,7 +305,7 @@ contract with its server factory.
   - **Scenarios covered**: US3-AC7, FR-001, FR-002, FR-003, SC-006, constitution Logging (audit, as amended in T002)
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/tool-contract.test.mjs` → expected: 1 failing file,
     `ERR_MODULE_NOT_FOUND` for `src/server.mjs`
-- [ ] T023 Implement the tool contract, server and handlers (prerequisite: T022 verified RED):
+- [X] T023 Implement the tool contract, server and handlers (prerequisite: T022 verified RED):
   - `mcp-servers/pdlc/src/tool-contract.mjs`: names, descriptions and zod input schemas, the single source for
     registration;
   - `mcp-servers/pdlc/src/server.mjs`: `createServer(deps)` registers every tool from the contract, and the stdio entry
