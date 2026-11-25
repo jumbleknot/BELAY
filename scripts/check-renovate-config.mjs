@@ -35,7 +35,7 @@ import { CHECKSUM_PAIRS } from './refresh-pin-checksum.mjs';
  * its own upgrades. That PR's guardrails validator step runs the proposed version against
  * renovate.json before anything uses it (research R1). Both workflows read it from here.
  */
-export const RENOVATE_VERSION = '44.257.6';
+export const RENOVATE_VERSION = '44.257.9';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_REPOSITORY = 'jumbleknot/BELAY';
