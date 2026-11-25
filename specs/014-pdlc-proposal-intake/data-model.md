@@ -41,7 +41,7 @@ Location: `<cloneRoot>/<name>`.
 | --- | --- |
 | `path` | The folder |
 | `exists` | The folder exists |
-| `is_copy_of_repo` | `git rev-parse --show-toplevel` equals the folder, **and** `remote.origin.url` equals `<forgeUrl>/<owner>/<name>.git` (case-insensitive on owner and name, with no userinfo) |
+| `is_copy_of_repo` | `git rev-parse --show-toplevel` equals the folder, **and** `remote.origin.url` equals `originUrlFor(name)` (case-insensitive on owner and name, with no userinfo). In production `originUrlFor` builds `<forgeUrl>/<owner>/<name>.git`; it is injected so the real-git tests can use `file://` bare repositories |
 | `branch` | `git symbolic-ref --short HEAD` (detached means "not on the default branch") |
 | `dirty` | `git status --porcelain=v1 --untracked-files=normal` is non-empty. Untracked files count |
 | `behind` | `git rev-list --count HEAD..origin/<default>` after `git fetch origin <default>` |
@@ -91,13 +91,15 @@ A forge issue carrying `type/proposal`.
 
 **Write guards**, applied in this order and refusing at the first failure (FR-012 to FR-019):
 
+0. Schema validation (zod), before any forge call: types, enum values, unknown section keys, and size limits. Body
+   and comment size is at most 64 KiB, and the title is at most 255 characters (the forge's limit). Failure is
+   `invalid_input`.
 1. `repo` is in the owner's allowlist.
 2. On update and comment: the issue exists, is an issue rather than a PR, carries `type/proposal` and does not carry
    `status/bot-managed`.
 3. Every label name used resolves in this repository.
 4. On update: `updated_at` equals `expected_updated_at`.
 5. On create: no open proposal has the same title.
-6. Body and comment size is at most 64 KiB, and the title is at most 255 characters (the forge's limit).
 
 ## Proposal section
 

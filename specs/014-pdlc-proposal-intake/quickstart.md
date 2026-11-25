@@ -48,7 +48,9 @@ pnpm nx run pdlc:integration-forge
 - refuse with `stale` after an out-of-band edit made by the test helper;
 - refuse a write to a non-proposal issue;
 - refuse another owner and an unknown repository;
-- `check_setup` returns `ok`.
+- `check_setup` returns `ok`;
+- `sync_repo` clones `ci-smoke` into a temp clone root, then reports `up_to_date`; `repo_status` reports `behind: 0`;
+  the clone's `.git/config` holds no token (the authenticated clone, research R2).
 
 The helper then closes the test's own issues. With `FORGE_ISSUE_TOKEN` unset, the target **fails**, naming the
 variable. It does not skip.

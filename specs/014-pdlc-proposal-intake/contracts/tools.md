@@ -35,7 +35,7 @@ The contract test reads `tools/list` over the real protocol and fails on any dif
 | `stale` | `updated_at` ≠ `expected_updated_at`; returns the current `updated_at` (FR-016) |
 | `duplicate_title` | An open proposal has the same title; returns its number (US1-5) |
 | `copy_dirty`, `copy_off_branch`, `copy_diverged`, `copy_foreign` | Sync refused; says which (FR-017, US3-4) |
-| `invalid_input` | Schema validation failed, or a size limit was exceeded |
+| `invalid_input` | Schema validation failed, or a size limit was exceeded. Checked first, before any forge call (data-model write guard 0) |
 | `forge_auth` | 401/403; names the capability refused, never the token (spec edge case) |
 | `forge_unreachable` | Transport failure; nothing was written |
 | `not_found` | The issue does not exist |
@@ -83,6 +83,9 @@ The contract test reads `tools/list` over the real protocol and fails on any dif
 
 - **Output**: `{proposals: [{number, title, status, priority, state, updated_at}], total, truncated}`
 - `status: all` filters on `type/proposal` alone. `draft` and `ready` also filter on their status label.
+- In every **output**, `status` is `draft`, `ready` or `unknown`, and `priority` is `p1`, `p2`, `p3` or `unknown`.
+  `unknown` means the labels are missing or conflicting, and comes with a warning (data-model Proposal.status and
+  Proposal.priority). This applies to `get_proposal` too.
 
 ### `get_proposal`
 
