@@ -4,8 +4,8 @@ title: The pdlc server — proposal intake from Claude Desktop
 description: How the pdlc operator-tool MCP server lets a Claude Desktop session on the workstation file and refine feature proposals as forge issues and keep read-only local copies — building and installing the .mcpb with its four settings, the dedicated pdlc token and its two scopes, the skill update rule, the audit trail in the host's stderr log joined to the forge timeline by correlation_id, the refusal codes, and the hand-off that makes another repository (MCM) accept proposals.
 tags: [pdlc, mcp, claude-desktop, proposals, runbook]
 resource: docs/runbooks/pdlc.md
-resource-sha256: 44ca050ac3dcdc9f3e0c4b5c8381fa75e9bde4a7946e3a23c6c00df1fd8f1b55
-timestamp: 2026-11-25T13:03:41.851Z
+resource-sha256: ecf2c45c5a5b342ca6fb44e998206b08a75f64ae5d9597fe9335ebd1ca85ae65
+timestamp: 2026-11-25T13:40:22.024Z
 ---
 
 # The pdlc server — proposal intake from Claude Desktop
@@ -28,8 +28,10 @@ Full detail is in [docs/runbooks/pdlc.md](../../docs/runbooks/pdlc.md).
 - **The local copies are fast-forward only.** A dirty, off-branch, diverged or foreign copy is refused and left
   byte-identical; the operator fixes it in their own tools.
 - **The audit log is the host's capture of stderr**, one `audit` line per call, allowed or refused, joined to the
-  forge's issue timeline by `correlation_id`. Its location and retention are measured on the workstation and
-  recorded in the runbook; until then they are pending.
+  forge's issue timeline by `correlation_id`. Measured: it lands in Claude Desktop's general
+  `%LOCALAPPDATA%\Claude\logs\main.log`, which rolls at about 10 MiB through five files, so retention is by
+  volume (about five weeks when measured) and lines are picked out by `"service":"pdlc"`. The per-server log is
+  named from the manifest's `display_name`, which must therefore be a valid Windows file name.
 - **The workstation needs only Git for Windows.** Measured on the Microsoft Store build: the server runs on
   Claude Desktop's own Node (v24), and finds `git` on the user's inherited `PATH`. Its data folder is under
   `%LOCALAPPDATA%\Claude-Data`, not `%APPDATA%\Claude`.

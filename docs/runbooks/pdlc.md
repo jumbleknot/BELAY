@@ -82,13 +82,14 @@ merges with a pull request; after it merges, rebuild with `pdlc:pack` and re-upl
 ### Measured on the host
 
 Measured on 2026-11-25 with a throwaway extension on the workstation (Claude Desktop, Microsoft Store build), and
-recorded in research R12. The rows still marked *pending* are not to be relied on yet.
+recorded in research R12. Re-measure after a Claude Desktop update that changes its log handling: these rows are
+the audit trail's location (ADR-0005).
 
 | Fact | Observed |
 | --- | --- |
 | Is `git` found from the extension, and from which `PATH` | Yes. The extension inherits the user's full `PATH`; `git` resolved to `C:\Program Files\Git\cmd\git.exe` (Git for Windows 2.53.0). No `git_path` setting is needed |
 | The Node version Claude Desktop bundles | v24.22.3, run by `Claude.exe` itself, not a system Node. The manifest requires `>=20.0.0` |
-| Where the server's stderr lands (the audit log), and its rotation and retention | *pending T006* |
+| Where the server's stderr lands (the audit log), and its rotation and retention | `%LOCALAPPDATA%\Claude\logs\main.log`, Claude Desktop's general log, each line behind a `<local time> [info] [UtilityProcess stderr]` prefix. It rolls over at about 10 MiB into `main1.log` … `main4.log`, five files in all, so retention is by volume and shared with everything else Claude Desktop logs: about five weeks when measured. Protocol traffic (method and id per message, no content) is in `mcp-server-pdlc proposal intake.log` beside it |
 | Where a `sensitive` setting is stored | Encrypted at rest in `%LOCALAPPDATA%\Claude-Data\claude_<publisher id>\Claude Extensions Settings\<extension id>.json`, as `__encrypted__:…` (Electron `safeStorage`: AES-GCM under a key Windows DPAPI protects for your user). No plain-text copy anywhere in the data folder, and nothing in Credential Manager. Anything running as your Windows user can decrypt it |
 
 ## The audit trail
@@ -104,12 +105,23 @@ together with **the forge's issue timeline** for writes. The server never opens 
   ```
 
   It carries no body, no section text and no token. `correlation_id` is the MCP request id.
-- **Where it is**: the host's log for `pdlc` (location under "Measured on the host").
-- **To find one call**: search the log for `"correlation_id":<id>` (in PowerShell, `Select-String`), or for
-  `"event":"audit"` and the tool name. Writes are also logged at INFO with the tool, repository and issue number.
+- **Where it is**: `%LOCALAPPDATA%\Claude\logs\main.log` and its older copies `main1.log` … `main4.log` (see
+  "Measured on the host"). It is Claude Desktop's general log, so `pdlc`'s lines are picked out by their
+  `"service":"pdlc"` field.
+- **To find the calls**, newest file first:
+
+  ```powershell
+  $logs = "$env:LOCALAPPDATA\Claude\logs"
+  Select-String -Path "$logs\main.log","$logs\main?.log" -SimpleMatch -Pattern '"service":"pdlc","event":"audit"'
+  ```
+
+  Add `| Select-String -SimpleMatch '"correlation_id":7'` for one call, or `'"tool":"update_proposal"'` for one
+  tool. Writes are also logged at INFO with the tool, repository and issue number. The `correlation_id` is the MCP
+  request id, which `mcp-server-pdlc proposal intake.log` shows as `id=7` on the matching `tools/call` line.
 - **To match a write to its effect**: open the issue named by `repo` and `number`; its timeline on the forge shows
-  the edit, label change or comment, with the same timestamp to the second. The forge keeps writes permanently, so
-  only refusal lines can age out, with the host's retention (under "Measured on the host").
+  the edit, label change or comment, with the same timestamp to the second. The `ts` inside each line is UTC; the
+  prefix Claude Desktop adds is local time. The forge keeps writes permanently, so only refusal lines can age out,
+  after about five weeks at the measured volume.
 - **Integrity**: the server has no file-write tool and never touches the log folder. The logged-in OS user can edit
   the file; that is accepted for a one-operator workstation (constitution 1.1.0).
 

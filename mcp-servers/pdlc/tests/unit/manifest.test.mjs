@@ -51,6 +51,14 @@ test('the tools array names exactly the contract\'s tools', () => {
   for (const t of manifest.tools) assert.ok(t.description, t.name);
 });
 
+test('display_name is a valid Windows file name, since Claude Desktop names the server\'s log after it', () => {
+  // T006, measured 2026-11-25 (research R12): Claude Desktop writes `%LOCALAPPDATA%\\Claude\\logs\\mcp-server-<display_name>.log`
+  // verbatim, spaces and parentheses included. A character Windows forbids in a file name would break that log.
+  assert.ok(manifest.display_name, 'display_name is set');
+  assert.doesNotMatch(manifest.display_name, /[<>:"/\\|?*\x00-\x1f]/, `display_name ${JSON.stringify(manifest.display_name)}`);
+  assert.doesNotMatch(manifest.display_name, /[ .]$/, 'Windows strips a trailing space or dot');
+});
+
 test('compatibility is win32 only', () => {
   assert.deepEqual(manifest.compatibility.platforms, ['win32']);
 });

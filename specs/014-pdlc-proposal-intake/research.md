@@ -237,8 +237,23 @@ Microsoft Store (MSIX) build, package `Claude_6.28899.6.0_x64__<publisher id>`.
 2. **Node: Claude Desktop's own runtime, v24.22.3.** `process.execPath` was `Claude.exe` inside the MSIX package
    (`C:\Program Files\WindowsApps\Claude_…\app\Claude.exe`), not a system Node. The manifest declares
    `compatibility.runtimes.node: ">=20.0.0"`, the server's `engines` floor, which v24.22.3 meets.
-3. *Server logs*: not yet found. `%APPDATA%\Claude\logs` does not exist on the MSIX build, and the virtualised
-   `%LOCALAPPDATA%\Packages\Claude_…\LocalCache\Roaming\Claude\logs` held no file with the marker. **Pending.**
+3. **Server logs: the server's stderr is in Claude Desktop's general log, `%LOCALAPPDATA%\Claude\logs\main.log`.**
+   Each stderr line is kept whole, behind a prefix in local time:
+   `2026-11-25 07:30:07 [info] [UtilityProcess stderr] {"ts":"2026-11-25T12:30:07.519Z",…}`. The prefix does not name
+   the server, so a line is attributed by its own `"service"` field.
+   - **Rotation**: `main.log` rolls over at about 10 MiB into `main1.log` … `main4.log` (each 10,486,3xx–10,486,6xx
+     bytes), five files, about 50 MiB in all. Retention is therefore by volume, shared with everything else Claude
+     Desktop logs, not by age. On the day measured the oldest file (`main4.log`) was last written 2026-10-22, so about
+     five weeks were kept.
+   - **A second, per-server log**, `mcp-server-<display_name>.log`, named from the manifest's `display_name`
+     verbatim (spaces and parentheses kept), records the protocol traffic: `Initializing server`, `Using built-in
+     Node.js for MCP server`, then one line per message, such as `Message from client: method="tools/list" id=1`,
+     with no parameters or results, and no stderr. Because Windows forbids `:` in a file name, `pdlc`'s
+     `display_name` changed from `pdlc: proposal intake` to `pdlc proposal intake` (manifest test, RED then GREEN).
+   - `%APPDATA%\Claude` does not exist on this build. `%LOCALAPPDATA%\Claude-Data\claude_<publisher id>\logs`
+     exists but was last written 2026-08-22, a stale folder from an earlier version.
+   - Claude Desktop started the server twice at launch (an `Era probe verdict: legacy` line between), so a startup
+     line can appear twice. Nothing in `pdlc` depends on starting once.
 4. **Sensitive storage: encrypted at rest, in the extension's settings file.** The value sits in
    `%LOCALAPPDATA%\Claude-Data\claude_<publisher id>\Claude Extensions Settings\local.mcpb.<author>.<name>.json`
    as `"probe_secret": "__encrypted__:<base64>"`, beside the plain `isEnabled` flag and non-sensitive settings. The

@@ -166,7 +166,7 @@ host facts the packaging depends on.
       Manager rule now states "declared exactly once, in the root";
     - `pnpm nx show project pdlc` lists the five targets;
     - `pnpm nx run scripts:sast` passes (the SCA check over the new packages).
-- [ ] T006 *(Observations 1, 2 and 4 recorded 2026-11-25; 3 (the log) is being re-measured in `%LOCALAPPDATA%\Claude-Data\claude_<publisher id>\logs`.)* **Host measurements** (research R12; plan phase 2). These must be done before T031 and T047 depend on
+- [X] T006 *(All four observations recorded in R12, 2026-11-25. Observation 3 changed `display_name` (no `:`), test-first; the uninstall of the throwaway is the operator's.)* **Host measurements** (research R12; plan phase 2). These must be done before T031 and T047 depend on
   them.
   - Build a throwaway "hello" extension in the scratchpad, never committed. It needs a one-tool server whose tool runs
     `git --version` through `execFile` and returns `process.version`, `process.env.PATH`'s git entry and
@@ -658,7 +658,7 @@ install runbook.
     - `pnpm exec mcpb validate mcp-servers/pdlc/manifest.json` exits 0;
     - `unzip -l` on the `.mcpb` shows `node_modules/@modelcontextprotocol/sdk/…` as real files (no symlinks),
       together with `contract/proposal.yaml` and `src/server.mjs`.
-- [ ] T052 [US5] *(Written; the four host observations are marked pending T006.)* Write `docs/runbooks/pdlc.md`, the install part. It covers:
+- [X] T052 [US5] *("Measured on the host" and the audit-trail search filled from T006, 2026-11-25.)* Write `docs/runbooks/pdlc.md`, the install part. It covers:
   - prerequisites (Git for Windows 2.31 or later);
   - creating a **new** forge token named `pdlc` with exactly `write:issue` + `read:repository`, used by nothing else,
     and how to revoke it;

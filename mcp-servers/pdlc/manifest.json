@@ -1,7 +1,7 @@
 {
   "manifest_version": "0.3",
   "name": "pdlc",
-  "display_name": "pdlc: proposal intake",
+  "display_name": "pdlc proposal intake",
   "version": "0.1.0",
   "description": "File and refine feature proposals as forge issues, and keep read-only local copies of the repositories, for the proposal-intake skill.",
   "long_description": "An operator-tool MCP server for one operator (BELAY constitution 1.1.0, ADR-0005). It reads and writes only issues labelled type/proposal in repositories under the configured owner, and fast-forwards read-only local copies. It never closes, deletes or relabels arbitrary issues, and never commits, branches or pushes.",
