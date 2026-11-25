@@ -11,7 +11,8 @@ import { Refusal } from './refusal.mjs';
 import { MAX_BODY_BYTES, MAX_TITLE_CHARS, SECTION_IDS } from './tool-contract.mjs';
 import { renderBody, parseBody } from './proposal-body.mjs';
 import {
-  BOT_MANAGED_LABEL, PROPOSAL_LABEL, STATUS_LABELS, loadLabels, priorityFromLabels, priorityLabel, statusFromLabels,
+  BOT_MANAGED_LABEL, PROPOSAL_LABEL, STATUS_LABELS, loadLabels, planPrioritySwap, planStatusSwap, priorityFromLabels,
+  priorityLabel, statusFromLabels,
 } from './labels.mjs';
 
 export const TITLE_PREFIX = 'Proposal: ';
@@ -118,6 +119,67 @@ export function createProposals({ forge, allowlist, config }) {
         comments: comments.map((c) => ({ author: c.user?.login ?? null, created_at: c.created_at, body: c.body })),
         updated_at: issue.updated_at, url: issue.html_url, warnings,
       };
+    },
+
+    async list({ repo: repoArg, status, query, state = 'open' }, { maxPages = 10 } = {}) {
+      const repo = await allowlist.resolve(repoArg);
+      const path = repoPath(repo.name);
+      const wanted = status === 'all' ? [PROPOSAL_LABEL] : [PROPOSAL_LABEL, STATUS_LABELS[status]];
+      (await loadLabels(forge, path)).resolve(wanted);   // guard 3: an unknown name would be IGNORED by the forge
+      const r = await forge.getAll(`${path}/issues`, {
+        query: { state, type: 'issues', labels: wanted.join(','), ...(query ? { q: query } : {}) },
+        capability: 'list issues', maxPages,
+      });
+      const proposals = r.items
+        .filter((i) => !i.pull_request && wanted.every((w) => names(i).includes(w)))
+        .map((i) => ({ number: i.number, title: i.title, ...summary(i), state: i.state, updated_at: i.updated_at }));
+      return { proposals, total: r.truncated ? r.total : proposals.length, truncated: r.truncated };
+    },
+
+    async update({ repo: repoArg, number, expected_updated_at, title, sections = {}, priority, status }) {
+      checkSections(sections, { requireFeatureName: false });
+      if (title !== undefined) checkTitle(title);
+      checkBodySize(renderBody(sections));                                  // guard 0 on what was given
+
+      const { path, issue } = await loadProposal(repoArg, number, { write: true });   // guards 1, 2
+      const labelNames = names(issue);
+      const labels = await loadLabels(forge, path);                          // guard 3
+      const statusSwap = status ? planStatusSwap(labelNames, status, labels) : { remove: [], add: [] };
+      const prioritySwap = priority ? planPrioritySwap(labelNames, priority, labels) : { remove: [], add: [] };
+      if (issue.updated_at !== expected_updated_at) {                         // guard 4
+        throw new Refusal('stale', `#${number} changed since ${expected_updated_at}; read it again with get_proposal and merge`, { updated_at: issue.updated_at });
+      }
+
+      const current = parseBody(issue.body ?? '').sections;
+      const next = { ...current, ...sections, ...(priority ? { priority } : {}) };
+      const body = renderBody(next);
+      checkBodySize(body);
+      const changed = [];
+      if (title !== undefined && title !== issue.title) changed.push('title');
+      for (const id of SECTION_IDS) if (id in sections && sections[id] !== current[id]) changed.push(`sections.${id}`);
+      if (prioritySwap.remove.length || prioritySwap.add.length) changed.push('priority');
+      if (statusSwap.remove.length || statusSwap.add.length) changed.push('status');
+
+      const patch = {};
+      if (changed.includes('title')) patch.title = title;
+      if (body !== renderBody(current)) patch.body = body;
+      if (Object.keys(patch).length) await forge.patch(`${path}/issues/${number}`, patch, { capability: 'edit issues' });
+      // R8: remove the one old id, then add the new one; never replace the whole label set.
+      for (const id of [...statusSwap.remove, ...prioritySwap.remove]) await forge.delete(`${path}/issues/${number}/labels/${id}`, { capability: 'edit issue labels' });
+      const add = [...statusSwap.add, ...prioritySwap.add];
+      if (add.length) await forge.post(`${path}/issues/${number}/labels`, { labels: add }, { capability: 'edit issue labels' });
+
+      const after = changed.length ? await forge.get(`${path}/issues/${number}`, { capability: 'read issues' }) : issue;
+      return { number, title: after.title, ...summary(after), url: after.html_url, updated_at: after.updated_at, changed };
+    },
+
+    async comment({ repo: repoArg, number, body }) {
+      const bytes = Buffer.byteLength(body ?? '', 'utf8');
+      if (bytes === 0 || bytes > MAX_BODY_BYTES) throw new Refusal('invalid_input', `a comment must be 1 to ${MAX_BODY_BYTES} bytes (got ${bytes})`);
+      const { path } = await loadProposal(repoArg, number, { write: true });
+      const c = await forge.post(`${path}/issues/${number}/comments`, { body }, { capability: 'comment on issues' });
+      const after = await forge.get(`${path}/issues/${number}`, { capability: 'read issues' });
+      return { number, comment_url: c.html_url, updated_at: after.updated_at };
     },
 
     summary,

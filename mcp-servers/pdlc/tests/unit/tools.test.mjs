@@ -105,3 +105,45 @@ test('US1 get_proposal reads a web-form proposal into the same sections', async 
     assert.deepEqual(Object.keys(r.payload).sort(), ['comments', 'labels', 'number', 'priority', 'sections', 'state', 'status', 'title', 'updated_at', 'url', 'warnings']);
   } finally { await c.close(); }
 });
+
+test('US2 list_proposals returns {proposals, total, truncated} with the row shape', async () => {
+  const { c, w } = await harness();
+  try {
+    const i = w.forge.addIssue('BELAY', { title: 'Proposal: Import export spreadsheet', body: renderBody(sections), labels: ['type/proposal', 'status/proposal-draft', 'priority/p2'] });
+    const r = await c.call('list_proposals', { repo: 'BELAY', status: 'draft' });
+    assert.notEqual(r.isError, true, JSON.stringify(r.payload));
+    assert.deepEqual(r.payload, { proposals: [{ number: i.number, title: i.title, status: 'draft', priority: 'p2', state: 'open', updated_at: i.updated_at }], total: 1, truncated: false });
+  } finally { await c.close(); }
+});
+
+test('US2 create → update to ready → stale refusal → back to draft, each write returning the new updated_at', async () => {
+  const { c, w } = await harness();
+  try {
+    const created = (await c.call('create_proposal', { repo: 'BELAY', title: 'Proposal: Import export spreadsheet', sections, priority: 'p2', status: 'draft' })).payload;
+    const ready = await c.call('update_proposal', { repo: 'BELAY', number: created.number, expected_updated_at: created.updated_at, status: 'ready' });
+    assert.notEqual(ready.isError, true, JSON.stringify(ready.payload));
+    assert.deepEqual(Object.keys(ready.payload).sort(), ['changed', 'number', 'priority', 'status', 'title', 'updated_at', 'url']);
+    assert.equal(ready.payload.status, 'ready');
+
+    w.forge.issue('BELAY', created.number).updated_at = '2026-11-25T23:59:59Z';   // an out-of-band edit
+    const stale = await c.call('update_proposal', { repo: 'BELAY', number: created.number, expected_updated_at: ready.payload.updated_at, status: 'draft' });
+    assert.equal(stale.isError, true);
+    assert.equal(stale.payload.code, 'stale');
+    assert.equal(stale.payload.updated_at, '2026-11-25T23:59:59Z');
+
+    const draft = await c.call('update_proposal', { repo: 'BELAY', number: created.number, expected_updated_at: stale.payload.updated_at, status: 'draft' });
+    assert.equal(draft.payload.status, 'draft');
+  } finally { await c.close(); }
+});
+
+test('US2 add_comment returns {number, comment_url, updated_at}, and an update with that updated_at is not stale', async () => {
+  const { c, w } = await harness();
+  try {
+    const i = w.forge.addIssue('BELAY', { title: 'Proposal: Import export spreadsheet', body: renderBody(sections), labels: ['type/proposal', 'status/proposal-draft', 'priority/p2'] });
+    const r = await c.call('add_comment', { repo: 'BELAY', number: i.number, body: 'From the call on 25 Nov.' });
+    assert.notEqual(r.isError, true, JSON.stringify(r.payload));
+    assert.deepEqual(Object.keys(r.payload).sort(), ['comment_url', 'number', 'updated_at']);
+    const u = await c.call('update_proposal', { repo: 'BELAY', number: i.number, expected_updated_at: r.payload.updated_at, priority: 'p1' });
+    assert.notEqual(u.isError, true, JSON.stringify(u.payload));
+  } finally { await c.close(); }
+});

@@ -465,7 +465,7 @@ stale refusal in between. Live: quickstart §2 (update to ready, `stale` after a
 
 ### Tests for User Story 2 (TDD) ⚠️
 
-- [ ] T036 [P] [US2] Write tests for refining proposals in `mcp-servers/pdlc/tests/unit/proposals-refine.test.mjs`.
+- [X] T036 [P] [US2] Write tests for refining proposals in `mcp-servers/pdlc/tests/unit/proposals-refine.test.mjs`.
   - `list`:
     - `status` `draft` / `ready` / `all` filters on the resolved label ids (`all` uses `type/proposal` alone);
     - `query` is passed as `q`; `state` defaults to `open`;
@@ -484,7 +484,7 @@ stale refusal in between. Live: quickstart §2 (update to ready, `stale` after a
   - **Scenarios covered**: US2-AC1 to US2-AC6, FR-006, FR-007, FR-015, FR-016, research R8, R9
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/proposals-refine.test.mjs` → expected: the tests fail
     with `TypeError: … list is not a function` (and likewise `update` and `comment`)
-- [ ] T037 [P] [US2] Add tool-level tests for US2 to `mcp-servers/pdlc/tests/unit/tools.test.mjs`, covering
+- [X] T037 [P] [US2] Add tool-level tests for US2 to `mcp-servers/pdlc/tests/unit/tools.test.mjs`, covering
   `list_proposals`, `update_proposal` and `add_comment`, with the output shapes from contracts/tools.md.
   - **Scenarios covered**: US2-AC1 to US2-AC6
   - **Verify RED**: `node --test --test-name-pattern "US2" mcp-servers/pdlc/tests/unit/tools.test.mjs` → expected:
@@ -492,11 +492,11 @@ stale refusal in between. Live: quickstart §2 (update to ready, `stale` after a
 
 ### Implementation for User Story 2
 
-- [ ] T038 [US2] Implement `list`, `update` and `comment` in `mcp-servers/pdlc/src/proposals.mjs`, using
+- [X] T038 [US2] Implement `list`, `update` and `comment` in `mcp-servers/pdlc/src/proposals.mjs`, using
   `planStatusSwap` and `planPrioritySwap` from `src/labels.mjs`, and re-reading `updated_at` after each write
   (prerequisite: T036 verified RED).
   - **Verify GREEN**: the T036 command → expected: 0 failures. Then `proposals.test.mjs` still passes.
-- [ ] T039 [US2] Wire `list_proposals`, `update_proposal` and `add_comment` in `mcp-servers/pdlc/src/tools.mjs`
+- [X] T039 [US2] Wire `list_proposals`, `update_proposal` and `add_comment` in `mcp-servers/pdlc/src/tools.mjs`
   (prerequisite: T037 verified RED).
   - **Verify GREEN**: the T037 command → expected: 0 failures. Then `pnpm nx run pdlc:test` passes.
 

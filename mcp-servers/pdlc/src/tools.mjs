@@ -37,6 +37,17 @@ export function createToolHandlers(deps = {}) {
       wrote('create_proposal', 'proposal created', { repo: args.repo, number: result.number }, ctx);
       return result;
     };
+    handlers.list_proposals = async (args) => proposals.list(args);
+    handlers.update_proposal = async (args, ctx) => {
+      const result = await proposals.update(args);
+      if (result.changed.length) wrote('update_proposal', `proposal updated: ${result.changed.join(', ')}`, { repo: args.repo, number: result.number }, ctx);
+      return result;
+    };
+    handlers.add_comment = async (args, ctx) => {
+      const result = await proposals.comment(args);
+      wrote('add_comment', 'comment added', { repo: args.repo, number: result.number }, ctx);
+      return result;
+    };
   }
 
   return handlers;
