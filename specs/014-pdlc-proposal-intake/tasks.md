@@ -586,7 +586,7 @@ SC-003). Depends on US1 and US2, whose operations the guards protect.
 **Independent Test**: `setup-check.test.mjs` has four fixtures (nothing set up, labels only, form out of step, all
 set up). Live: quickstart §2, where `check_setup` returns `ok` for `ci-smoke`.
 
-- [ ] T045 [P] [US4] Write tests for the setup check in `mcp-servers/pdlc/tests/unit/setup-check.test.mjs`, with
+- [X] T045 [P] [US4] Write tests for the setup check in `mcp-servers/pdlc/tests/unit/setup-check.test.mjs`, with
   forge doubles. Check each result field of `data-model.md`: Setup check result.missing_labels, .form,
   .default_branch, .fix_hint, .ok.
   - Every label in `proposal-labels.json` except `status/bot-managed` is required; each missing one is listed, and no
@@ -600,7 +600,7 @@ set up). Live: quickstart §2, where `check_setup` returns `ok` for `ci-smoke`.
   - **Scenarios covered**: US4-AC1 to US4-AC4, FR-028
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/setup-check.test.mjs` → expected: 1 failing file,
     `ERR_MODULE_NOT_FOUND`
-- [ ] T046 [US4] Implement `mcp-servers/pdlc/src/setup-check.mjs`, reading the master form and labels from
+- [X] T046 [US4] Implement `mcp-servers/pdlc/src/setup-check.mjs`, reading the master form and labels from
   `../contract/` relative to the module so the bundle carries them. Wire `check_setup` in `src/tools.mjs`
   (prerequisite: T045 verified RED).
   - **Verify GREEN**: the T045 command → expected: 0 failures. Then `pnpm nx run pdlc:test` passes.

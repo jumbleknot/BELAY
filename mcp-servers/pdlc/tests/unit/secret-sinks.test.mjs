@@ -14,6 +14,7 @@ import { createRepoAllowlist } from '../../src/repo-allowlist.mjs';
 import { createProposals } from '../../src/proposals.mjs';
 import { createLocalCopy } from '../../src/local-copy.mjs';
 import { createGitRunner } from '../../src/git-runner.mjs';
+import { createSetupCheck } from '../../src/setup-check.mjs';
 import { renderBody } from '../../src/proposal-body.mjs';
 import { Refusal } from '../../src/refusal.mjs';
 
@@ -35,7 +36,8 @@ function rig({ gitThrows = false } = {}) {
   const git = createGitRunner({ token: CANARY, execFile: x.execFile, baseEnv: { PATH: '/usr/bin' } });
   let exists = false;
   const localCopy = createLocalCopy({ cloneRoot: '/clones', originUrlFor: (n) => `https://forge.example/operator/${n}.git`, git, existsSync: () => exists });
-  return { forge, x, deps: { allowlist, proposals, localCopy }, setExists: (v) => { exists = v; } };
+  const setupCheck = createSetupCheck({ forge: client, allowlist, config });
+  return { forge, x, deps: { allowlist, proposals, localCopy, setupCheck }, setExists: (v) => { exists = v; } };
 }
 
 function assertNoCanaryOutsideTheTwoSinks(r, c, results) {
@@ -72,7 +74,8 @@ test('every tool, on its success paths, leaks the token nowhere but the two sink
     await call('get_proposal', { repo: 'BELAY', number: created.number });
     const commented = (await call('add_comment', { repo: 'BELAY', number: created.number, body: BODY_MARKER })).payload;
     await call('update_proposal', { repo: 'BELAY', number: created.number, expected_updated_at: commented.updated_at, status: 'ready' });
-    await call('check_setup', { repo: 'BELAY' });
+    const setup = await call('check_setup', { repo: 'BELAY' });
+    assert.notEqual(setup.isError, true, JSON.stringify(setup.payload));
     assert.ok(r.x.calls.length > 0, 'git ran');
     assertNoCanaryOutsideTheTwoSinks(r, c, results);
   } finally { await c.close(); }
