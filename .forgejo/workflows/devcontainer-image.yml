@@ -104,8 +104,14 @@ jobs:
       # scan died with ERR_MODULE_NOT_FOUND and the push was skipped only because the step crashed:
       # that looks like the gate working, but no image was judged.
       # workflow-deps-installed.guard.test.mjs fails any job that repeats this.
+      # Into a JOB-PRIVATE prefix, never the global one (item #79): on this shared host runner the global
+      # prefix is the Node in the host's tool cache, which other projects' jobs also run, so a global
+      # install changes their pnpm. host-runner-shared-state.guard.test.mjs pins this, and the cleanup
+      # step at the end of the job.
       - name: Install pnpm (version from package.json packageManager)
         if: steps.gate.outputs.build == 'true'
+        env:
+          PNPM_PREFIX: ${{ runner.temp }}/belay-pnpm
         run: bash scripts/ci-log-step.sh build-publish-install-pnpm bash scripts/install-pnpm.sh
 
       - name: Install workspace dependencies (frozen lockfile)
@@ -162,6 +168,13 @@ jobs:
             echo "Then recreate the dev container. See docs/runbooks/devcontainer.md."
           } >> "$GITHUB_STEP_SUMMARY"
           CI_LOG_STEP
+
+      # Item #79: nothing this job installed outlives it on the shared host.
+      - name: Remove the job-private pnpm
+        if: always() && steps.gate.outputs.build == 'true'
+        env:
+          PNPM_PREFIX: ${{ runner.temp }}/belay-pnpm
+        run: bash scripts/ci-log-step.sh build-publish-remove-pnpm rm -rf "$PNPM_PREFIX"
 
       - name: Publish failure digest
         if: always()
