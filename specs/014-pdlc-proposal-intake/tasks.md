@@ -929,7 +929,7 @@ live check is quickstart §7, after MCM's own feature merges, outside this PR.
 
   Then run quickstart §4 (startup refusal) on the host with the bundle from T051.
   - **Done when**: every command above is recorded with its summary line in the PR body.
-- [ ] T079 **Open the PR** from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
+- [X] T079 *(Branch `014-pdlc-proposal-intake`, PR #83.)* **Open the PR** from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
   1. `git push origin HEAD:014-pdlc-proposal-intake`
   2. `node scripts/forge-pr.mjs open --head 014-pdlc-proposal-intake --title "Feature 014: Claude Desktop proposal intake (pdlc server, BELAY adopts proposals)" --body-file <file>`
   3. `node scripts/ci-status.mjs watch --pr <n>`, until it exits 0 (3 means still waiting, never a failure)
