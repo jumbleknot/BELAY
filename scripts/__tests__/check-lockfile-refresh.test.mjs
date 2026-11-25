@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { deriveWindow, judgeLockfile, main } from '../check-lockfile-refresh.mjs';
+import { deriveWindow, judgeLockfile, main, pickWindowVerdict } from '../check-lockfile-refresh.mjs';
 
 const CFG = { timezone: 'UTC', schedule: ['* 5-6 * * 3'], lockFileMaintenance: { schedule: ['* 5-6 * * 3'] } };
 const WED_0830 = new Date('2026-11-25T08:30:00Z'); // a Wednesday
@@ -79,10 +79,13 @@ function forge(routes) {
     return { ok: true, status: 200, json: async () => r.body, headers: { get: (h) => (h === 'x-total-count' && r.total !== undefined ? String(r.total) : null) } };
   };
 }
+// A captured-shape commit status row: check-renovate-config.mjs links each verdict to its own run.
+const verdict = (runNumber, description) => ({ context: 'renovate/verdict', status: 'success', description,
+  target_url: `https://forge.example/o/r/actions/runs/${runNumber}` });
 const ENV = { GITHUB_SERVER_URL: 'https://forge.example', GITHUB_REPOSITORY: 'o/r', GITHUB_TOKEN: 't' };
 const routes = (desc = 'x; lock file: no-work') => ({
   '/actions/tasks': { body: { workflow_runs: IN, total_count: 1 } },
-  [`/commits/${IN[0].head_sha}/status`]: { body: { statuses: [{ context: 'renovate/verdict', description: desc, status: 'success' }] } },
+  [`/commits/${IN[0].head_sha}/statuses`]: { body: [verdict(IN[0].run_number, desc)], total: 1 },
   '/pulls': { body: [], total: 0 },
 });
 const silent = { log: () => {}, error: () => {} };
@@ -102,4 +105,51 @@ test('lockfile main: a failed read exits 1', async () => {
 });
 test('lockfile main: --selftest passes', async () => {
   assert.equal(await main(['--selftest'], { env: ENV, ...silent }), 0);
+});
+
+// ── item #77: the window run's OWN verdict, not the newest on the commit ─────────────────────────
+// Measured 2026-11-25: runs #114 (01:17), #116 (the 05:00 window) and #121 (07:17 security cron) all
+// ran on one unchanged main commit. The combined status kept only #121's verdict, so the health job
+// judged the window by a run outside it.
+const SHA = '2f47590f43ba'.padEnd(40, '0');
+const SAME_SHA = [run(121, '2026-11-25T07:17:27Z', { head_sha: SHA }), run(116, '2026-11-25T05:00:27Z', { head_sha: SHA }),
+  run(114, '2026-11-25T01:17:27Z', { head_sha: SHA })];
+const SAME_SHA_STATUSES = [ // newest first, as the forge lists them
+  verdict(121, '✅ renovate run: done, 0 PR(s) created; lock file: not-scheduled; health report: fresh 0d'),
+  verdict(116, '✅ renovate run: done, 3 PR(s) created; lock file: no-work; health report: fresh 0d'),
+  verdict(114, '✅ renovate run: done, 0 PR(s) created; lock file: not-scheduled; health report: fresh 0d'),
+];
+
+test('pickWindowVerdict: picks the verdict linked to the window run, not the newest', () => {
+  assert.match(pickWindowVerdict(SAME_SHA_STATUSES, 116), /lock file: no-work/);
+});
+test('pickWindowVerdict: a run number is matched whole (run 16 is not run 116)', () => {
+  assert.equal(pickWindowVerdict(SAME_SHA_STATUSES, 16), null);
+});
+test('pickWindowVerdict: other contexts and a missing target_url are ignored; no match is null, never the newest', () => {
+  const rows = [{ context: 'guardrails / guardrails (push)', description: 'lock file: no-work', target_url: 'https://forge.example/o/r/actions/runs/116' },
+    { context: 'renovate/verdict', description: 'x; lock file: not-scheduled' }];
+  assert.equal(pickWindowVerdict(rows, 116), null);
+});
+test('lockfile main: three runs on one commit, the window run #116 said no-work: current, exit 0 (item #77)', async () => {
+  const out = join(mkdtempSync(join(tmpdir(), 'lfr-')), 'v.json');
+  const rc = await main(['--now', WED_0830.toISOString(), '--verdict-out', out], { env: ENV, config: CFG, ...silent, fetch: forge({
+    '/actions/tasks': { body: { workflow_runs: SAME_SHA, total_count: 3 } },
+    [`/commits/${SHA}/statuses`]: { body: SAME_SHA_STATUSES, total: 3 },
+    '/pulls': { body: [], total: 0 },
+  }) });
+  const v = JSON.parse(readFileSync(out, 'utf8'));
+  assert.equal(v.state, 'current');
+  assert.equal(v.result, 'no-work');
+  assert.equal(rc, 0);
+});
+test('lockfile main: no verdict linked to the window run is unknown, exit 1 (item #77)', async () => {
+  const out = join(mkdtempSync(join(tmpdir(), 'lfr-')), 'v.json');
+  const rc = await main(['--now', WED_0830.toISOString(), '--verdict-out', out], { env: ENV, config: CFG, ...silent, fetch: forge({
+    '/actions/tasks': { body: { workflow_runs: SAME_SHA, total_count: 3 } },
+    [`/commits/${SHA}/statuses`]: { body: [SAME_SHA_STATUSES[0]], total: 1 },
+    '/pulls': { body: [], total: 0 },
+  }) });
+  assert.equal(JSON.parse(readFileSync(out, 'utf8')).state, 'unknown');
+  assert.equal(rc, 1);
 });
