@@ -514,7 +514,7 @@ SC-003). Depends on US1 and US2, whose operations the guards protect.
 
 ### Tests for User Story 3 (TDD) ⚠️
 
-- [ ] T040 [P] [US3] Write the write-guard matrix in `mcp-servers/pdlc/tests/unit/write-guards.test.mjs`. For each of
+- [X] T040 [P] [US3] Write the write-guard matrix in `mcp-servers/pdlc/tests/unit/write-guards.test.mjs`. For each of
   `create_proposal`, `update_proposal`, `add_comment`, `list_proposals` and `get_proposal`, send the request each
   guard refuses:
   - another owner, or an unknown repository (no forge request at all);
@@ -533,7 +533,7 @@ SC-003). Depends on US1 and US2, whose operations the guards protect.
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/write-guards.test.mjs` → expected: the order tests and
     the `bot_managed` comment test fail. If the US1 and US2 code already refuses a case, take a **mutation RED** for it
     instead: delete that guard's check in `src/proposals.mjs`, watch its row fail, then revert.
-- [ ] T041 [P] [US3] Write a real-git refusal test in
+- [X] T041 [P] [US3] Write a real-git refusal test in
   `mcp-servers/pdlc/tests/integration/local-copy-refusals.integration.test.mjs`. Build each copy state against a bare
   repository addressed through `originUrlFor` as a `file://` URL, set up as in T027:
   - dirty (a modified tracked file, and separately one untracked file): `copy_dirty`;
@@ -548,7 +548,7 @@ SC-003). Depends on US1 and US2, whose operations the guards protect.
   - **Scenarios covered**: US3-AC4, US3-AC5 (no history), FR-017, SC-004, SC-005
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/integration/local-copy-refusals.integration.test.mjs` →
     expected: the refusal tests fail, because `sync` fast-forwards or errors instead of refusing
-- [ ] T042 [P] [US3] Write the secret-sink sweep in `mcp-servers/pdlc/tests/unit/secret-sinks.test.mjs`. Run every
+- [X] T042 [P] [US3] Write the secret-sink sweep in `mcp-servers/pdlc/tests/unit/secret-sinks.test.mjs`. Run every
   tool, including the failing paths (401, 403, network error, a refusal), with a canary token. Assert the canary does
   not appear in:
   - any tool result text or `structuredContent`;
@@ -565,10 +565,10 @@ SC-003). Depends on US1 and US2, whose operations the guards protect.
 
 ### Implementation for User Story 3
 
-- [ ] T043 [US3] Implement the four copy refusals in `mcp-servers/pdlc/src/local-copy.mjs`, checking `is_copy_of_repo`
+- [X] T043 [US3] Implement the four copy refusals in `mcp-servers/pdlc/src/local-copy.mjs`, checking `is_copy_of_repo`
   first (prerequisite: T041 verified RED).
   - **Verify GREEN**: the T041 command and the T027 command → expected: 0 failures
-- [ ] T044 [US3] Close any gap T040 or T042 found in `mcp-servers/pdlc/src/proposals.mjs`, `src/tools.mjs`,
+- [X] T044 [US3] Close any gap T040 or T042 found in `mcp-servers/pdlc/src/proposals.mjs`, `src/tools.mjs`,
   `src/log.mjs` and `src/forge-client.mjs`. Apply the guards in the data-model order, and redact at every sink
   (prerequisite: T040 and T042 verified RED).
   - **Verify GREEN**:
