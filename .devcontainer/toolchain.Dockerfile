@@ -131,7 +131,7 @@ RUN curl -LsSf https://astral.sh/uv/0.13.9/install.sh | sh \
 # rather than inherited, or a future trim of the apt set turns pwsh into a startup crash whose
 # message names neither this layer nor the package it lost. At the tail, so a pwsh bump does not
 # rebuild the Rust layer.
-ARG POWERSHELL_VERSION=7.6.5
+ARG POWERSHELL_VERSION=7.7.0
 USER root
 RUN set -eux; \
     export DEBIAN_FRONTEND=noninteractive; \
