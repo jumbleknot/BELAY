@@ -23,7 +23,13 @@ uses the Verify RED / Verify GREEN format (see
 | **Coverage** | The unit tests run under Node's built-in coverage, then `scripts/check-coverage.mjs` fails if any source module (`scripts/*.mjs`, `scripts/lib/*.mjs`) or the total is below **70% of lines**, or if a source module is missing from the report. A module no test loads is absent from the report, not shown at 0%, so it fails as uncovered. Branches are reported, not gated. The floor and any expiring exceptions live in one place, `scripts/coverage-policy.yaml` | `pnpm nx run scripts:test` (the same run as Unit) | **Yes** |
 | **Image CVE scans** | Not run by `scripts:lint` or `scripts:test`, because they need Trivy and the network. The dev-container build scans its image **before push** and publishes nothing on a fixable Critical. `image-scan.yml` sweeps every third-party image Tuesday and Friday and on change. The `image-scan` and `check-image-findings` selftests run in `scripts:lint`. See [image scanning](../runbooks/image-scanning.md) | `devcontainer-image.yml`, `image-scan.yml` | The builder gate blocks **publication**. The sweep is **not** a required merge check (research R8 of feature 010) |
 
-Nothing in CI talks to a live forge, so no integration tier exists yet.
+The `pdlc` server (`mcp-servers/pdlc/`, feature 014) adds three tiers of its own:
+
+| Tier | What it is | Run with | Gates a merge? |
+| --- | --- | --- | --- |
+| **pdlc unit and contract** | `node:test` files in `mcp-servers/pdlc/tests/unit/`, with fetch and git doubles injected; the contract test connects a real MCP client to the real server over the SDK's in-memory transport. Then the same 70% coverage gate, through `check-coverage.mjs --policy mcp-servers/pdlc/coverage-policy.yaml` | `pnpm nx run pdlc:test` | **Yes** |
+| **pdlc integration (real git)** | Real `git` against local `file://` bare repositories: blobless clone, fast-forward, and every copy refusal, with no doubles and no forge | `pnpm nx run pdlc:integration` | **Yes** |
+| **pdlc integration (real forge)** | The real forge and the real `ci-smoke` repository, never mocked. It maps `FORGE_ISSUE_TOKEN` to `PDLC_FORGE_TOKEN` at the point of use and **fails, never skips**, without it | `pnpm nx run pdlc:integration-forge` | **No**: operator-run in the dev container, because nothing in CI talks to a live forge |
 
 ## What a new project inherits
 

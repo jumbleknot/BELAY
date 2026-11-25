@@ -19,8 +19,11 @@ every push to `main` and manual dispatch, and branch protection on `main` requir
 runs `pnpm nx run scripts:lint` (every gate: Spec Kit overrides, digest coverage, egress allowlist,
 secret scan, topology scrub, toolchain consistency, inline and argv secrets, override floors,
 resource naming, OpenWiki OKF and governance, each after its selftest) and `pnpm nx run scripts:test` (the unit
-tests under coverage, then the 70% line-coverage gate, whose verdict is the step's last line). So **those two commands, run locally,
-reproduce the required check**. A failure-digest step always runs last and never changes the result.
+tests under coverage, then the 70% line-coverage gate, whose verdict is the step's last line), then the `pdlc`
+server's three targets: `pdlc:lint`, `pdlc:test` (unit and contract tests, its own 70% gate) and
+`pdlc:integration` (real git). So **those five commands, run locally, reproduce the required check**. The
+server's live-forge tier, `pdlc:integration-forge`, is operator-run and never in CI. A failure-digest step always
+runs last and never changes the result.
 Full detail is in [docs/runbooks/ci.md](../../docs/runbooks/ci.md).
 
 The whole PR loop runs from a terminal:

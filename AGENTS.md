@@ -14,7 +14,7 @@ BELAY is a polyglot monorepo of tooling that other repositories share, so every 
 - **A tool's "no" is about the tool, not your question — check before claiming anything verified OR impossible** — a skipped test exits 0 and reads as a pass (watch the SKIP COUNT); a forge empty list or 404 often means the wrong token or id — [testing tiers](openwiki/invariants/testing-tiers.md), [instrument traps](openwiki/gotchas/instrument-traps.md)
 - **"It can't run in this environment" needs the same proof as "it passes"** — a credential- or tool-driven skip is almost always a missing *file* or setting; name the missing input before retiring a tier to CI — [testing tiers](openwiki/invariants/testing-tiers.md)
 - **Before believing a result, check the INSTRUMENT** — `node --test <file> --test-name-pattern x` runs EVERYTHING (node's flags go before the path); RTK can rewrite an answer into its opposite (re-run under `rtk proxy`); confirm a script supports `--dry-run` before trusting one — [instrument traps](openwiki/gotchas/instrument-traps.md)
-- **Run the checks your DIFF touches — and CI's two targets before every push** — `pnpm nx run scripts:lint` and `pnpm nx run scripts:test` are exactly what CI runs; a change under `.specify/` or `.claude/skills/speckit-*` also needs `node scripts/check-speckit-overrides.mjs` first — [validation checklist](openwiki/invariants/feature-validation-checklist.md)
+- **Run the checks your DIFF touches — and CI's targets before every push** — `pnpm nx run scripts:lint` and `pnpm nx run scripts:test`, plus `pdlc:lint`, `pdlc:test` and `pdlc:integration`, are exactly what CI runs; a change under `.specify/` or `.claude/skills/speckit-*` also needs `node scripts/check-speckit-overrides.mjs` first — [validation checklist](openwiki/invariants/feature-validation-checklist.md)
 - **A guard that fails because you changed what it protects gets UPDATED at the cause, never deleted** — make it assert the new premise so it still fails if that regresses — [testing tiers](openwiki/invariants/testing-tiers.md)
 - **Never edit a Spec Kit-owned file without registering it; never edit a core template** — `specify integration upgrade --force` overwrites them; use an override, or register the local edit in `scripts/check-speckit-overrides.mjs` and the runbook in the same change — [Spec Kit](openwiki/runbooks/spec-kit.md)
 - **Changing a file that an `openwiki/` page cites as its `resource` means refreshing that page IN THE SAME PR** — the OKF gate's V17 fails it otherwise: `node scripts/wiki-refresh.mjs --stale`, then `--diff`/`--record <page>`, never a hand-typed hash — [wiki maintenance](openwiki/process/wiki-maintenance.md)
@@ -60,6 +60,7 @@ BELAY is a polyglot monorepo of tooling that other repositories share, so every 
 - [ADR-0002 — the session maintains the wiki, with no generator](openwiki/decisions/adr-0002-session-maintained-wiki.md)
 - [ADR-0003 — the dev container in a dedicated Docker Sandbox microVM](openwiki/decisions/adr-0003-docker-sandbox-devcontainer.md)
 - [ADR-0004 — a self-hosted Renovate bot proposes updates](openwiki/decisions/adr-0004-renovate-dependency-bot.md)
+- [ADR-0005 — operator-tool MCP servers, local stdio, shipped as Claude Desktop Extensions](openwiki/decisions/adr-0005-operator-tool-mcp-servers.md) — constitution 1.1.0; the `pdlc` server
 
 ### Gotchas
 
@@ -72,6 +73,7 @@ BELAY is a polyglot monorepo of tooling that other repositories share, so every 
 - [CI guardrails, the failure digest, and the PR loop](openwiki/runbooks/ci.md) — `guardrails.yml`, `ci-status.mjs`, `forge-pr.mjs`
 - [The dev container — Docker Sandbox, credentials, egress and the worktree rule](openwiki/runbooks/devcontainer.md) — `open-sandbox.ps1`, recreate, re-pin, the worktree rule
 - [Doc drift: the doc-impact sweep and the quarterly audit](openwiki/runbooks/doc-drift.md)
+- [The `pdlc` server — proposal intake from Claude Desktop](openwiki/runbooks/pdlc.md) — install, the `pdlc` token, the audit trail, refusal codes, hand-off to MCM
 - [Image CVE scanning (Trivy)](openwiki/runbooks/image-scanning.md) — the builder gate before push, the Tue/Fri sweep, version-keyed allowlist
 - [SAST and SCA — the static security gate](openwiki/runbooks/sast.md) — `pnpm nx run scripts:sast`, the allowlist, outage vs finding
 - [Spec Kit: this repository's customisations, and upgrading it](openwiki/runbooks/spec-kit.md) — the override gate and its failure codes

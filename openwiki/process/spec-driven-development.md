@@ -15,7 +15,7 @@ customisations, is on [the Spec Kit page](../runbooks/spec-kit.md).
 
 ```mermaid
 flowchart LR
-  P["Proposal or design record\n(docs/proposals/, specs/000-new-repo-setup/)"] --> S["spec.md\nWHAT + WHY"]
+  P["Proposal\n(backlog issue type/proposal, or docs/proposals/)"] --> S["spec.md\nWHAT + WHY"]
   S --> Pl["plan.md\nHOW"]
   Pl --> T["tasks.md\nexecutable tasks"]
   T --> I["Implementation\n(specs/NNN-feature/)"]
@@ -23,9 +23,16 @@ flowchart LR
   I -. "constitution conflict" .-> C["Human approval required"]
 ```
 
-1. **Proposal** (`docs/proposals/**`, or the pre-Spec-Kit design record and plan in `specs/000-new-repo-setup/`): an idea or
-   design captured before it has a feature number. Once a numbered `specs/NNN-feature-name/` folder
-   exists, the proposal is superseded.
+1. **Proposal**: an idea or design captured before it has a feature number. It has two homes:
+   - **The issue backlog** (feature 014): an issue labelled `type/proposal`, filed from a Claude Desktop session
+     through the `pdlc` server or through the proposal web form. A draft (`status/proposal-draft`) is shaped there;
+     a ready one (`status/needs-spec`) is picked up with `backlog.mjs show <n>` and fed to `/speckit-specify` as
+     `Proposal #<n>: <title>` plus its body. The mandatory `after_specify` hook then closes it with a comment
+     linking the new spec ([the backlog](../runbooks/backlog.md)).
+   - **`docs/proposals/**`**, kept for history and for long research documents (FR-027), with the pre-Spec-Kit
+     design record and plan in `specs/000-new-repo-setup/`.
+
+   Once a numbered `specs/NNN-feature-name/` folder exists, the proposal is superseded.
 2. **`spec.md`**: WHAT and WHY only, meaning user stories, functional requirements and domain terms.
    It stays technology-agnostic.
 3. **`plan.md`**: HOW, meaning the stack, libraries and approach.

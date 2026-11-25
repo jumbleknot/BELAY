@@ -1,18 +1,18 @@
 ---
 type: Runbook
 title: The agent-driven backlog (Forgejo Issues)
-description: How the BELAY backlog lives in the repository's own Forgejo tracker and is worked by the assistant through scripts/backlog.mjs and the tasks-to-issues fan-out — the write credential bounded server-side by its scope and client-side by a same-repository guard, the label and milestone conventions, why closure is an explicit act, and the API traps that make a filter fail open.
+description: How the BELAY backlog lives in the repository's own Forgejo tracker and is worked by the assistant through scripts/backlog.mjs and the tasks-to-issues fan-out — the write credential bounded server-side by its scope and client-side by a same-repository guard, the label and milestone conventions, proposals (draft and ready, the pick-up, and close-proposal as the one close path), why closure is an explicit act, and the API traps that make a filter fail open.
 tags: [backlog, forgejo, issues, runbook]
 resource: docs/runbooks/backlog.md
-resource-sha256: 63cb54ba0ee54a7bc6fab0c2c51e44fc9d5b8b7e13c71e3850ed9dba5ccc36a0
-timestamp: 2026-11-24T11:26:01.404Z
+resource-sha256: f8c16bdccd26399717e7d94f6e350b4dd3442a5215901402b5ed2056d4f1237d
+timestamp: 2026-11-25T04:10:27.808Z
 ---
 
 # The agent-driven backlog (Forgejo Issues)
 
 The BELAY backlog is this repository's Forgejo issue tracker. The maintainer works it in the web UI.
 The assistant works it through `scripts/backlog.mjs` (`ready`, `list`, `show`, `create`, `update`,
-`comment`, `dep`, and idempotent label and milestone setup), with decision rules in
+`comment`, `dep`, `close-proposal`, and idempotent label and milestone setup), with decision rules in
 `.claude/skills/forgejo-issues/SKILL.md`. **No backlog operation creates a commit, branch, PR or CI
 run.** Issue changes are HTTP calls, so a one-line backlog edit costs no CI cycle.
 `/speckit-taskstoissues` mirrors a feature's `tasks.md` into its milestone through
@@ -38,8 +38,16 @@ run.** Issue changes are HTTP calls, so a one-line backlog edit costs no CI cycl
   over the dependency graph. It only warns about an unlabelled item that has an open blocker.
 - **Unknown labels and milestones are refused locally**, because the API would silently ignore them
   and return the unfiltered set. A listing that shows PRs has lost `type=issues`.
-- **The issue form only takes effect from the default branch.** `validate-form` says so rather than
-  reporting the form as broken.
+- **The issue forms only take effect from the default branch.** There are two, `backlog-item.yaml` and
+  `proposal.yaml`. `validate-form` says so rather than reporting a form as broken, and marks one that is only in
+  the working tree as not yet on the default branch.
+- **Proposals have two states and one close path** (feature 014). A draft (`status/proposal-draft`) is hidden
+  from `ready` with its own note; a ready one (`status/needs-spec`) is listed like any item. Pick one up with
+  `show <n>` and `/speckit-specify` started with `Proposal #<n>: <title>`. The mandatory `after_specify` hook
+  then runs `close-proposal`, the one exception to "closing is a state change on update": it comments a link to
+  the spec first, closes second, never touches labels, and is idempotent.
+- **The proposal labels are copied from the pdlc contract**, `mcp-servers/pdlc/contract/proposal-labels.json`,
+  and a test holds `TAXONOMY` equal to it. Run `setup-labels` once after a change adds labels.
 - **Exit codes:** 0 ok, 1 unexpected, 2 usage or validation, 3 missing credential (often a token set
   after the terminal started), 4 authorisation, 5 transport.
 - **`ready` never lists the dependency bot's dashboard.** An item labelled `status/bot-managed` is

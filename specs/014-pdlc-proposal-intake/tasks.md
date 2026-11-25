@@ -655,7 +655,7 @@ install runbook.
     - `pnpm exec mcpb validate mcp-servers/pdlc/manifest.json` exits 0;
     - `unzip -l` on the `.mcpb` shows `node_modules/@modelcontextprotocol/sdk/…` as real files (no symlinks),
       together with `contract/proposal.yaml` and `src/server.mjs`.
-- [ ] T052 [US5] Write `docs/runbooks/pdlc.md`, the install part. It covers:
+- [ ] T052 [US5] *(Written; the four host observations are marked pending T006.)* Write `docs/runbooks/pdlc.md`, the install part. It covers:
   - prerequisites (Git for Windows 2.31 or later);
   - creating a **new** forge token named `pdlc` with exactly `write:issue` + `read:repository`, used by nothing else,
     and how to revoke it;
@@ -811,7 +811,7 @@ verb, the `after_specify` hook and its skill, and the backlog skill's pick-up ru
 **Independent Test**: a read-through against the spec's "Hand-off to the MCM repository" section, item by item. The
 live check is quickstart §7, after MCM's own feature merges, outside this PR.
 
-- [ ] T064 [US6] Add a "Hand off to a target repository (worked example: MCM)" part to `docs/runbooks/pdlc.md`. Take
+- [X] T064 [US6] Add a "Hand off to a target repository (worked example: MCM)" part to `docs/runbooks/pdlc.md`. Take
   each item from the spec's "Hand-off to the MCM repository" section, in its order:
   - the "before starting" items;
   - the MCM feature's deliverables (form, labels, ready-excludes-drafts, pick-up, close-on-spec, docs, tests and gates,
@@ -828,7 +828,7 @@ live check is quickstart §7, after MCM's own feature merges, outside this PR.
 
 ## Phase 10: Polish and cross-cutting concerns
 
-- [ ] T065 [P] Write the live-forge tests in `mcp-servers/pdlc/tests/integration-forge/proposals.forge.test.mjs`, and
+- [ ] T065 [P] *(Written; Verify RED observed. Verify GREEN waits for ci-smoke's proposal.yaml — operator.)* Write the live-forge tests in `mcp-servers/pdlc/tests/integration-forge/proposals.forge.test.mjs`, and
   the `pdlc:integration-forge` target. The target maps `FORGE_ISSUE_TOKEN` to `PDLC_FORGE_TOKEN` at the point of use
   (research R16). The scenarios are those of quickstart §2 against `ci-smoke`:
   - create a draft, refuse a duplicate, read it back;
@@ -847,15 +847,15 @@ live check is quickstart §7, after MCM's own feature merges, outside this PR.
     `FORGE_ISSUE_TOKEN`, with skip count 0
   - **Verify GREEN**: `pnpm nx run pdlc:integration-forge` → expected: 0 failures, skip count 0, and no
     `pdlc-it-<run id>` issue left open
-- [ ] T066 [P] Add assertions to `scripts/__tests__/guardrails-workflow.test.mjs`. `.forgejo/workflows/guardrails.yml`
+- [X] T066 [P] Add assertions to `scripts/__tests__/guardrails-workflow.test.mjs`. `.forgejo/workflows/guardrails.yml`
   must run `pdlc:lint`, `pdlc:test` and `pdlc:integration` after `scripts:lint` and `scripts:test`, each wrapped like
   the existing steps, so the failure digest covers it.
   - **Verify RED**: `node --test --test-name-pattern "pdlc" scripts/__tests__/guardrails-workflow.test.mjs` →
     expected: the new tests fail, because the steps are absent
-- [ ] T067 Add the three steps to `.forgejo/workflows/guardrails.yml` (prerequisite: T066 verified RED).
+- [X] T067 Add the three steps to `.forgejo/workflows/guardrails.yml` (prerequisite: T066 verified RED).
   - **Verify GREEN**: the T066 command → expected: 0 failures. Then `node scripts/check-ci-digest-coverage.mjs` exits
     0, and `pnpm nx run scripts:lint` passes.
-- [ ] T068 [P] Update `docs/runbooks/backlog.md` at the T001 hits (lines 18, 22, 25, 76, 82 and 88):
+- [X] T068 [P] Update `docs/runbooks/backlog.md` at the T001 hits (lines 18, 22, 25, 76, 82 and 88):
   - eleven labels, with the proposal family;
   - the proposal form beside the backlog form;
   - `ready` hides draft proposals;
@@ -867,37 +867,52 @@ live check is quickstart §7, after MCM's own feature merges, outside this PR.
 - [X] T069 [P] Add the `after_specify` hook and the `speckit-belay-close-proposal` skill to the inventory table in
   `docs/runbooks/spec-kit.md`, then refresh `openwiki/runbooks/spec-kit.md`.
   - **Done when**: the inventory lists both, and `--stale` does not list the page.
-- [ ] T070 [P] Update `docs/runbooks/ci.md`: what `guardrails` runs now includes the three `pdlc` targets, and
+- [X] T070 [P] Update `docs/runbooks/ci.md`: what `guardrails` runs now includes the three `pdlc` targets, and
   `pdlc:integration-forge` is operator-run. Then refresh `openwiki/runbooks/ci.md`.
   - **Done when**: `--stale` does not list the page.
-- [ ] T071 [P] Update `openwiki/process/spec-driven-development.md` at lines 18 and 26 (canonical). Stage 1, the
+- [X] T071 [P] Update `openwiki/process/spec-driven-development.md` at lines 18 and 26 (canonical). Stage 1, the
   proposal, may now live in a repository's issue backlog, filed from Claude Desktop or the web form, and is picked up
   with `Proposal #<n>:`. `docs/proposals/` stays for history and long research (FR-027).
   - **Done when**: the diagram node and step 1 name both homes.
-- [ ] T072 [P] Update `openwiki/invariants/testing-tiers.md` (canonical):
+- [X] T072 [P] Update `openwiki/invariants/testing-tiers.md` (canonical):
   - replace line 26's "no integration tier exists yet";
   - add rows for `pdlc:test` (unit and contract, gating), `pdlc:integration` (real git, gating) and
     `pdlc:integration-forge` (real forge, operator-run, fails rather than skips).
   - **Done when**: the table names all three tiers, with their commands and gating.
-- [ ] T073 [P] Update `openwiki/projects/repository.md` line 40 (canonical): `mcp-servers/` now holds `pdlc`, the
+- [X] T073 [P] Update `openwiki/projects/repository.md` line 40 (canonical): `mcp-servers/` now holds `pdlc`, the
   operator-tool server (ADR-0005), and `.forgejo/issue_template/` holds two forms.
   - **Done when**: the row names `pdlc`.
-- [ ] T074 [P] Update `openwiki/invariants/secrets-management.md` (canonical) with:
+- [ ] T074 [P] *(Written; the token's storage location is marked pending T006.)* Update `openwiki/invariants/secrets-management.md` (canonical) with:
   - the `pdlc` token: host-only, `write:issue` + `read:repository`, stored in a Claude Desktop sensitive setting at the
     location T006 observed, and revoked separately;
   - the mapping of `FORGE_ISSUE_TOKEN` to `PDLC_FORGE_TOKEN` for `pdlc:integration-forge`.
   - **Done when**: both are listed, and the page names no host.
-- [ ] T075 [P] Update `docs/repo-foundation-setup.md` line 384: the `setup-labels` comment adds `type/proposal` and
+- [X] T075 [P] Update `docs/repo-foundation-setup.md` line 384: the `setup-labels` comment adds `type/proposal` and
   `status/proposal-draft`.
   - **Done when**: the comment matches `TAXONOMY`.
-- [ ] T076 Add the wiki and index entries:
+- [X] T076 Add the wiki and index entries:
   - add `openwiki/runbooks/pdlc.md`, with `resource: docs/runbooks/pdlc.md`, recorded by `wiki-refresh --record`;
   - list it in `openwiki/runbooks/index.md`;
   - add AGENTS.md index entries for the `pdlc` runbook (Runbooks) and ADR-0005 (Decisions).
   - **Done when**: `pnpm nx run scripts:lint` passes the OKF and governance gates, and every AGENTS.md link resolves.
-- [ ] T077 **Close-out re-search**: re-run T001's searches, plus `git grep -n "there is no close verb"` and
+- [X] T077 **Close-out re-search**: re-run T001's searches, plus `git grep -n "there is no close verb"` and
   `git grep -n "no integration tier"`. Every remaining hit in a doc that states current procedure is either fixed or
   justified here, one line each.
+  - **Results (2026-11-25, `git grep --untracked -n -F` over `*.md` and `*.mjs`, excluding specs/, docs/proposals/,
+    docs/decisions/)**:
+    - `there is no close verb`, `no close verb`: only `scripts/__tests__/backlog.test.mjs` (the test asserting
+      `--help` no longer says it). `--help` now names `close-proposal` as the one exception.
+    - `no integration tier`, `nine of them`: 0 hits.
+    - `dedicated Python Docker container`: only `.specify/memory/constitution.md:481`, scoped to Agent Gateway
+      servers (T002).
+    - `two targets` (an extra term found while editing `ci.md`): `openwiki/invariants/feature-validation-checklist.md:44`
+      fixed; AGENTS.md and `openwiki/invariants/nx-task-runner.md` fixed in T076; `allowlist-expiry.test.mjs:153`
+      is unrelated.
+    - `--state closed`: `docs/repo-foundation-setup.md:387` justified (a general issue still closes this way; the
+      proposal exception is in the backlog runbook it links). The other hits are the new proposal rules or code.
+    - `backlog.mjs ready`, `status/needs-spec`, `issue_template`, `after_specify`: every remaining hit is either
+      updated in T063, T068 or T075, or one of T001's "no change" justifications (renovate pages, doc-drift,
+      Spec Kit-owned skills and extension READMEs).
 - [ ] T078 Run every check the diff touches, before the push. Each must pass with skip count 0:
   - `node scripts/check-speckit-overrides.mjs`
   - `pnpm nx run scripts:lint`

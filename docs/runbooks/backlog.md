@@ -15,11 +15,12 @@ one-line backlog edit.
 
 ```bash
 node scripts/backlog.mjs --help          # full flag reference, exit codes, measured API quirks
-node scripts/backlog.mjs ready           # open, unblocked, priority-ordered; never the bot's dashboard
+node scripts/backlog.mjs ready           # open, unblocked, priority-ordered; never the bot's dashboard or a draft proposal
 node scripts/backlog.mjs list [--state open|closed|all] [--label L]... [--milestone M] [--q TEXT]
 node scripts/backlog.mjs show <n>
 node scripts/backlog.mjs create --title T --body-file F [--label L]... [--milestone M]
-node scripts/backlog.mjs update <n> [--state closed] [--add-label L] [--remove-label L] [--body-file F]
+node scripts/backlog.mjs update <n> [--state closed] [--add-label L] [--remove-label L] [--body-file F]   # not for a proposal
+node scripts/backlog.mjs close-proposal <n> --spec specs/NNN-slug [--json]   # the one close path for a proposal
 node scripts/backlog.mjs comment <n> --body-file F
 node scripts/backlog.mjs dep <n> --blocked-by <m> [--remove]
 node scripts/backlog.mjs setup-labels [--dry-run]     # idempotent
@@ -73,13 +74,18 @@ not been widened; re-run it if either credential is ever re-minted.
 
 ## Conventions
 
-**Labels** (created once by `setup-labels`, nine of them):
+**Labels** (created once by `setup-labels`, fourteen of them; it creates only the missing ones, so re-run it once
+after a change adds labels):
 
 | Family | Names |
 | --- | --- |
-| type | `type/bug` `type/feature` `type/tech-debt` `type/chore` — exactly one |
+| type | `type/bug` `type/feature` `type/tech-debt` `type/chore` `type/proposal` — exactly one |
 | priority | `priority/p1` `priority/p2` `priority/p3` — exactly one |
-| status | `status/blocked` (the dependency graph is the intended authority — but `ready` skips the graph for a labelled item, so a stale label silently hides it; it warns for an unlabelled item with an open blocker) · `status/needs-spec` (too large to implement directly: it goes through `specs/NNN-*/` spec → plan → tasks first) · `status/bot-managed` (the dependency bot's Dependency Dashboard issue: `ready` never lists it, and prints `(n bot-managed item(s) not listed)` instead; never edit or close it, see [renovate.md](renovate.md#reading-the-dashboard)) |
+| status | `status/blocked` (the dependency graph is the intended authority — but `ready` skips the graph for a labelled item, so a stale label silently hides it; it warns for an unlabelled item with an open blocker) · `status/needs-spec` (too large to implement directly: it goes through `specs/NNN-*/` spec → plan → tasks first) · `status/bot-managed` (the dependency bot's Dependency Dashboard issue: `ready` never lists it, and prints `(n bot-managed item(s) not listed)` instead; never edit or close it, see [renovate.md](renovate.md#reading-the-dashboard)) · `status/proposal-draft` (a proposal still being shaped: `ready` never lists it, and prints `(n draft proposal(s) not listed)`) |
+| bot PRs | `dependencies` `security` — the dependency bot's pull requests, not backlog labels |
+
+The proposal family's names, colours and descriptions are copied from the shared contract
+`mcp-servers/pdlc/contract/proposal-labels.json` (feature 014); a test holds `TAXONOMY` equal to it.
 
 **Milestones** map to feature directories (`NNN-slug`). No milestone is normal — that is the free
 backlog. A milestone must exist before it can be used: an unknown name is refused locally, because the
@@ -89,6 +95,29 @@ API would silently ignore it.
 acceptance criteria, affected components, discovered-during — so an operator-filed item and an
 assistant-filed item are structurally identical. It only takes effect from the **default branch**;
 `validate-form` says so explicitly rather than reporting the form as broken.
+
+**The proposal form** at `.forgejo/issue_template/proposal.yaml` (feature 014) is a byte-identical copy of the
+master, `mcp-servers/pdlc/contract/proposal.yaml`; a test fails if they differ. It files an issue titled
+`Proposal: <feature name>` with `type/proposal` + `status/proposal-draft`, and nine sections, the same ones a
+Claude Desktop session writes through the `pdlc` server ([pdlc.md](pdlc.md)). `validate-form` reports both forms,
+and marks one that is only in the working tree as "not yet on the default branch".
+
+**Proposals** are feature ideas before they have a spec. Two states, and a close that only one command makes:
+
+| State | Labels | `ready` |
+| --- | --- | --- |
+| Draft | `type/proposal` + `status/proposal-draft` + one `priority/*` | hidden, counted in the note |
+| Ready | `type/proposal` + `status/needs-spec` + one `priority/*` | listed in priority order |
+| Superseded by a spec | unchanged | closed, with a comment linking `specs/NNN-*/` |
+
+A ready proposal is picked up with `show <n>`, then `/speckit-specify` started with `Proposal #<n>: <title>`
+followed by its body. The mandatory `after_specify` hook ([spec-kit.md](spec-kit.md), row 7) then runs
+`close-proposal <n> --spec specs/NNN-slug`. That verb is the **one named exception** to "closing is a state change
+on update": it refuses anything but an open, non-bot proposal whose `spec.md` exists, posts
+``Superseded by spec `specs/NNN-slug/` (branch `NNN-slug`).`` first and closes second, never touches labels, and is
+idempotent (exit 0 "already closed" when this flow closed it; exit 2 when someone else did). Exit codes are the
+usual 0 / 2 / 3 / 4 / 5. Rules for the assistant: the "Proposals" section of the
+[forgejo-issues skill](../../.claude/skills/forgejo-issues/SKILL.md).
 
 **Tasks to issues.** `/speckit-taskstoissues` mirrors a feature's `tasks.md` into its milestone: one
 item per task, titled `T0NN: …`, deduplicated by task id across all pages, and chained with `dep` so
