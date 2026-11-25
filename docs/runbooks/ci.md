@@ -47,9 +47,20 @@ A push to a branch with an open PR runs once, through the `pull_request` event. 
    the coverage gate (`scripts/check-coverage.mjs`). It fails if any source module or the total is below 70% of
    lines, or a source module is missing from the report. The verdict is the step's last line, so the digest's
    tail carries it. The floor and any exceptions live in `scripts/coverage-policy.yaml` (feature 009).
-7. The failure digest. It always runs and never changes the job's result.
+7. `pnpm nx run pdlc:lint`: `node --check` over the `pdlc` server's modules and `mcpb validate` over its
+   manifest (feature 014, [the pdlc runbook](pdlc.md)).
+8. `pnpm nx run pdlc:test`: the server's unit and contract tests (the contract test speaks the real MCP protocol
+   over the SDK's in-memory transport), then the same 70% coverage gate through
+   `check-coverage.mjs --policy mcp-servers/pdlc/coverage-policy.yaml`.
+9. `pnpm nx run pdlc:integration`: real git against local bare repositories (clone, fast-forward, and every copy
+   refusal), with no doubles and no forge. It needs only git on the runner.
+10. The failure digest. It always runs and never changes the job's result.
 
-Steps 3 to 6 run through `scripts/ci-log-step.sh`. That script keeps each step's exit code and mirrors its output to the per-step log the digest reads.
+`pdlc:integration-forge`, the server's live tier against the real forge and the `ci-smoke` repository, is **not**
+in CI: nothing in CI talks to a live forge. It is operator-run in the dev container, maps `FORGE_ISSUE_TOKEN` to
+`PDLC_FORGE_TOKEN` at the point of use, and fails (never skips) when the token is unset.
+
+Steps 3 to 9 run through `scripts/ci-log-step.sh`. That script keeps each step's exit code and mirrors its output to the per-step log the digest reads.
 
 ## Running it locally
 
@@ -57,6 +68,9 @@ Steps 3 to 6 run through `scripts/ci-log-step.sh`. That script keeps each step's
 pnpm install --frozen-lockfile     # once, and after any lockfile change
 pnpm nx run scripts:lint           # gates and selftests
 pnpm nx run scripts:test           # script unit tests, then the 70% line-coverage gate
+pnpm nx run pdlc:lint              # the pdlc server: syntax and manifest
+pnpm nx run pdlc:test              # the pdlc server: unit + contract tests, then its coverage gate
+pnpm nx run pdlc:integration       # the pdlc server: real git
 node scripts/check-speckit-overrides.mjs   # the Spec Kit gate alone; needs no install
 ```
 

@@ -3,7 +3,11 @@ VERSION HISTORY:
 - v1.0.0: Initial ratification for BELAY, derived from the MovieCollectionManager
   constitution v2.11.0 (2026-11-21)
 - v1.0.1: Dependency Security states the version-pinning policy that is enforced
-  (lock file pins installs; lockstep groups exact; other ranges allowed) (2026-11-22) [CURRENT]
+  (lock file pins installs; lockstep groups exact; other ranges allowed) (2026-11-22)
+- v1.1.0: Operator-tool MCP servers admitted as a second MCP server class (local stdio,
+  Node or Python, no Dockerfile), with their transport and audit rules; the Python/Docker
+  MCP rules scoped to servers the Agent Gateway serves (feature 014, ADR-0005); Package Manager
+  corrected to the enforced rule: `packageManager` is declared once, in the root (2026-11-25) [CURRENT]
 -->
 
 # BELAY Constitution
@@ -77,7 +81,7 @@ Conditional Access (CA) policies — including network location checks, device c
 
 #### Transport Security
 
-- **TLS:** Enforce TLS 1.3 for all communication between clients, services, and infrastructure. Older protocol versions (TLS 1.1, 1.2, SSL) must be disabled.
+- **TLS:** Enforce TLS 1.3 for all communication between clients, services, and infrastructure. Older protocol versions (TLS 1.1, 1.2, SSL) must be disabled. Operator-tool MCP servers meet this requirement through the tailnet, as stated in AI Agents Development Principles § Operator-Tool MCP Servers.
 - **HSTS:** All services must include the `Strict-Transport-Security` header to prevent protocol downgrade attacks and ensure browsers only communicate over HTTPS.
 - **CORS:** Restrict `Access-Control-Allow-Origin` to explicitly allow listed trusted origins. Wildcard (`*`) origins are prohibited on authenticated endpoints. Preflight requests must be validated server-side.
 - **Security Headers:** All HTTP responses must include appropriate security headers, including at minimum: `Content-Security-Policy`, `X-Frame-Options`, `X-Content-Type-Options`, and `Referrer-Policy`.
@@ -118,13 +122,13 @@ Conditional Access (CA) policies — including network location checks, device c
 - **No Business Logic in Logging:** Log statements must be side-effect-free. Logging calls must not trigger external requests, modify state, or influence application behavior. A logging failure must never crash or degrade the application.
 - **Third-Party Log Integration:** Application dependencies must not write directly to stdout/stderr or any log sink outside the application's logging framework. Library log output must be routed through the application's structured logger via an appropriate bridge adapter, with severity levels explicitly mapped. Any dependency that cannot be bridged must have its logging silenced. Library log entries are subject to the same sensitive data and format requirements as application logs.
 - **Log Volume Limits:** High-frequency loops can produce runaway log output; no single event class may log at INFO or above inside a loop without rate-limiting.
-- **Log Retention:** General operational logs (e.g., DEBUG, INFO, WARN, ERROR, FATAL) must be retained for a minimum of 30 days. Audit logs (authentication events, access control failures) must be retained for a minimum of 90 days. Containerized services must configure log rotation (max file size and file count) to prevent unbounded disk growth. Long-term time-based retention requires shipping logs to a persistent store (e.g., Loki, CloudWatch); the Docker json-file driver alone is insufficient for meeting retention minimums in production.
+- **Log Retention:** General operational logs (e.g., DEBUG, INFO, WARN, ERROR, FATAL) must be retained for a minimum of 30 days. Audit logs (authentication events, access control failures) must be retained for a minimum of 90 days. Containerized services must configure log rotation (max file size and file count) to prevent unbounded disk growth. Long-term time-based retention requires shipping logs to a persistent store (e.g., Loki, CloudWatch); the Docker json-file driver alone is insufficient for meeting retention minimums in production. Operator-tool MCP servers follow the audit and retention rule in AI Agents Development Principles § Operator-Tool MCP Servers.
 - **Log Access:** Access to logs must be role-controlled and itself logged. Logs must not be publicly accessible.
 
 ### Common Technology Stack and Standards
 
 - **Git Management:** Always use a single root-level `.gitignore` for monorepo-wide patterns (e.g., /.gitignore). Project-specific `.gitignore` files may supplement the root for framework-specific artifacts (e.g., Expo build outputs) but must not duplicate or contradict root entries.
-- **Package Manager:** pnpm is the required package manager for all JavaScript/TypeScript projects. npm and yarn are prohibited. Each project's `package.json` must declare `"packageManager": "pnpm@<version>"`. A root `pnpm-workspace.yaml` must list all frontend and backend package directories.
+- **Package Manager:** pnpm is the required package manager for all JavaScript/TypeScript projects. npm and yarn are prohibited. The root `package.json` declares `"packageManager": "pnpm@<version>"` exactly once; a workspace package must not declare its own, because a second copy silently wins in a nested workspace and drifts on the next bot update (ADR-0001; enforced by `check-toolchain-consistency.mjs`, rule `package-manager-once`). A root `pnpm-workspace.yaml` must list all frontend and backend package directories.
 - **Monorepo Build Tool:** Nx must be used to manage polyglot builds across the monorepo. All test, lint, build, e2e, and deploy operations must be executed through Nx targets (`pnpm nx run <project>:<target>`), not by invoking package manager scripts directly. pnpm scripts in `package.json` are permitted only as implementation details called by Nx targets, never as the primary invocation path.
 - **Environment & Secret Files:**
   - Create a root `.env` and `.env.local` for shared configuration, but use individual `.env` and `.env.local` files in each project (e.g., /backend/{{service-name}}/.env, /frontend/{{app-name}}/.env) for project specific configuration.
@@ -441,13 +445,13 @@ Agent code must preserve the same dependency discipline as Backend Services: orc
 
 ### MCP Tool Layer
 
-- **Each MCP Server Is an Isolated Docker Container** exposing the Model Context Protocol. The specialist agents are the tool *callers* (they reason and decide); they invoke tools through the Agent Gateway's **shared, in-process MCP client** — agents run as nodes inside the gateway runtime and do not open their own transports or make a network call *back* to the gateway. The shared client (with per-agent allowlists) holds the connections to the MCP server containers.
+- **Each MCP Server the Agent Gateway Serves Is an Isolated Docker Container** exposing the Model Context Protocol. The specialist agents are the tool *callers* (they reason and decide); they invoke tools through the Agent Gateway's **shared, in-process MCP client** — agents run as nodes inside the gateway runtime and do not open their own transports or make a network call *back* to the gateway. The shared client (with per-agent allowlists) holds the connections to the MCP server containers.
 - **Thin Wrappers Over Existing APIs:** Backend Service MCP adapters are thin wrappers over existing Backend Service REST APIs; they introduce no domain logic and propagate the user's JWT as the calling identity.
 - **Scoped Capability:** Outbound-only servers (e.g., web search) must have no internal network access; code-execution servers must be ephemeral with no persistent filesystem; file/DB servers must be scoped to user-owned resources.
 
 ### AI Agent Technology Stack Requirements
 
-The following technologies MUST be used for the AI Agents layer unless explicitly amended. **Python is the standard language for the AI Agents layer** (the orchestration runtime, agents, MCP servers, and guardrails). The Rust requirement in the Backend Service Technology Stack applies only to Backend Services and does **not** apply to the AI Agents layer; conversely, the AI Agents layer must not be used to implement Backend Service domain logic in Python.
+The following technologies MUST be used for the AI Agents layer unless explicitly amended. **Python is the standard language for the AI Agents layer** (the orchestration runtime, agents, the MCP servers the Agent Gateway serves, and guardrails). Operator-tool MCP servers are governed by § Operator-Tool MCP Servers instead. The Rust requirement in the Backend Service Technology Stack applies only to Backend Services and does **not** apply to the AI Agents layer; conversely, the AI Agents layer must not be used to implement Backend Service domain logic in Python.
 
 - **Language:** Python (latest stable 3.x)
 - **Package & Environment Manager:** `uv` is the required Python package and virtual-environment manager; dependencies and project metadata are declared in `pyproject.toml`. Dependency versions must be pinned via a committed lockfile.
@@ -457,7 +461,7 @@ The following technologies MUST be used for the AI Agents layer unless explicitl
 - **Agent-UI Protocol:** AG-UI, emitted natively by the orchestration runtime via its AG-UI integration. The BFF proxies AG-UI; it does not translate orchestration stream formats.
 - **Client Agent-UI Library:** CopilotKit — `@copilotkit/react-native` for the universal Expo client (web via react-native-web and mobile), providing the agent hooks, generative-UI rendering (`useRenderTool`), and frontend-action primitives. Generative-UI components are ordinary Frontend App components from the Components-Layer.
 - **Agent State Persistence:** PostgreSQL checkpointer (Docker image `postgres:18.3-alpine3.23`) in a dedicated `agent-db` instance, logically isolated from Backend Service databases.
-- **Tooling Protocol:** Model Context Protocol (MCP). Each MCP server is a dedicated Python Docker container; per-agent tool allowlists are enforced at the Agent Gateway.
+- **Tooling Protocol:** Model Context Protocol (MCP). Each MCP server the Agent Gateway serves is a dedicated Python Docker container; per-agent tool allowlists are enforced at the Agent Gateway.
 - **Guardrails:** NeMo Guardrails (Colang) applied at the Agent Gateway for topic, schema, and tone enforcement; Guardrails AI with Pydantic for structural output validation, PII, and toxicity checks at the Python layer.
 - **Evaluation & LLM Observability:** LangFuse for traces, token cost, latency, and per-step visibility. A regression suite of golden input/output pairs must run on every agent deployment and alert on quality degradation.
 - **Distributed Tracing, Metrics, Logs:** OpenTelemetry → Grafana Tempo (traces), Prometheus → Grafana (metrics), Loki (logs), consistent with Core Logging & Monitoring.
@@ -475,7 +479,7 @@ The following technologies MUST be used for the AI Agents layer unless explicitl
   - **Guardrails-Layer:** `/agents/{{orchestration-name}}/src/guardrails/`
   - **Unit Tests:** collocated under `/agents/{{orchestration-name}}/tests/unit/`
   - **Integration Tests:** `/agents/{{orchestration-name}}/tests/integration/`
-  - **MCP Server Dockerfile:** each MCP server must have its own `Dockerfile` at `/mcp-servers/{{server-name}}/`
+  - **MCP Server Dockerfile:** each MCP server the Agent Gateway serves must have its own `Dockerfile` at `/mcp-servers/{{server-name}}/` (operator-tool MCP servers need none)
 
 Deviations from this stack require constitution amendment with documented justification.
 
@@ -489,6 +493,18 @@ Deviations from this stack require constitution amendment with documented justif
 - **Formatting:** `ruff format` (or Black) enforced in CI/CD.
 - **Documentation:** README updated for user-facing changes; tool schemas and agent allowlists kept current.
 - **Dependencies:** Regular audits via `pip-audit`; security patches applied promptly; versions pinned via lockfile.
+
+### Operator-Tool MCP Servers
+
+An **operator-tool MCP server** is a local MCP server that a desktop or IDE assistant (for example Claude Desktop) launches as a child process over **stdio**, for one operator on one workstation. It is not part of the agent runtime: the Agent Gateway does not serve it, no JWT is propagated through it, and it listens on no network port. The MCP Tool Layer, AI Agent Technology Stack Requirements and AI Agent Quality Standards above apply only to the MCP servers the Agent Gateway serves; this subsection governs operator-tool MCP servers instead.
+
+- **Stack:** Node (ESM, through pnpm and Nx, like `scripts/`) or Python (through `uv` and Nx) is permitted. No `Dockerfile` is required. The server lives at `/mcp-servers/{{server-name}}/` like any other MCP server project, and every operation is an Nx target.
+- **Core Principles still apply in full:** AI Assistant Constraints, Security, Test-Driven Development, Test Type Integrity and Logging & Monitoring apply, except where this subsection states a rule for this class.
+- **Narrowest-scope credential:** the server holds its own dedicated credential with the narrowest scope that serves its tools, used by nothing else and revocable on its own. It is configured through the launching host's settings or environment, never in source, and never appears in argv, results, logs or files the server writes.
+- **Write allowlist:** every write the server can make — to the forge, to git, to the file system — is enumerated by an allowlist enforced in code before the write is attempted. Anything not on the list is refused, and a refusal changes nothing.
+- **Testing tiers:** unit tests (with injected doubles) and contract tests over the real protocol gate the merge; integration tests run against the real dependency (real git, a real forge) with no doubles, and a tier that cannot run for want of a credential fails rather than skips.
+- **Transport rule:** for operator-tool MCP servers, transport over the **tailnet (WireGuard)** meets Transport Security's TLS requirement. The server reaches the forge on the tailnet, as every BELAY forge tool does, and takes the configured URL's scheme as written. A server that reaches any endpoint outside the tailnet must use TLS 1.3 to it.
+- **Audit rule:** for operator-tool MCP servers, the audit log is **the launching host's capture of the server's stderr** (for Claude Desktop, its per-server log), together with **the forge's own history** (the issue timeline) for the effect of every write. The server emits exactly one structured `audit` line per tool call, allowed or refused, before the call's result is returned, carrying who-what-when context and the correlation ID but no body, secret or token. The server never opens, reads or writes the log itself. The logged-in OS user can edit the host's log; that is accepted for a one-operator workstation. Retention is the host's, as measured and stated in the server's runbook, rather than the 90-day audit minimum in Log Retention.
 
 ## Shared Packages and Libraries Principles
 
@@ -538,7 +554,7 @@ Deviations from this stack require constitution amendment with documented justif
 │       └── tests/
 │           ├── unit/
 │           └── integration/            # Real MCP servers + real Backend Services (no mocking)
-├── mcp-servers/                        # MCP Tool Servers (Python) — one container per server
+├── mcp-servers/                        # MCP Tool Servers: Agent Gateway servers (Python, one container each) and operator-tool servers (local stdio)
 │   └── mcp-server-1/
 │       ├── pyproject.toml
 │       ├── Dockerfile
@@ -818,7 +834,7 @@ graph LR
           mcp_client["`**Shared MCP client**<br/>per-agent tool allowlists`"]
         end
         agent_db[("`**Agent State DB**<br/>*PostgreSQL*<br/>Checkpoints (isolated)`")]
-        subgraph mcp["`**MCP Tool Servers** *(separate Python Docker containers)*`"]
+        subgraph mcp["`**MCP Tool Servers served by the Agent Gateway** *(separate Python Docker containers)*`"]
           mcp_servers["`**MCP Servers**<br/>Thin wrappers over Backend APIs`"]
         end
       end
@@ -1022,4 +1038,4 @@ All pull requests and code reviews MUST verify compliance with active principles
 
 Runtime development guidance for AI Assistants is maintained in [AGENTS.md](../../AGENTS.md), which `CLAUDE.md` imports. It is separate from this constitution and must not contradict it.
 
-**Version**: 1.0.1 | **Ratified**: 2026-11-21 | **Last Amended**: 2026-11-22
+**Version**: 1.1.0 | **Ratified**: 2026-11-21 | **Last Amended**: 2026-11-25

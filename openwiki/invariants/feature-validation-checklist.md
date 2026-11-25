@@ -21,6 +21,10 @@ whenever its trigger is in the diff, even outside a Spec Kit feature.
 - [ ] `pnpm nx run scripts:test`: every script test passes, **with a skip count you can explain**, and
       the last line is `[coverage] ✅`. On `✗`, add tests or delete code nobody needs. Never lower the
       floor in `scripts/coverage-policy.yaml` to get a change through.
+- [ ] **If the diff touches `mcp-servers/pdlc/` or `scripts/check-coverage.mjs`:** `pnpm nx run pdlc:lint`,
+      `pnpm nx run pdlc:test` (last line `[coverage] ✅`) and `pnpm nx run pdlc:integration` pass, each with
+      skip count 0; CI runs all three. Run `pnpm nx run pdlc:integration-forge` too when the change touches
+      the forge or git paths: it is operator-run and never in CI ([the pdlc runbook](../runbooks/pdlc.md)).
 - [ ] **If the diff touches `.specify/`, `.claude/skills/speckit-*` or `docs/runbooks/spec-kit.md`:**
       `node scripts/check-speckit-overrides.mjs` passes. It also runs inside `scripts:lint`. Run it
       on its own first, because its failure codes name the fix.
@@ -37,7 +41,8 @@ whenever its trigger is in the diff, even outside a Spec Kit feature.
 - **The checklist is about the diff, not the feature's label.** A docs-only PR still runs both
   targets. They are cheap, and the Spec Kit gate reads Markdown (its runbook must name every
   customisation, `inventory-stale`).
-- **CI runs the same two targets, so a local pass predicts the required check.** Running them before
+- **CI runs the same targets (`scripts:lint`, `scripts:test`, `pdlc:lint`, `pdlc:test`, `pdlc:integration`), so a
+  local pass predicts the required check.** Running them before
   the push costs seconds. A red push for an offline-knowable reason costs a runner slot and a
   round trip.
 - **`tasks.md` is ticked before CI runs, and CI evidence goes in the PR, never in `tasks.md`.** The

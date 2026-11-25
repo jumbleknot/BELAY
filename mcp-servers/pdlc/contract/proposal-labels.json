@@ -1,0 +1,9 @@
+[
+  { "name": "type/proposal", "color": "#c2e0c6", "description": "A feature idea before it has a spec" },
+  { "name": "status/proposal-draft", "color": "#fef2c0", "description": "Proposal still being shaped; not ready to specify" },
+  { "name": "status/needs-spec", "color": "#1d76db", "description": "Too large to implement without spec→plan→tasks" },
+  { "name": "priority/p1", "color": "#b60205", "description": "Do next" },
+  { "name": "priority/p2", "color": "#e99695", "description": "Do soon" },
+  { "name": "priority/p3", "color": "#f9d0c4", "description": "Do eventually" },
+  { "name": "status/bot-managed", "color": "#bfdadc", "description": "Owned by the dependency bot; never listed as ready work" }
+]

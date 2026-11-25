@@ -4,8 +4,8 @@ title: CI guardrails, the failure digest, and the PR loop
 description: The single guardrails Forgejo Actions workflow required on main — what it runs and how to reproduce it locally, how a failure is read back from the redacted digest and its package bundle with ci-status.mjs, the dedicated repository runner and the one exception to it (the dev-container image job, which never runs pull-request code), the sast job beside guardrails, the report-only registry-retention job, branch protection, the terminal PR loop through forge-pr.mjs, and the rule every new job must follow.
 tags: [ci, forgejo, pull-requests, runbook]
 resource: docs/runbooks/ci.md
-resource-sha256: 6229c939a0da99d1ae1f88864f3a996dc4f1724876ad36fff7ccfcceb1de8495
-timestamp: 2026-11-25T17:49:05.071Z
+resource-sha256: 43799303a1f24c16fb780d6eff37e43f7badfc862725f54267579481ae4c553a
+timestamp: 2026-11-25T18:30:03.020Z
 ---
 
 # CI guardrails, the failure digest, and the PR loop
@@ -19,8 +19,11 @@ every push to `main` and manual dispatch, and branch protection on `main` requir
 runs `pnpm nx run scripts:lint` (every gate: Spec Kit overrides, digest coverage, egress allowlist,
 secret scan, topology scrub, toolchain consistency, inline and argv secrets, override floors,
 resource naming, OpenWiki OKF and governance, each after its selftest) and `pnpm nx run scripts:test` (the unit
-tests under coverage, then the 70% line-coverage gate, whose verdict is the step's last line). So **those two commands, run locally,
-reproduce the required check**. A failure-digest step always runs last and never changes the result.
+tests under coverage, then the 70% line-coverage gate, whose verdict is the step's last line), then the `pdlc`
+server's three targets: `pdlc:lint`, `pdlc:test` (unit and contract tests, its own 70% gate) and
+`pdlc:integration` (real git). So **those five commands, run locally, reproduce the required check**. The
+server's live-forge tier, `pdlc:integration-forge`, is operator-run and never in CI. A failure-digest step always
+runs last and never changes the result.
 Full detail is in [docs/runbooks/ci.md](../../docs/runbooks/ci.md).
 
 The whole PR loop runs from a terminal:

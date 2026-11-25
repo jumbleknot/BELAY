@@ -4,8 +4,8 @@ title: Decision records (ADRs) — when one is required and how it changes
 description: Where a structural decision is recorded once the maintainer says yes — the docs/decisions/ ADR folder, the decisions that require an ADR (new toolchain, build plugin, top-level folder, install-script dependency, bot or long-lived credential), why an accepted ADR is superseded rather than rewritten, and the concept page every ADR needs.
 tags: [decisions, adr, process, governance]
 resource: docs/decisions/README.md
-resource-sha256: 62669cc0d8d5b9e8190d374773b91fa2ca9dff139213d6d224e14057de353a40
-timestamp: 2026-11-23T23:53:09.060Z
+resource-sha256: 5451475e460d18eeec891a942d62537a176f725a9f240b7598cd260eca2dbb5f
+timestamp: 2026-11-25T03:24:37.636Z
 ---
 
 # Decision records (ADRs)

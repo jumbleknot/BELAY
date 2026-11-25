@@ -537,3 +537,33 @@ test('empty registries skip extension checks', () => {
   const root = fixture({ extensions: [], hooks: [] });
   assert.deepEqual(codes(checkSpeckitOverrides({ root, extensions: [], extensionHooks: [] })), []);
 });
+
+// ── feature 014: the hand-added close-proposal hook and its project-owned skill ──────────────────
+const CLOSE_HOOK = { event: 'after_specify', extension: 'belay', command: 'speckit.belay.close-proposal' };
+const CLOSE_SKILL = '.claude/skills/speckit-belay-close-proposal/SKILL.md';
+const isCloseHook = (h) => h.event === CLOSE_HOOK.event && h.extension === CLOSE_HOOK.extension && h.command === CLOSE_HOOK.command;
+
+test('close-proposal: EXTENSION_HOOKS registers the after_specify belay hook, mandatory and hand-added', () => {
+  const h = EXTENSION_HOOKS.find(isCloseHook);
+  assert.ok(h, 'the close-proposal hook is not registered');
+  assert.equal(h.optional, false);
+  assert.equal(h.local, true);
+});
+
+test('close-proposal: the hook skill is PROJECT_OWNED', () => {
+  assert.ok(PROJECT_OWNED.some((e) => e.file === CLOSE_SKILL), `${CLOSE_SKILL} is not in PROJECT_OWNED`);
+});
+
+test('close-proposal: a tree whose extensions.yml lost the hook reports hook-lost', () => {
+  assert.ok(EXTENSION_HOOKS.some(isCloseHook), 'precondition: the hook is registered');
+  const yml = extensionFixtureFiles({ extensions: EXTENSIONS, hooks: EXTENSION_HOOKS.filter((h) => !isCloseHook(h)) })[EXTENSIONS_YML];
+  const r = checkSpeckitOverrides({ root: fixture({ files: { [EXTENSIONS_YML]: yml } }) });
+  assert.ok(codes(r).includes('hook-lost'), JSON.stringify(r.failures));
+  assert.ok(r.failures.some((f) => /speckit\.belay\.close-proposal/.test(f.message)));
+});
+
+test('close-proposal: a tree missing the hook skill fails project-file-lost', () => {
+  assert.ok(PROJECT_OWNED.some((e) => e.file === CLOSE_SKILL), 'precondition: the skill is project-owned');
+  const r = checkSpeckitOverrides({ root: fixture({ files: { [CLOSE_SKILL]: null } }) });
+  assert.ok(codes(r).includes('project-file-lost'), JSON.stringify(r.failures));
+});

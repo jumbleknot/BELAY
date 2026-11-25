@@ -2,6 +2,7 @@ packages:
   - 'frontend/*'
   - 'backend/*'
   - 'packages/*'
+  - 'mcp-servers/*'
 
 # ═════════════════════════════════════════════════════════════════════════════════════════════════
 # `allowBuilds`: which dependencies may run install scripts. A postinstall script is arbitrary code
@@ -19,7 +20,7 @@ allowBuilds:
 # `overrides` belong HERE, not in package.json's `pnpm` field. pnpm 11+ no longer reads that field
 # and only warns that the keys were ignored. Every override exists to force a vulnerable transitive
 # dependency to a patched version, so a silently ignored override re-admits the vulnerability. If a
-# pnpm bump warns about ignored keys, MIGRATE them; never dismiss the warning. None are needed yet.
+# pnpm bump warns about ignored keys, MIGRATE them; never dismiss the warning.
 #
 # No `minimumReleaseAge` is set here on purpose. On an empty store, a cooldown makes a cold
 # `pnpm install --frozen-lockfile` reject any pinned dependency published younger than the
@@ -28,3 +29,8 @@ allowBuilds:
 # with ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION on a freshly published transitive, wait for it to age
 # past the cutoff and re-run. Use `minimumReleaseAgeExclude` only for a security fix needed now.
 # ═════════════════════════════════════════════════════════════════════════════════════════════════
+overrides:
+  # GHSA-ph9p-34f9-6g65 (high) and GHSA-52f5-9888-hmc6 (low): tmp before 0.2.6. Reached only through
+  # @anthropic-ai/mcpb (dev) → @inquirer/prompts → external-editor@3.1.0, which pins ^0.0.33 and calls
+  # only tmp.fileSync, still in 0.2.x. Feature 014; the downgrade gate (item #43) caught it.
+  'tmp@<0.2.6': '>=0.2.6 <1'

@@ -1,0 +1,19 @@
+{
+  "name": "@belay/pdlc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The pdlc operator-tool MCP server: proposal intake from Claude Desktop (feature 014, ADR-0005)",
+  "type": "module",
+  "//engines": "The bundle runs on the Node that ships with Claude Desktop, so the source uses only Node 20 syntax (research R12). Development and CI run Node 26.",
+  "engines": {
+    "node": ">=20"
+  },
+  "//dependencies": "Exact pins (ADR-0005). Neither declares an install script, so allowBuilds is unchanged.",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@anthropic-ai/mcpb": "2.1.2"
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "pdlc",
+  "projectType": "application",
+  "sourceRoot": "mcp-servers/pdlc/src",
+  "targets": {
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "parallel": false,
+        "commands": [
+          "node mcp-servers/pdlc/scripts/check-syntax.mjs",
+          "pnpm --dir mcp-servers/pdlc exec mcpb validate manifest.json"
+        ]
+      },
+      "metadata": {
+        "description": "Syntax-check every module under src/ and scripts/ with node --check, then validate manifest.json against the mcpb manifest schema."
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "parallel": false,
+        "commands": [
+          "node -e \"require('node:fs').rmSync('coverage/pdlc.lcov', {force: true})\"",
+          "node --test --experimental-test-coverage \"--test-coverage-include=mcp-servers/pdlc/src/*.mjs\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/pdlc.lcov \"mcp-servers/pdlc/tests/unit/*.test.mjs\"",
+          "node scripts/check-coverage.mjs --policy mcp-servers/pdlc/coverage-policy.yaml --report coverage/pdlc.lcov"
+        ]
+      },
+      "metadata": {
+        "description": "Unit and contract tests (doubles injected; the contract test speaks the real protocol over InMemoryTransport), then the 70% coverage floor. Gating in guardrails."
+      }
+    },
+    "integration": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "command": "node --test \"mcp-servers/pdlc/tests/integration/*.test.mjs\""
+      },
+      "metadata": {
+        "description": "Real git against local bare repositories in a temp folder; no doubles, no forge. Gating in guardrails."
+      }
+    },
+    "integration-forge": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "command": "node mcp-servers/pdlc/tests/integration-forge/run.mjs"
+      },
+      "metadata": {
+        "description": "The real forge and the ci-smoke repository; operator-run in the dev container, never in CI. Maps FORGE_ISSUE_TOKEN to PDLC_FORGE_TOKEN at the point of use, and FAILS (never skips) when it is unset."
+      }
+    },
+    "pack": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "command": "node mcp-servers/pdlc/scripts/pack.mjs"
+      },
+      "metadata": {
+        "description": "Build target/pdlc/pdlc-<version>.mcpb (a hoisted pnpm deploy, then mcpb pack) and target/pdlc/proposal-intake.zip for Claude Desktop. See docs/runbooks/pdlc.md."
+      }
+    }
+  }
+}

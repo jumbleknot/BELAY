@@ -1,7 +1,7 @@
 ---
 type: Convention
 title: Nx as the universal task runner
-description: Why every test, lint, build, e2e and deploy operation goes through an Nx target rather than the underlying tool, the two scripts targets that are CI's whole check surface, and the deliberate exception for operator CLIs whose arguments vary per invocation.
+description: Why every test, lint, build, e2e and deploy operation goes through an Nx target rather than the underlying tool, the scripts and pdlc targets that are CI's whole check surface, and the deliberate exception for operator CLIs whose arguments vary per invocation.
 tags: [nx, monorepo, tooling, build]
 timestamp: 2026-11-22
 ---
@@ -13,7 +13,7 @@ operation to run through an Nx target, as `pnpm nx run <project>:<target>`. pnpm
 `package.json` may exist only as implementation details called by a target, never as the main way to
 run something.
 
-Today the workspace has one project, `scripts` (`scripts/project.json`), with three targets:
+Today the workspace has two projects. `scripts` (`scripts/project.json`) has three targets:
 
 | Target | What it runs |
 | --- | --- |
@@ -21,8 +21,19 @@ Today the workspace has one project, `scripts` (`scripts/project.json`), with th
 | `pnpm nx run scripts:test` | `node scripts/check-coverage.mjs --run`: every `scripts/__tests__/*.test.mjs` under Node's built-in coverage, then the 70% line-coverage gate, with its verdict as the last line |
 | `pnpm nx run scripts:build-devcontainer-image` | a local build of the dev-container toolchain image. It needs an engine with **open egress** (CI, or a host engine such as Docker Desktop), never the sandbox; the normal path is the `devcontainer-image` workflow |
 
-**The first two commands are exactly what CI runs** (see [CI guardrails](../runbooks/ci.md)), so running
-them locally reproduces the required check.
+`pdlc` (`mcp-servers/pdlc/project.json`, the operator-tool MCP server of feature 014,
+[ADR-0005](../decisions/adr-0005-operator-tool-mcp-servers.md)) has five:
+
+| Target | What it runs |
+| --- | --- |
+| `pnpm nx run pdlc:lint` | `node --check` over its modules, then `mcpb validate` over its manifest |
+| `pnpm nx run pdlc:test` | its unit and contract tests under coverage, then `check-coverage.mjs --policy mcp-servers/pdlc/coverage-policy.yaml` |
+| `pnpm nx run pdlc:integration` | real git against local bare repositories |
+| `pnpm nx run pdlc:integration-forge` | the real forge and `ci-smoke`; operator-run, never in CI, fails without `FORGE_ISSUE_TOKEN` |
+| `pnpm nx run pdlc:pack` | the Claude Desktop Extension and the skill zip, under `target/pdlc/` |
+
+**`scripts:lint`, `scripts:test`, `pdlc:lint`, `pdlc:test` and `pdlc:integration` are exactly what CI runs**
+(see [CI guardrails](../runbooks/ci.md)), so running them locally reproduces the required check.
 
 ## Gotchas
 

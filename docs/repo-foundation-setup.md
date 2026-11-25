@@ -381,7 +381,7 @@ Then run, once:
 
 ```bash
 node scripts/backlog.mjs setup-labels --dry-run
-node scripts/backlog.mjs setup-labels        # type/*, priority/p1..p3, status/blocked, status/needs-spec
+node scripts/backlog.mjs setup-labels        # type/* (incl. type/proposal), priority/p1..p3, status/blocked, status/needs-spec, status/proposal-draft, status/bot-managed, dependencies, security
 ```
 
 **Conventions:** close an issue with a comment and then `update --state closed`. Never use

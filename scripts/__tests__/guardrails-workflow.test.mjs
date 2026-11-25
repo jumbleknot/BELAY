@@ -39,7 +39,8 @@ test('two jobs, guardrails and sast, each on the belay runner label with a timeo
 
 test('steps run in contract order with pinned actions, Node 26 and the Nx targets', () => {
   const steps = load().jobs.guardrails.steps;
-  assert.equal(steps.length, 7, 'the contract defines exactly seven steps');
+  // Feature 014 added the three pdlc steps (pdlc:lint, pdlc:test, pdlc:integration) after scripts:test.
+  assert.equal(steps.length, 10, 'the contract defines exactly ten steps');
   assert.equal(steps[0].uses, CHECKOUT);
   assert.equal(steps[1].uses, SETUP_NODE);
   assert.equal(String(steps[1].with['node-version']), NODE_VERSION);
@@ -49,6 +50,23 @@ test('steps run in contract order with pinned actions, Node 26 and the Nx target
   assert.equal(steps[3].run.trim(), 'bash scripts/ci-log-step.sh guardrails-install-deps pnpm install --frozen-lockfile');
   assert.equal(steps[4].run.trim(), 'bash scripts/ci-log-step.sh guardrails-lint pnpm nx run scripts:lint');
   assert.equal(steps[5].run.trim(), 'bash scripts/ci-log-step.sh guardrails-test pnpm nx run scripts:test');
+});
+
+test('pdlc: the server\'s lint, test and real-git integration run after scripts:lint and scripts:test, wrapped for the digest', () => {
+  const steps = load().jobs.guardrails.steps;
+  const runs = steps.map((st) => (st.run ?? '').trim());
+  const at = (cmd) => runs.findIndex((r) => r === cmd);
+  const lint = at('bash scripts/ci-log-step.sh guardrails-pdlc-lint pnpm nx run pdlc:lint');
+  const unit = at('bash scripts/ci-log-step.sh guardrails-pdlc-test pnpm nx run pdlc:test');
+  const integ = at('bash scripts/ci-log-step.sh guardrails-pdlc-integration pnpm nx run pdlc:integration');
+  const scriptsTest = at('bash scripts/ci-log-step.sh guardrails-test pnpm nx run scripts:test');
+  assert.ok(lint > scriptsTest && unit > lint && integ > unit, `order: ${runs.join(' | ')}`);
+  assert.ok(integ < steps.length - 1, 'the digest stays the last step');
+});
+
+test('pdlc: the live-forge tier is operator-run and never in CI', () => {
+  const all = readFileSync(WORKFLOW, 'utf8');
+  assert.doesNotMatch(all, /pdlc:integration-forge/);
 });
 
 test('the last step publishes the failure digest and can never change the job outcome', () => {

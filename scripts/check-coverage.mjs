@@ -272,9 +272,11 @@ export function coverageSelftest(deps = {}) {
 export const POLICY_PATH = 'scripts/coverage-policy.yaml';
 export const REPORT_PATH = 'coverage/scripts.lcov';
 const TEST_GLOB = 'scripts/__tests__/*.test.mjs';
-const USAGE = `Usage: check-coverage.mjs --run | [--report <lcov>] | --selftest | --help
+const USAGE = `Usage: check-coverage.mjs --run | [--policy <file>] [--report <lcov>] | --selftest | --help
   --run              delete the report, run ${TEST_GLOB} under coverage, then gate (scripts:test)
   --report <lcov>    gate an existing report only (default ${REPORT_PATH})
+  --policy <file>    judge with this policy instead of ${POLICY_PATH}, for another Nx project that runs
+                     its own tests under coverage and keeps its own policy in its project root
   --selftest         judge synthetic reports; no test run (scripts:lint)
 Exit: 0 pass · 1 below the floor, no data, or a missing/malformed report · 2 bad arguments or policy
       · under --run, the test runner's own code when tests failed`;
@@ -285,7 +287,7 @@ Exit: 0 pass · 1 below the floor, no data, or a missing/malformed report · 2 b
 const INHERITED_TEST_RUNNER_VARS = ['NODE_TEST_CONTEXT', 'NODE_TEST_WORKER_ID', 'NODE_V8_COVERAGE'];
 
 function parseArgs(argv) {
-  const args = { run: false, selftest: false, help: false, report: REPORT_PATH };
+  const args = { run: false, selftest: false, help: false, report: REPORT_PATH, policy: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--run') args.run = true;
@@ -295,18 +297,25 @@ function parseArgs(argv) {
       const v = argv[++i];
       if (v === undefined || v.startsWith('--')) throw new CoverageUsageError(`--report needs a path\n${USAGE}`);
       args.report = v;
+    } else if (a === '--policy') {
+      const v = argv[++i];
+      if (v === undefined || v.startsWith('--')) throw new CoverageUsageError(`--policy needs a path\n${USAGE}`);
+      args.policy = v;
     } else throw new CoverageUsageError(`unknown argument ${a}\n${USAGE}`);
   }
   if (args.run && args.selftest) throw new CoverageUsageError(`--run and --selftest are separate modes\n${USAGE}`);
+  // --run runs THIS project's suite (${TEST_GLOB}); judging it against another project's policy
+  // would measure one module set and judge another.
+  if (args.run && args.policy) throw new CoverageUsageError(`--policy gates an existing --report; it cannot be combined with --run\n${USAGE}`);
   return args;
 }
 
-async function loadPolicy(root) {
+async function loadPolicy(root, policyPath = POLICY_PATH) {
   const { parse } = await import('yaml');
-  const path = join(root, POLICY_PATH);
-  if (!existsSync(path)) throw new CoverageUsageError(`invalid coverage policy: ${POLICY_PATH} is missing`);
+  const path = resolve(root, policyPath);
+  if (!existsSync(path)) throw new CoverageUsageError(`invalid coverage policy: ${policyPath} is missing`);
   let raw;
-  try { raw = parse(readFileSync(path, 'utf8')); } catch (e) { throw new CoverageUsageError(`invalid coverage policy: ${POLICY_PATH} is not YAML (${e.message})`); }
+  try { raw = parse(readFileSync(path, 'utf8')); } catch (e) { throw new CoverageUsageError(`invalid coverage policy: ${policyPath} is not readable YAML (${e.message})`); }
   const modules = listSourceModules(Array.isArray(raw?.include) ? raw.include.filter((p) => typeof p === 'string') : [], root);
   return { policy: validatePolicy(raw, { modules }), modules };
 }
@@ -349,7 +358,7 @@ export async function main(argv, { root = process.cwd(), today = new Date().toIS
       console.log('✓ check-coverage --selftest passed (pass, below floor, no coverage data, total below floor through an exception, empty report fails closed, active and expired exceptions, out-of-scope record ignored, exception floor below 50 and stale exception refused)');
       return 0;
     }
-    const { policy, modules } = await loadPolicy(root);
+    const { policy, modules } = await loadPolicy(root, args.policy ?? POLICY_PATH);
     if (!args.run) return gate({ root, reportPath: args.report, policy, modules, today });
     const testStatus = runTests({ root, policy, reportPath: REPORT_PATH });
     let gateStatus;

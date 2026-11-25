@@ -390,3 +390,48 @@ test('the gate alone: --report takes an ABSOLUTE path as given, and a truncated 
     rmSync(elsewhere, { recursive: true, force: true });
   }
 });
+
+// ── --policy <file> (feature 014, research R16) ─────────────────────────────────────────────────
+// Another Nx project (pdlc) keeps its own policy inside its own root, and gates its own report with
+// it. The default, scripts/coverage-policy.yaml, must be unchanged when the flag is absent.
+
+const OTHER_POLICY_YAML = 'version: 1\nfloor: 90\ninclude:\n  - "tools/x/src/*.mjs"\nexceptions: []\n';
+
+test('policy: --policy <file> outside scripts/ sets the floor and the module glob', () => {
+  const root = project({ files: {
+    'scripts/full.mjs': FULL,
+    'tools/x/policy.yaml': OTHER_POLICY_YAML,
+    'tools/x/src/a.mjs': FULL,
+    'tools/x/src/b.mjs': FULL,
+    'coverage/x.lcov': 'SF:tools/x/src/a.mjs\nLF:10\nLH:10\nend_of_record\nSF:tools/x/src/b.mjs\nLF:10\nLH:8\nend_of_record\n',
+  } });
+  try {
+    const r = cli(root, ['--policy', 'tools/x/policy.yaml', '--report', 'coverage/x.lcov']);
+    assert.equal(r.status, 1, r.out);
+    assert.match(r.out, /✗ tools\/x\/src\/b\.mjs — 80\.00% lines, floor 90%/);
+    assert.match(r.last, /\[coverage\] ❌ 1 of 2 modules below the floor; total 90\.00% lines \(floor 90%\)/);
+    assert.doesNotMatch(r.out, /scripts\/full\.mjs/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('policy: without --policy, the default scripts/coverage-policy.yaml is used, unchanged', () => {
+  const root = project({ files: {
+    'scripts/full.mjs': FULL,
+    'tools/x/policy.yaml': OTHER_POLICY_YAML,
+    'coverage/scripts.lcov': 'SF:scripts/full.mjs\nLF:10\nLH:8\nend_of_record\n',
+  } });
+  try {
+    const r = cli(root, ['--report', 'coverage/scripts.lcov']);
+    assert.equal(r.status, 0, r.out);
+    assert.match(r.last, /\[coverage\] ✅ 1 modules ≥ 70% lines; total 80\.00% lines/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('policy: an unreadable --policy file exits non-zero and names the file', () => {
+  const root = project({ files: { 'scripts/full.mjs': FULL } });
+  try {
+    const r = cli(root, ['--policy', 'tools/nope/policy.yaml', '--report', 'coverage/x.lcov']);
+    assert.notEqual(r.status, 0, r.out);
+    assert.match(r.out, /tools\/nope\/policy\.yaml/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
