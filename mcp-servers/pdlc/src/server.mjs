@@ -6,7 +6,7 @@
 // handler runs and answers with its own error text. Owning the call path is what lets every call,
 // including one with invalid input, be refused in the contract's shape (invalid_input, write guard 0)
 // and write its audit line before the result is returned (constitution 1.1.0, research R17).
-import { realpathSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
@@ -15,7 +15,8 @@ import { TOOLS, TOOL_NAMES, inputJsonSchema } from './tool-contract.mjs';
 import { createToolHandlers } from './tools.mjs';
 
 export const SERVER_NAME = 'pdlc';
-export const SERVER_VERSION = '0.1.0';
+/** The package's own version, which the manifest's version must equal (one place, no second pin). */
+export const SERVER_VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 const summariseIssues = (error) => error.issues
   .map((i) => `${i.path.length ? i.path.join('.') : 'arguments'}: ${i.message}`)
