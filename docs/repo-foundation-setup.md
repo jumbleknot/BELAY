@@ -663,6 +663,10 @@ goes in the register (step 14).
 - **A cancelled builder run is usually a superseded one.** The workflow's `concurrency` group cancels an older run
   when a newer push to `main` arrives, and the forge UI shows no reason. Confirm from the registry that the newer
   commit's tag was published.
+- **A manual dispatch cancels a queued push run too.** On a busy shared runner a push run can wait 20 minutes or more,
+  and while it waits it is in `/actions/runs` but not in `/actions/tasks`. BELAY read `/actions/tasks`, concluded the
+  merge had created no run, and dispatched the builder, which cancelled the queued run (item #81). Port
+  `forge-pr.mjs dispatch`'s refusal while a run of the same workflow and branch is pending (`--supersede` overrides).
 
 **Check:** the sweep posts `sweep/verdict` with an image count. The throwaway-branch builder run fails at the scan step,
 with `Push` skipped.
@@ -773,7 +777,9 @@ Raise the retention floor for the two new jobs.
 - **The run token gets 403 on `/branch_protections`.** Read that one endpoint with `CI_DIGEST_TOKEN`. BELAY found this
   only on the first live run: locally, the owner's token can read it.
 - **`/actions/tasks` returns `{ workflow_runs, total_count }` with no `x-total-count` header**, and `run_started_at`
-  is the start time. A paginated reader must handle that shape and fail closed on a short read.
+  is the start time. A paginated reader must handle that shape and fail closed on a short read. It lists only jobs a
+  runner has picked up: to see a queued or cancelled-before-start run, read `/actions/runs` (filter by `workflow_id`
+  and `status`; `head_branch` is silently ignored).
 - **Find bot issues by label and title, never by number**, and never let a closed issue silence the report.
 - **Judge the window by its own run's verdict, never the newest one on the commit.** Every bot run on an unchanged
   `main` posts `renovate/verdict` to the same commit, and the combined status keeps only the newest. BELAY's first

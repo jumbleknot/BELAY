@@ -123,6 +123,7 @@ The repository is private, and Forgejo gives no secrets (`CI_DIGEST_TOKEN`) to f
   vulnerable digest is published. The report is uploaded as the `image-scan-report` artifact either way. See
   [image-scanning.md](image-scanning.md).
 - **Dispatch on a branch:** `node scripts/forge-pr.mjs dispatch devcontainer-image.yml --ref <branch>`. A dispatched run posts no commit status, so follow it in the Actions tab.
+- **Never dispatch over a queued push run (item #81).** The host runner is shared, so a push run can wait 20 minutes or more before a runner picks it up. While it waits it is in `/actions/runs` but **not** in `/actions/tasks`, which lists only picked-up jobs. On 2026-11-25 a session read `/actions/tasks`, decided the merge of PR #80 had created no push run, and dispatched the builder. The `concurrency` group's `cancel-in-progress` cancelled the queued push run 143 in the same second the dispatch was created (run 147). The trigger was never broken. `forge-pr.mjs dispatch` now refuses while a run of the same workflow on the same branch is waiting, running or blocked; `--supersede` replaces it on purpose. To see whether a merge created a run: `/actions/runs?workflow_id=devcontainer-image.yml&page=1&limit=5`.
 - **The result:** the job writes the digest-pinned reference to the step summary, which this forge cannot read back. Resolve the digest from the registry instead (the recipe is in [devcontainer.md](devcontainer.md)).
 - **Failure digest:** the job ends with the standard failure-digest step, like every job here.
 
@@ -228,7 +229,7 @@ node scripts/forge-pr.mjs merge <n> --expect-head "$(git rev-parse HEAD)"       
 | --- | --- |
 | `open --head <branch> --title <t> --body-file <f> [--base main]` | Opens a PR from a pushed branch. A `refs/…` (AGit) head is refused, because its runs get no secrets. |
 | `merge <n> --expect-head <full sha>` | Merges only when all three hold: the PR's head is that sha, `ci-status status` says mergeable, and the forge says mergeable. It then deletes the branch and prints the merge sha. |
-| `dispatch <workflow.yml> --ref <branch> [--input k=v]` | Starts a `workflow_dispatch` run. That run posts **no** commit status, so follow it in the Actions tab. |
+| `dispatch <workflow.yml> --ref <branch> [--input k=v] [--supersede]` | Starts a `workflow_dispatch` run. That run posts **no** commit status, so follow it in the Actions tab or `/actions/runs?workflow_id=<workflow.yml>`. It refuses while a run of the same workflow on the same branch is waiting, running or blocked, because a `cancel-in-progress` workflow would cancel that run (item #81); `--supersede` dispatches anyway. A forge that cannot list runs is a refusal too. |
 
 Exit codes: 0 done · 1 refused or failed · 2 bad arguments.
 
