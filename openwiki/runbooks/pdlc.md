@@ -4,8 +4,8 @@ title: The pdlc server — proposal intake from Claude Desktop
 description: How the pdlc operator-tool MCP server lets a Claude Desktop session on the workstation file and refine feature proposals as forge issues and keep read-only local copies — building and installing the .mcpb with its four settings, the dedicated pdlc token and its two scopes, the skill update rule, the audit trail in the host's stderr log joined to the forge timeline by correlation_id, the refusal codes, and the hand-off that makes another repository (MCM) accept proposals.
 tags: [pdlc, mcp, claude-desktop, proposals, runbook]
 resource: docs/runbooks/pdlc.md
-resource-sha256: 6a5fa5f3faa2d6f3472cb55ba5c9e577836963be89b3299629dd9da16660b63f
-timestamp: 2026-11-25T12:40:03.208Z
+resource-sha256: 44ca050ac3dcdc9f3e0c4b5c8381fa75e9bde4a7946e3a23c6c00df1fd8f1b55
+timestamp: 2026-11-25T13:03:41.851Z
 ---
 
 # The pdlc server — proposal intake from Claude Desktop
@@ -23,7 +23,7 @@ Full detail is in [docs/runbooks/pdlc.md](../../docs/runbooks/pdlc.md).
 - **Nothing BELAY runs depends on it** (FR-035). The web form, `ready`, pick-up and close-on-spec work with the
   server uninstalled, and a guard test fails on any reference to it from BELAY's tooling.
 - **A dedicated token**, named `pdlc`, with `write:issue` + `read:repository` only, used by nothing else, held only
-  in the extension's sensitive setting. It never reaches argv, results, logs or `.git/config`: git authenticates
+  in the extension's sensitive setting (encrypted at rest under a key Windows DPAPI protects for the user). It never reaches argv, results, logs or `.git/config`: git authenticates
   through `GIT_CONFIG_*` in each child's environment.
 - **The local copies are fast-forward only.** A dirty, off-branch, diverged or foreign copy is refused and left
   byte-identical; the operator fixes it in their own tools.

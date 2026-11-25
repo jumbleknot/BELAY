@@ -62,7 +62,7 @@ Download both to the workstation (VS Code Explorer → right-click → **Downloa
    | --- | --- | --- |
    | Forge URL | `PDLC_FORGE_URL` | The forge root, `http://<forge host>:3000` on the tailnet. The scheme is used as written; no path |
    | Forge owner | `PDLC_FORGE_OWNER` | The one account whose repositories the server may address |
-   | Forge token (pdlc) | `PDLC_FORGE_TOKEN` | The `pdlc` token. A sensitive setting: masked, stored as recorded under "Measured on the host" |
+   | Forge token (pdlc) | `PDLC_FORGE_TOKEN` | The `pdlc` token. A sensitive setting: masked, and stored encrypted (see "Measured on the host") |
    | Clone folder | `PDLC_CLONE_ROOT` | The clone folder created above |
 
 3. Enable the extension.
@@ -89,7 +89,7 @@ recorded in research R12. The rows still marked *pending* are not to be relied o
 | Is `git` found from the extension, and from which `PATH` | Yes. The extension inherits the user's full `PATH`; `git` resolved to `C:\Program Files\Git\cmd\git.exe` (Git for Windows 2.53.0). No `git_path` setting is needed |
 | The Node version Claude Desktop bundles | v24.22.3, run by `Claude.exe` itself, not a system Node. The manifest requires `>=20.0.0` |
 | Where the server's stderr lands (the audit log), and its rotation and retention | *pending T006* |
-| Where a `sensitive` setting is stored | *pending T006* |
+| Where a `sensitive` setting is stored | Encrypted at rest in `%LOCALAPPDATA%\Claude-Data\claude_<publisher id>\Claude Extensions Settings\<extension id>.json`, as `__encrypted__:…` (Electron `safeStorage`: AES-GCM under a key Windows DPAPI protects for your user). No plain-text copy anywhere in the data folder, and nothing in Credential Manager. Anything running as your Windows user can decrypt it |
 
 ## The audit trail
 

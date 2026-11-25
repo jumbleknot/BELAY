@@ -166,7 +166,7 @@ host facts the packaging depends on.
       Manager rule now states "declared exactly once, in the root";
     - `pnpm nx show project pdlc` lists the five targets;
     - `pnpm nx run scripts:sast` passes (the SCA check over the new packages).
-- [ ] T006 *(Observations 1 and 2 recorded 2026-11-25; 3 (log) and 4 (sensitive storage) being re-measured under `%LOCALAPPDATA%\Claude-Data`.)* **Host measurements** (research R12; plan phase 2). These must be done before T031 and T047 depend on
+- [ ] T006 *(Observations 1, 2 and 4 recorded 2026-11-25; 3 (the log) is being re-measured in `%LOCALAPPDATA%\Claude-Data\claude_<publisher id>\logs`.)* **Host measurements** (research R12; plan phase 2). These must be done before T031 and T047 depend on
   them.
   - Build a throwaway "hello" extension in the scratchpad, never committed. It needs a one-tool server whose tool runs
     `git --version` through `execFile` and returns `process.version`, `process.env.PATH`'s git entry and
@@ -885,7 +885,7 @@ live check is quickstart §7, after MCM's own feature merges, outside this PR.
 - [X] T073 [P] Update `openwiki/projects/repository.md` line 40 (canonical): `mcp-servers/` now holds `pdlc`, the
   operator-tool server (ADR-0005), and `.forgejo/issue_template/` holds two forms.
   - **Done when**: the row names `pdlc`.
-- [ ] T074 [P] *(Written; the token's storage location is marked pending T006.)* Update `openwiki/invariants/secrets-management.md` (canonical) with:
+- [X] T074 [P] *(Storage location filled from T006 observation 4, 2026-11-25.)* Update `openwiki/invariants/secrets-management.md` (canonical) with:
   - the `pdlc` token: host-only, `write:issue` + `read:repository`, stored in a Claude Desktop sensitive setting at the
     location T006 observed, and revoked separately;
   - the mapping of `FORGE_ISSUE_TOKEN` to `PDLC_FORGE_TOKEN` for `pdlc:integration-forge`.

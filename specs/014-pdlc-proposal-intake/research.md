@@ -239,7 +239,14 @@ Microsoft Store (MSIX) build, package `Claude_6.28899.6.0_x64__<publisher id>`.
    `compatibility.runtimes.node: ">=20.0.0"`, the server's `engines` floor, which v24.22.3 meets.
 3. *Server logs*: not yet found. `%APPDATA%\Claude\logs` does not exist on the MSIX build, and the virtualised
    `%LOCALAPPDATA%\Packages\Claude_…\LocalCache\Roaming\Claude\logs` held no file with the marker. **Pending.**
-4. *Sensitive storage*: not yet found; `%APPDATA%\Claude` does not exist on the MSIX build. **Pending.**
+4. **Sensitive storage: encrypted at rest, in the extension's settings file.** The value sits in
+   `%LOCALAPPDATA%\Claude-Data\claude_<publisher id>\Claude Extensions Settings\local.mcpb.<author>.<name>.json`
+   as `"probe_secret": "__encrypted__:<base64>"`, beside the plain `isEnabled` flag and non-sensitive settings. The
+   base64 decodes to 40 bytes starting `v10`: Chromium's OS-crypt format (Electron `safeStorage`), AES-256-GCM
+   (3-byte prefix + 12-byte nonce + 9 bytes of ciphertext for the 9-character dummy + 16-byte tag), under a key that
+   Windows DPAPI protects for the logged-in user. A plain-text search of the whole data folder found no copy of the
+   dummy value, and Windows Credential Manager has no Claude entry. So any process running as that user can
+   decrypt it, and nothing else can, which is the posture the constitution accepts for a one-operator workstation.
 
 Also observed:
 - The bundle is unpacked to `%LOCALAPPDATA%\Claude-Data\claude_<publisher id>\Claude Extensions\local.mcpb.<author>.<name>\`,
