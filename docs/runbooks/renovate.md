@@ -165,7 +165,7 @@ believe you are covered. Feature 012 adds three checks, and they and the bot wat
 
 | What | When (UTC) | Proves |
 | --- | --- | --- |
-| `renovate-health.yml`, step 1: `check-lockfile-refresh.mjs` | Wednesday 08:30 | that a bot run started inside the routine window, and what Renovate said happened to lock-file maintenance in it |
+| `renovate-health.yml`, step 1: `check-lockfile-refresh.mjs` | Wednesday 08:30 | that a bot run started inside the routine window, and what Renovate said happened to lock-file maintenance in it. It reads **that run's own** `renovate/verdict`, chosen by the status's run link: a later run on an unchanged `main` posts to the same commit, and the newest verdict there is not the window's |
 | `renovate-health.yml`, step 2: `renovate-health.mjs` | Wednesday 08:30 | dashboard problems, bot-branch state, blocked bot PRs and the lock-file verdict, posted as **one comment** on the tracking issue |
 | the watchdog step in `renovate.yml` (`--check-freshness`) | every bot run | that the newest weekly report is at most 8 days old |
 | `branch-reaper.yml` (`reap-merged-branches.mjs`) | daily 03:30 | that no merged, unused branch is left for the bot to reuse |

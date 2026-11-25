@@ -13,6 +13,8 @@
 //   2. What did that run say happened to lock-file maintenance? Feature 011's verdict status carries
 //      Renovate's own result for that branch (`; lock file: <result>`), so `no-work` (already
 //      current) is told apart from `not-scheduled` or `pr-limit-reached` (dead or starved).
+//      It reads THAT run's verdict, chosen by the run link on the status, never the newest one on the
+//      commit: a later run on an unchanged main posts to the same commit (item #77).
 // The window comes from renovate.json, never from a copy kept here.
 //
 // Usage:
@@ -97,6 +99,20 @@ export function judgeLockfile({ window, runs, verdictDescription, prs }) {
   return { ok, state, windowRun: windowRun && { runNumber: windowRun.run_number, sha: windowRun.head_sha }, result, pr: pr && { number: pr.number, created_at: pr.created_at, updated_at: pr.updated_at, inWindow: Boolean(activePr) }, line };
 }
 
+/**
+ * The window run's OWN `renovate/verdict` (item #77). Every renovate run on an unchanged main posts to
+ * the same commit, and the combined status keeps only the newest per context, so a later security-cron
+ * run hid the window run's result (measured 2026-11-25: #121's not-scheduled over #116's no-work).
+ * check-renovate-config.mjs links each verdict to its run (`…/actions/runs/<run_number>`), so the
+ * status is chosen by that link. No match is null (judged `unknown`), never the newest. Pure.
+ */
+export function pickWindowVerdict(statuses, runNumber) {
+  const suffix = `/actions/runs/${runNumber}`;
+  const row = (statuses ?? []).find((s) => s.context === 'renovate/verdict' && typeof s.target_url === 'string'
+    && s.target_url.replace(/\/+$/, '').endsWith(suffix));
+  return row?.description ?? null;
+}
+
 // ── the forge reads ──────────────────────────────────────────────────────────────────────────────
 
 async function readFacts({ env, fetch: doFetch, window }) {
@@ -109,10 +125,9 @@ async function readFacts({ env, fetch: doFetch, window }) {
     .sort((a, b) => Date.parse(b.run_started_at) - Date.parse(a.run_started_at))[0];
   let verdictDescription = null;
   if (windowRun) {
-    const res = await doFetch(`${base}/commits/${windowRun.head_sha}/status`, { headers: { Authorization: `token ${token}` } });
-    if (!res.ok) throw new Error(`GET /commits/${windowRun.head_sha}/status: HTTP ${res.status}`);
-    const body = await res.json();
-    verdictDescription = (body.statuses ?? []).find((s) => s.context === 'renovate/verdict')?.description ?? null;
+    // The full status history, not the combined status: see pickWindowVerdict.
+    const statuses = await listAll(`/commits/${windowRun.head_sha}/statuses`, { fetch: doFetch, token, base });
+    verdictDescription = pickWindowVerdict(statuses, windowRun.run_number);
   }
   const prs = await listAll('/pulls?state=all', { fetch: doFetch, token, base });
   return { runs, verdictDescription, prs };
@@ -137,6 +152,9 @@ export async function selftest() {
     if (got !== want) failures.push(`${result} judged ${got}, not ${want}`);
   }
   if (judgeLockfile({ window: w, runs: [], verdictDescription: null, prs: [] }).state !== 'no-window-run') failures.push('a missing window run passed');
+  const linked = (n, r) => ({ context: 'renovate/verdict', description: `x; lock file: ${r}`, target_url: `https://forge.example/o/r/actions/runs/${n}` });
+  if (pickWindowVerdict([linked(121, 'not-scheduled'), linked(116, 'no-work')], 116) !== 'x; lock file: no-work') failures.push('a later run\'s verdict was read for the window run (item #77)');
+  if (pickWindowVerdict([linked(121, 'not-scheduled')], 116) !== null) failures.push('a verdict not linked to the window run was used');
   return { failures };
 }
 
@@ -146,7 +164,7 @@ export async function main(argv = process.argv.slice(2), { env = process.env, fe
   if (argv[0] === '--selftest') {
     const { failures } = await selftest();
     for (const f of failures) error(`[lockfile-refresh] ✗ selftest: ${f}`);
-    if (!failures.length) log('[lockfile-refresh] ✅ selftest: every verdict state, and a window in progress skipped');
+    if (!failures.length) log('[lockfile-refresh] ✅ selftest: every verdict state, a window in progress skipped, and the window run\'s own verdict chosen');
     return failures.length ? 1 : 0;
   }
   let now = new Date();
