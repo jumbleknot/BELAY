@@ -40,7 +40,7 @@ export class ForgePrError extends Error {
 export const USAGE = `Usage:
   node scripts/forge-pr.mjs open --head <branch> --title <title> --body-file <path> [--base main]
   node scripts/forge-pr.mjs merge <pr-number> --expect-head <full-40-hex-sha>
-  node scripts/forge-pr.mjs dispatch <workflow.yml> --ref <branch> [--input <key>=<value>]
+  node scripts/forge-pr.mjs dispatch <workflow.yml> --ref <branch> [--input <key>=<value>] [--supersede]
 
 open      Opens a PR whose head is a REAL branch on the forge. Push it first with
           \`git push origin HEAD:<branch>\`. AGit (refs/for/…) heads are refused, because they run
@@ -50,7 +50,10 @@ merge     Merges only if the PR head equals --expect-head, \`ci-status status --
           branch after merging and prints the merge commit sha.
 dispatch  Runs a workflow_dispatch on a branch (verifying a branch without a PR). --input may be
           given once, e.g. \`--input reason=manual\` for guardrails.yml. A dispatched run posts NO
-          commit status, so read /actions/tasks rather than ci-status.
+          commit status, so read /actions/runs?workflow_id=<workflow.yml> rather than ci-status.
+          Refuses while a run of the same workflow on the same branch is waiting, running or
+          blocked: a workflow with \`cancel-in-progress\` would cancel it (item #81). A queued run is
+          in /actions/runs but NOT in /actions/tasks. --supersede dispatches anyway, on purpose.
 
 The write credential comes from \`git credential fill\` for the scheme and host of
 \`git remote get-url origin\`. Nobody types it.
@@ -108,7 +111,8 @@ export function resolveCommand(argv) {
     if (rest.filter((a) => a === '--input' || a.startsWith('--input=')).length > 1) {
       throw new ArgvError(`--input may be given at most once\n\n${USAGE}`);
     }
-    const { values, positionals } = partitionArgsWithValues(rest, {
+    const { flags, values, positionals } = partitionArgsWithValues(rest, {
+      accepted: ['--supersede'],
       withValues: ['--ref', '--input'],
       maxPositionals: 1,
       usage: USAGE,
@@ -119,6 +123,7 @@ export function resolveCommand(argv) {
     }
     if (!values.has('--ref')) throw new ArgvError(`dispatch needs --ref <branch>\n\n${USAGE}`);
     const out = { command: 'dispatch', workflow, ref: values.get('--ref') };
+    if (flags.has('--supersede')) out.supersede = true;
     if (values.has('--input')) {
       const kv = values.get('--input');
       const eq = kv.indexOf('=');
@@ -252,13 +257,55 @@ export async function cmdMerge({ pr, expectHead }, { forge, repoPath = '', ciSta
   return { mergeCommit: after.data.merge_commit_sha };
 }
 
-export async function cmdDispatch({ workflow, ref, inputs }, { forge, repoPath = '', log = console.log }) {
+/** Run states that a dispatch would cancel (cancel-in-progress) or race. `queued` answers 400. */
+const PENDING_STATES = ['waiting', 'running', 'blocked'];
+
+/**
+ * The runs of `workflow` on `ref` that have not finished. Reads /actions/runs, which lists queued
+ * runs; /actions/tasks lists only jobs a runner has picked up, so a queued run is invisible there.
+ * Filters by workflow_id and status on the forge (both measured to work) and by ref here, because
+ * the forge silently ignores `head_branch`. Throws when the forge cannot answer: an unknown is a refusal.
+ */
+export async function pendingRuns({ workflow, ref }, { forge, repoPath = '' }) {
+  const found = [];
+  for (const status of PENDING_STATES) {
+    const q = new URLSearchParams({ workflow_id: workflow, status, page: '1', limit: '50' });
+    const res = await forge.request('GET', `${repoPath}/actions/runs?${q}`);
+    if (res.status !== 200) {
+      throw new ForgePrError(
+        `could not check for a pending ${workflow} run on ${ref}: /actions/runs answered ${describe(res.status, res.data)}. ` +
+          'Dispatching blind could cancel a queued run; pass --supersede to dispatch anyway.',
+      );
+    }
+    for (const r of res.data?.workflow_runs ?? []) {
+      if (r.workflow_id === workflow && r.prettyref === ref) found.push(r);
+    }
+  }
+  return found;
+}
+
+const describeRun = (r) =>
+  `run ${r.index_in_repo ?? r.id} (${r.event || 'dispatch'}, ${r.status}, ${String(r.commit_sha ?? '').slice(0, 7)}, created ${r.created})`;
+
+export async function cmdDispatch({ workflow, ref, inputs, supersede }, { forge, repoPath = '', log = console.log }) {
+  const pending = await pendingRuns({ workflow, ref }, { forge, repoPath }).catch((err) => {
+    if (supersede && err instanceof ForgePrError) return [];
+    throw err;
+  });
+  if (pending.length && !supersede) {
+    throw new ForgePrError(
+      `${workflow} on ${ref} already has ${pending.map(describeRun).join('; ')}. A dispatch now would ` +
+        'cancel it if the workflow sets cancel-in-progress, or run twice if not. Wait for it, or pass ' +
+        '--supersede to replace it on purpose (item #81).',
+    );
+  }
+  if (pending.length) log(`--supersede: this dispatch may cancel ${pending.map(describeRun).join('; ')}`);
   const body = inputs ? { ref, inputs } : { ref };
   const res = await forge.request('POST', `${repoPath}/actions/workflows/${encodeURIComponent(workflow)}/dispatches`, body);
   if (res.status !== 204) throw new ForgePrError(`dispatch of ${workflow} on ${ref} answered ${describe(res.status, res.data)}`);
   log(
-    `dispatched ${workflow} on ${ref}. It posts NO commit status: follow it in /actions/tasks ` +
-      `(see docs/runbooks/ci.md, "Pull requests and CI status").`,
+    `dispatched ${workflow} on ${ref}. It posts NO commit status: follow it in ` +
+      `/actions/runs?workflow_id=${encodeURIComponent(workflow)} (see docs/runbooks/ci.md, "Pull requests and CI status").`,
   );
 }
 

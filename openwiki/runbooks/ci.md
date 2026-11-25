@@ -4,8 +4,8 @@ title: CI guardrails, the failure digest, and the PR loop
 description: The single guardrails Forgejo Actions workflow required on main — what it runs and how to reproduce it locally, how a failure is read back from the redacted digest and its package bundle with ci-status.mjs, the dedicated repository runner and the one exception to it (the dev-container image job, which never runs pull-request code), the sast job beside guardrails, the report-only registry-retention job, branch protection, the terminal PR loop through forge-pr.mjs, and the rule every new job must follow.
 tags: [ci, forgejo, pull-requests, runbook]
 resource: docs/runbooks/ci.md
-resource-sha256: 93cc24b8b894fa802c86ce81defe3d2b6459387d3023b2ddaa5e7ad1d8e55b35
-timestamp: 2026-11-25T12:18:44.711Z
+resource-sha256: 6229c939a0da99d1ae1f88864f3a996dc4f1724876ad36fff7ccfcceb1de8495
+timestamp: 2026-11-25T17:49:05.071Z
 ---
 
 # CI guardrails, the failure digest, and the PR loop
@@ -54,6 +54,12 @@ node scripts/forge-pr.mjs merge <n> --expect-head "$(git rev-parse HEAD)"
   <name>` has a sample even for a job that has never failed.
 - **A dispatched run posts no commit status.** Follow a `forge-pr.mjs dispatch` run in the Actions
   tab, because `ci-status` cannot see it.
+- **Never dispatch over a queued run (item #81).** A run waiting for the shared host runner is in
+  `/actions/runs` but not in `/actions/tasks`, which lists only picked-up jobs. A dispatch on the same
+  branch cancels it through the workflow's `cancel-in-progress`. On 2026-11-25 that cancelled the
+  queued image push run that a session wrongly thought was never created. `forge-pr.mjs dispatch` now
+  refuses while a run of the same workflow and branch is waiting, running or blocked, and fails closed
+  when it cannot list runs; `--supersede` replaces the run on purpose.
 - **The runner is BELAY's own, with one exception.** Jobs use `runs-on: belay`, served by a
   repository runner that maps it to a Node 26 container with no host Docker access. The global
   runner is shared with MovieCollectionManager and runs one job at a time, and BELAY's first run

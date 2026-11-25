@@ -3,7 +3,7 @@ type: Gotcha
 title: Instrument traps — a tool's answer is about the tool, not your question
 description: Measured cases where a command ignored an argument it did not recognise, acted on one it should not have, or answered a different question — node --test flag order, rg -r, a forge empty list or 404, an empty search, git grep and new files, node's test reporter, spawnSync input encoding, a persistent cd — and the habit of checking the instrument before believing a result in either direction.
 tags: [tooling, testing, verification, forge]
-timestamp: 2026-11-24
+timestamp: 2026-11-25
 ---
 
 # Instrument traps — a tool's answer is about the tool, not your question
@@ -31,6 +31,13 @@ Most of these were measured in MovieCollectionManager, using the same tools BELA
   forge answers a request it cannot authorise in ways that look like absence. `backlog.mjs` refuses an
   unknown label locally for this reason, because the API would silently return the unfiltered set.
   Dropping `type=issues` from a Forgejo issue listing turned 1 row into 143 pull requests.
+- **`/actions/tasks` lists only jobs a runner has picked up; `/actions/runs` lists queued runs too.**
+  A run queued behind a busy shared runner is invisible in `/actions/tasks`, so "no task" is not "no
+  run". On 2026-11-25 that misreading led to a manual dispatch that cancelled the queued push run it
+  was meant to replace (item #81). `/actions/runs` filters by `status` (an unknown value answers 400)
+  and `workflow_id`, silently IGNORES `head_branch`, and puts the branch in `prettyref`.
+  `/actions/runs/{id}` takes the internal id (8451), not the run number shown in the UI (143), and
+  answers 404 for the number. Measured on Forgejo 15.0.3.
 - **The repository API's `permissions` reports what the ACCOUNT may do, not the token.** An
   issue-write-only token on an admin account reports `admin: true` and still cannot push. Prove a
   token's scope by behaviour (see [the backlog runbook](../runbooks/backlog.md)).
