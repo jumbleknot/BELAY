@@ -118,18 +118,28 @@ jobs:
         if: steps.gate.outputs.build == 'true'
         run: bash scripts/ci-log-step.sh build-publish-install-deps pnpm install --frozen-lockfile
 
+      # Trivy, its database and the registry login are job-private too (item #84): the other project's host jobs
+      # install and run their own Trivy from the shared ~/.local/bin and use the shared ~/.cache/trivy,
+      # so a Trivy bump on either side would swap the other's binary, even mid-scan.
       - name: Install Trivy (pinned, sha256-verified)
         if: steps.gate.outputs.build == 'true'
+        env:
+          BELAY_TRIVY: ${{ runner.temp }}/belay-trivy
         run: |
           bash scripts/ci-log-step.sh build-publish-install-trivy bash -e /dev/stdin <<'CI_LOG_STEP'
-          node scripts/install-trivy.mjs "$HOME/.local/bin"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          node scripts/install-trivy.mjs "$BELAY_TRIVY/bin"
+          echo "$BELAY_TRIVY/bin" >> "$GITHUB_PATH"
           CI_LOG_STEP
 
       - name: Scan the built image (gates the push)
         if: steps.gate.outputs.build == 'true'
+        env:
+          BELAY_TRIVY: ${{ runner.temp }}/belay-trivy
+          TRIVY_CACHE_DIR: ${{ runner.temp }}/belay-trivy/cache
         run: |
           bash scripts/ci-log-step.sh build-publish-image-scan bash -e /dev/stdin <<'CI_LOG_STEP'
+          # The Trivy that runs must be the one this job installed, not a shared one earlier on PATH.
+          [ "$(command -v trivy)" = "$BELAY_TRIVY/bin/trivy" ] || { echo "::error::trivy on PATH is $(command -v trivy), not this job's $BELAY_TRIVY/bin/trivy"; exit 1; }
           node scripts/image-scan.mjs --image "$TAG" --image-src docker
           node scripts/check-image-findings.mjs
           CI_LOG_STEP
@@ -146,6 +156,8 @@ jobs:
         if: steps.gate.outputs.build == 'true'
         env:
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+          # The login is written HERE, never to the shared ~/.docker/config.json (item #84).
+          DOCKER_CONFIG: ${{ runner.temp }}/belay-docker
         run: |
           bash scripts/ci-log-step.sh build-publish-push bash -e /dev/stdin <<'CI_LOG_STEP'
           : "${REGISTRY_USER:?set the REGISTRY_USER repository variable}"
@@ -169,12 +181,15 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           CI_LOG_STEP
 
-      # Item #79: nothing this job installed outlives it on the shared host.
-      - name: Remove the job-private pnpm
+      # Items #79 and #84: nothing this job installed, cached or logged in with outlives it on the
+      # shared host. Every runner.temp path above must be named here (the guard checks).
+      - name: Remove the job-private tools, cache and login
         if: always() && steps.gate.outputs.build == 'true'
         env:
           PNPM_PREFIX: ${{ runner.temp }}/belay-pnpm
-        run: bash scripts/ci-log-step.sh build-publish-remove-pnpm rm -rf "$PNPM_PREFIX"
+          BELAY_TRIVY: ${{ runner.temp }}/belay-trivy
+          DOCKER_CONFIG: ${{ runner.temp }}/belay-docker
+        run: bash scripts/ci-log-step.sh build-publish-remove-private rm -rf "$PNPM_PREFIX" "$BELAY_TRIVY" "$DOCKER_CONFIG"
 
       - name: Publish failure digest
         if: always()
