@@ -4,8 +4,8 @@ title: CI guardrails, the failure digest, and the PR loop
 description: The single guardrails Forgejo Actions workflow required on main — what it runs and how to reproduce it locally, how a failure is read back from the redacted digest and its package bundle with ci-status.mjs, the dedicated repository runner and the one exception to it (the dev-container image job, which never runs pull-request code), the sast job beside guardrails, the report-only registry-retention job, branch protection, the terminal PR loop through forge-pr.mjs, and the rule every new job must follow.
 tags: [ci, forgejo, pull-requests, runbook]
 resource: docs/runbooks/ci.md
-resource-sha256: 43799303a1f24c16fb780d6eff37e43f7badfc862725f54267579481ae4c553a
-timestamp: 2026-11-25T18:30:03.020Z
+resource-sha256: 6c6e747366f1d08eb1ff338d0fff044396cc9716c6811d49a30b3d284ee99277
+timestamp: 2026-11-25T18:50:42.212Z
 ---
 
 # CI guardrails, the failure digest, and the PR loop
@@ -73,11 +73,21 @@ node scripts/forge-pr.mjs merge <n> --expect-head "$(git rev-parse HEAD)"
     needs a Docker daemon. It runs on the shared host runner (`runs-on: kvm`), which has the host's
     Docker, so it **must never run pull-request code**. Its triggers are push to `main`, dispatch and
     the weekly schedule, and a guard test fails on any `pull_request` trigger.
-  - **A host-runner job never writes shared host state.** The host runner shares its Actions tool cache
-    with other projects' runners, so a global npm install there changes their tools (on 2026-11-25 a
-    global pnpm install broke MovieCollectionManager's pnpm check, item #79). On `kvm`, `install-pnpm.sh`
-    runs with a job-private `PNPM_PREFIX` under `runner.temp`, removed by an `if: always()` step; a guard
-    scans every workflow's `kvm` jobs.
+  - **A host-runner job never writes shared host state, and never runs a tool from it.** The host
+    runner shares its home folder, Actions tool cache and Docker daemon with MovieCollectionManager's
+    runner. On 2026-11-25:
+    - a global pnpm install broke MovieCollectionManager's pnpm check (item #79);
+    - the shared `~/.local/bin/trivy`, `~/.cache/trivy` and a registry login in `~/.docker/config.json`
+      turned out to be shared too (item #84).
+
+    So pnpm, Trivy and its cache, and `DOCKER_CONFIG` all live under `runner.temp`, and one
+    `if: always()` step removes them. `scripts/lib/host-runner-rules.mjs` fails a `kvm` job that
+    installs globally, adds to PATH from outside `runner.temp`, runs Trivy without a private cache,
+    logs in to Docker without a private config, uses `pnpm/action-setup` or setup-node's `cache:`,
+    names a home-folder path in a command, or leaves a private path unremoved.
+  - **The Docker daemon is still shared.** MovieCollectionManager's host jobs prune it, so one that
+    overlaps `build-publish` can make a build, scan or push fail ("image not found"). It fails closed,
+    because nothing unscanned is published. Check for an overlapping job, then re-run.
   - **Its result is not readable from the run.** The forge cannot read back the step summary, so the
     published digest is resolved from the registry (see the [dev container](./devcontainer.md)). It scans the
     built image **before** `Push`, and a fixable Critical publishes nothing ([image scanning](image-scanning.md)).

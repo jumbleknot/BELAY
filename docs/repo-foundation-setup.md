@@ -657,9 +657,14 @@ goes in the register (step 14).
   builder ran `install-pnpm.sh` there as a global npm install. That put BELAY's pnpm first on PATH for every other
   project on the host, and the next MovieCollectionManager job failed its pnpm version check (item #79). On the host
   runner, install into a job-private prefix (`PNPM_PREFIX: ${{ runner.temp }}/…`) and remove it in an `if: always()`
-  step. `scripts/__tests__/host-runner-shared-state.guard.test.mjs` scans every workflow's host-runner jobs for this;
-  port it with the builder. The structural fix is a separate Unix user for each project's runner, which needs root
-  on the host.
+  step. The same goes for **every** tool, cache and credential, not just pnpm (item #84): BELAY's builder also
+  installed Trivy into the shared `~/.local/bin`, left Trivy's database in `~/.cache/trivy`, and left its registry
+  login in `~/.docker/config.json`. Use a private `BELAY_TRIVY`, `TRIVY_CACHE_DIR` and `DOCKER_CONFIG` under
+  `runner.temp`, all removed by the same `always()` step. Port `scripts/lib/host-runner-rules.mjs` and its guard test
+  with the builder. It fails a home-folder path, a PATH entry outside `runner.temp`, `pnpm/action-setup` and
+  setup-node's `cache:` too. The Docker daemon stays shared: another project's `docker image prune -af` during a
+  build fails the build, never publishes a bad image. The structural fix is a separate Unix user for each project's
+  runner, which needs root on the host.
 - **A cancelled builder run is usually a superseded one.** The workflow's `concurrency` group cancels an older run
   when a newer push to `main` arrives, and the forge UI shows no reason. Confirm from the registry that the newer
   commit's tag was published.
