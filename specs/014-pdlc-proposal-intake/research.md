@@ -258,7 +258,8 @@ PRD §8's top-level `skills/` and `forgejo/` folders are therefore not created. 
 - **New `backlog.mjs` verb `close-proposal`**: what must be right every time lives in the script, not the skill. It:
   1. resolves the issue and refuses unless it is open, carries `type/proposal` and is not `status/bot-managed`;
   2. refuses unless `<spec>/spec.md` exists in the working tree;
-  3. posts `Superseded by spec \`specs/NNN-slug/\` on branch \`NNN-slug\``;
+  3. posts the comment ``Superseded by spec `specs/NNN-slug/` (branch `NNN-slug`).`` (the exact text is in
+     [contracts/close-proposal-cli.md](contracts/close-proposal-cli.md));
   4. closes the issue.
 
   It is idempotent: an already-closed proposal that already has the comment is a no-op that says so. The existing rule
@@ -322,8 +323,22 @@ PRD §8's top-level `skills/` and `forgejo/` folders are therefore not created. 
   (FR-018).
 - Writes (create, update, comment, sync) are logged at INFO with tool, repository and issue number. Bodies are never
   logged.
-- The authoritative audit trail for issue writes is the forge's own issue timeline. See the plan's Complexity Tracking
-  for why a separate append-only audit store is not built.
+- **Audit** (maintainer decision 2026-11-25, written into the 1.1.0 amendment): every tool call, allowed or refused,
+  emits exactly one `audit` line to stderr **before** its result is returned:
+  `{ts, level: "INFO", service: "pdlc", event: "audit", correlation_id, tool, repo?, number?, decision: "allowed" |
+  "refused", code?, outcome}`. It carries no body, no section text and no token.
+- **Where the audit log lives**: the server never opens a log file. Claude Desktop captures a local server's stderr
+  automatically ([MCP debugging guide](https://modelcontextprotocol.io/docs/tools/debugging)) into its per-server log
+  under `%APPDATA%\Claude\logs`. That host-written file is the audit log for calls and refusals, and the forge's issue
+  timeline is the audit log for the effect of every write. `correlation_id` joins the two.
+- **Integrity**: the server has no file-write tool and never touches the log folder. The model driving the session,
+  which is the audited actor, can reach only the connected clone folder. The operator, as the logged-in OS user, can
+  edit the file; that is accepted for a one-operator workstation and stated in the amendment.
+- **Retention** (option (a)): whatever Claude Desktop keeps, as measured in T006 and stated in the runbook. Writes are
+  kept permanently by the forge, so only refusal lines can age out.
+- **Unverified, measured in T006**: that a Desktop Extension's stderr lands in `mcp-server-pdlc.log` (or the path
+  actually used, including an MSIX-virtualised `%LOCALAPPDATA%\Packages\Claude_…` location), and its rotation and
+  retention.
 
 ## R18 — The skill master: changes from the Claude Desktop copy
 
@@ -336,3 +351,25 @@ three edits:
 
 A test asserts the skill names exactly the nine contract tools. After the change merges, the operator re-uploads
 `target/pdlc/proposal-intake.zip` in Claude Desktop, as the runbook describes.
+
+## R19 — Why the server is local, not remote (maintainer decision 2026-11-25)
+
+**Decision**: keep `pdlc` a local stdio server (M1, M2). Remote options were considered when the audit design (R17)
+was settled.
+
+**Alternatives rejected**:
+- **A remote connector (Claude Desktop given a URL)**: Claude Desktop contacts a remote connector **from Anthropic's
+  cloud**, so the server must be reachable from the public internet; a server on a private network or behind a VPN
+  does not connect ([custom connectors](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp),
+  [using remote MCP servers](https://support.claude.com/en/articles/11175166-using-remote-mcp-servers)). That would put
+  a forge write path on the internet, bringing in OAuth, TLS 1.3, rate limiting and security headers. The clones would
+  also sit on the server, out of reach of Claude Desktop's file access, so grounding would need new file-reading
+  tools, which changes the fixed tool contract and the saved skill.
+- **A tailnet-only server with a local stdio bridge**: it keeps the forge token and the logs off the workstation, but
+  it needs a server to run, a bridge (the common one, `mcp-remote`, is a third-party package fetched at run time), and
+  the same file-reading tools, because git access (`sync_repo`, `repo_status`) puts the clones on the server. It is the
+  path to revisit if there are ever more operators or workstations.
+
+**Rationale**: the server does two jobs: forge issue access, and git clones that Claude Desktop reads from a connected
+folder. A local server does both on the tailnet with nothing listening, and a remote one gives up local file reading.
+

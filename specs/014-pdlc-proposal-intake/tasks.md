@@ -23,6 +23,10 @@ scenarios it covers and a **Verify RED** command with the expected failure. Its 
 - Where the behaviour already exists, use a **mutation RED**: apply the named source edit, watch the test fail, then
   revert.
 
+**Test-case approval** (constitution TDD: "Test cases written → User approval → Tests fail"): the maintainer's
+approval of this `tasks.md`, which names each test task's scenarios and expected RED, is that approval. A test task
+whose scenarios change during implementation goes back to the maintainer before its RED is taken.
+
 **Working copy**: all work happens in the worktree `/home/coder/worktrees/014-pdlc-proposal-intake` (AGENTS.md
 worktree rule), which has a real `CI=true pnpm install --frozen-lockfile`.
 
@@ -102,6 +106,13 @@ host facts the packaging depends on.
   - Add an **Operator-tool MCP servers** subsection: local stdio servers that a desktop or IDE assistant launches for
     one operator. Node (pnpm and Nx) or Python is permitted, and no Dockerfile is required. They must still meet the
     Core Principles, a narrowest-scope credential, a git/forge write allowlist, and the testing tiers.
+  - In the same subsection, state the transport rule (maintainer decision, 2026-11-25): for operator-tool MCP
+    servers, tailnet (WireGuard) transport meets Transport Security's TLS requirement.
+  - In the same subsection, state the audit rule (maintainer decision, 2026-11-25; research R17): for operator-tool
+    MCP servers, the audit log is the launching host's capture of the server's stderr, together with the forge's own
+    history for writes. The server emits one `audit` line per call, allowed or refused, before returning, and never
+    opens the log itself. The OS user can edit the host's log; that is accepted for a one-operator workstation.
+    Retention is the host's, as measured, rather than 90 days.
   - Scope the existing text to servers the Agent Gateway serves: lines 460 and 478, the line 541 tree comment, and
     the line 821 diagram.
   - **Done when**:
@@ -109,12 +120,13 @@ host facts the packaging depends on.
     - `git grep -n "dedicated Python Docker container"` finds only text scoped to Agent Gateway servers;
     - `node scripts/check-speckit-overrides.mjs` exits 0.
 - [ ] T003 [P] Write `docs/decisions/ADR-0005-operator-tool-mcp-servers.md`, covering:
-  - the M1 amendment;
+  - the M1 amendment, including the tailnet transport rule and the host-log audit rule;
   - the M2 `.mcpb` bundle packaging and the hoisted `pnpm deploy`;
   - the two runtime dependencies (`@modelcontextprotocol/sdk`, `zod`) and the dev dependency (`@anthropic-ai/mcpb`),
     all exact pins with no install scripts;
   - the `mcp-servers/*` workspace entry;
-  - the rejected alternatives, from the plan's Complexity Tracking.
+  - the rejected alternatives, from the plan's Complexity Tracking and research R19 (a remote connector; a
+    tailnet server with a local bridge).
 
   Add its row to `docs/decisions/README.md`.
   - **Done when**: the ADR follows the existing ADR shape (Status, Context, Decision, Consequences), and the README
@@ -126,7 +138,8 @@ host facts the packaging depends on.
   - **Done when**: `node scripts/wiki-refresh.mjs --stale` reports neither page, and `pnpm nx run scripts:lint` passes
     the OKF gate.
 - [ ] T005 Scaffold the Nx project `pdlc`:
-  - `mcp-servers/pdlc/package.json`: `@belay/pdlc`, private, `type: module`, `engines.node >=20`. Exact pins for
+  - `mcp-servers/pdlc/package.json`: `@belay/pdlc`, private, `type: module`, `engines.node >=20`,
+    `"packageManager"` equal to the root's (constitution: each project declares it). Exact pins for
     `@modelcontextprotocol/sdk` and `zod`; dev dependency `@anthropic-ai/mcpb`.
   - `mcp-servers/pdlc/project.json`, with targets:
     - `lint`: `node --check` over `src/` and `scripts/`, plus `mcpb validate manifest.json` once T049 lands;
@@ -140,6 +153,7 @@ host facts the packaging depends on.
   - Run `pnpm install` to update `pnpm-lock.yaml`. Keep `mcp-servers/.gitkeep`.
   - **Done when**:
     - `CI=true pnpm install --frozen-lockfile` passes with no `ERR_PNPM_IGNORED_BUILDS` and no `allowBuilds` change;
+    - `mcp-servers/pdlc/package.json`'s `packageManager` equals the root `package.json`'s;
     - `pnpm nx show project pdlc` lists the five targets;
     - `pnpm nx run scripts:sast` passes (the SCA check over the new packages).
 - [ ] T006 **Host measurements** (research R12; plan phase 2). These must be done before T031 and T047 depend on
@@ -151,7 +165,10 @@ host facts the packaging depends on.
     the host (date)"** block appended to R12 in `specs/014-pdlc-proposal-intake/research.md`:
     1. whether `git` was found, and from which `PATH`;
     2. the bundled Node version;
-    3. where server stderr lands (the log file path);
+    3. where server stderr lands: the exact log file (expected `mcp-server-pdlc.log` under `%APPDATA%\Claude\logs`,
+       or an MSIX-virtualised `%LOCALAPPDATA%\Packages\Claude_…` path), confirmed by finding the throwaway server's
+       own stderr line in it; and the observed **retention and rotation** of that log (size cap, number of files
+       kept). This file is the audit log (research R17);
     4. where a `sensitive` setting is stored.
   - Uninstall the throwaway afterwards.
   - **Done when**: all four observations are recorded as observed facts, not assumptions. If `git` was **not**
@@ -193,6 +210,8 @@ contract with its server factory.
     strings and nested objects.
   - The logger writes one JSON object per line to an injected stderr stream, with
     `{ts, level, service:"pdlc", correlation_id, tool, repo?, number?, msg}`, and nothing to stdout.
+  - `audit(record)` writes exactly one `event: "audit"` line with the fields in research R17, and rejects a record
+    carrying a body or section text. An audit line is emitted even when a lower log level is configured.
   - **Scenarios covered**: FR-018 (log sink), SC-008, research R17
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/redact.test.mjs mcp-servers/pdlc/tests/unit/log.test.mjs`
     → expected: 2 failing files, `ERR_MODULE_NOT_FOUND` for `src/redact.mjs` and `src/log.mjs`
@@ -274,7 +293,9 @@ contract with its server factory.
   - No tool name matches `/close|reopen|delete|label|milestone|assign|bulk|write_file/`.
   - A handler that throws a `Refusal` yields `isError: true`, with `{refused, code, reason}` text.
   - A success yields both `content[0].text` and `structuredContent` holding the same object.
-  - **Scenarios covered**: US3-AC7, FR-001, FR-002, FR-003, SC-006
+  - Every call, success or refusal, writes exactly one `audit` line to the injected stderr **before** the result
+    reaches the client, with `decision`, `code` (on refusal) and the request id as `correlation_id` (research R17).
+  - **Scenarios covered**: US3-AC7, FR-001, FR-002, FR-003, SC-006, constitution Logging (audit, as amended in T002)
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/tool-contract.test.mjs` → expected: 1 failing file,
     `ERR_MODULE_NOT_FOUND` for `src/server.mjs`
 - [ ] T023 Implement the tool contract, server and handlers (prerequisite: T022 verified RED):
@@ -282,9 +303,9 @@ contract with its server factory.
     registration;
   - `mcp-servers/pdlc/src/server.mjs`: `createServer(deps)` registers every tool from the contract, and the stdio entry
     is guarded by `import.meta.main` or an equivalent;
-  - `mcp-servers/pdlc/src/tools.mjs`: the handler map. Each handler is a `not_found`-free stub that throws
-    `Refusal('invalid_input', 'not implemented')` until its story lands. Every handler maps `Refusal` to the result
-    convention.
+  - `mcp-servers/pdlc/src/tools.mjs`: the handler map. Until its story lands, each handler is a temporary stub that
+    throws `Refusal('invalid_input', 'not implemented')`; the stubs are gone by the end of US4. Every handler maps
+    `Refusal` to the result convention, and one wrapper emits the `audit` line for every call before returning.
   - **Verify GREEN**: the T022 command → expected: 0 failures. Then `pnpm nx run pdlc:test` passes, with the coverage
     floor applied through `--policy`.
 
@@ -333,13 +354,20 @@ real bare repository. Live, quickstart §2 (create, duplicate, read back) agains
   - a clean copy that is behind runs `fetch` and then `merge --ff-only` and reports `fast_forwarded` with `from` and
     `to`;
   - a copy that is behind by 0 reports `up_to_date`;
-  - the branch used is always the repository's `default_branch`, never a literal `main`.
+  - the branch used is always the repository's `default_branch`, never a literal `main`;
+  - the expected origin comes from an injected `originUrlFor(repo)` dependency, whose production value builds
+    `<forgeUrl>/<owner>/<name>.git`. No module but `config.mjs` reads `forgeUrl`'s scheme rule, so tests can supply a
+    `file://` root.
   - **Scenarios covered**: US1-AC2, US1-AC3, edge case (default branch not `main`)
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/local-copy.test.mjs` → expected: 1 failing file,
     `ERR_MODULE_NOT_FOUND`
 - [ ] T027 [P] [US1] Write a real-git integration test in
   `mcp-servers/pdlc/tests/integration/local-copy.integration.test.mjs`. In a temp directory:
-  - create a bare "forge" repository with a `main` and a non-`main` default variant;
+  - create a bare "forge" repository with a `main` and a non-`main` default variant, with
+    `uploadpack.allowFilter=true` set on it. It is addressed as a `file://` URL through `originUrlFor`, because a
+    plain path makes git ignore `--filter` and hardlink instead, so the blobless clone would go untested;
+  - assert the clone is blobless (`git config remote.origin.promisor` is `true`, and
+    `remote.origin.partialclonefilter` is `blob:none`);
   - clone it through `sync`, and assert a file is readable;
   - push a new commit to the bare repository, then `status` reports `behind: 1` with no working-tree change;
   - `sync` fast-forwards to the new commit;
@@ -357,8 +385,8 @@ real bare repository. Live, quickstart §2 (create, duplicate, read back) agains
       ids;
     - the body comes from `renderBody`;
     - an empty `feature_name` or an unknown section key refuses with `invalid_input`;
-    - a body over 64 KiB or a title over 255 characters refuses with `invalid_input` (`data-model.md` Proposal, write
-      guard 6);
+    - a body over 64 KiB or a title over 255 characters refuses with `invalid_input`, in schema validation, before
+      any forge call (`data-model.md` Proposal, write guard 0);
     - an open proposal with the same `trim().toLowerCase()` title refuses with `duplicate_title`, naming its number,
       and the double records no POST (write guard 5);
     - the result carries the new `updated_at` (`data-model.md` Proposal.updated_at).
@@ -388,7 +416,7 @@ real bare repository. Live, quickstart §2 (create, duplicate, read back) agains
     `node --test mcp-servers/pdlc/tests/unit/proposal-body.test.mjs mcp-servers/pdlc/tests/unit/master-copies.test.mjs`
     → expected: 0 failures
 - [ ] T031 [US1] Implement `status` and `sync` (clone and fast-forward only; the refusals come in T043) in
-  `mcp-servers/pdlc/src/local-copy.mjs`. Follow the sync transitions under `data-model.md` Local proposal copy
+  `mcp-servers/pdlc/src/local-copy.mjs`, as `createLocalCopy({cloneRoot, originUrlFor, git})`. Follow the sync transitions under `data-model.md` Local proposal copy
   (prerequisite: T026 and T027 verified RED).
   - **Verify GREEN**:
     `node --test mcp-servers/pdlc/tests/unit/local-copy.test.mjs mcp-servers/pdlc/tests/integration/local-copy.integration.test.mjs`
@@ -491,15 +519,16 @@ SC-003). Depends on US1 and US2, whose operations the guards protect.
   - an over-size body.
 
   Assert the refusal `code`, a non-empty `reason`, and **zero** non-GET requests recorded by the fetch double. Assert
-  the guards apply in the order under `data-model.md` Proposal (write guards 1–6): a request that breaks two guards is
-  refused by the earlier one.
+  the guards apply in the order under `data-model.md` Proposal (write guards 0–5): a request that breaks two guards is
+  refused by the earlier one. For example, an over-size body for an unknown repository gets `invalid_input`, with no
+  forge request.
   - **Scenarios covered**: US3-AC1, US3-AC2, US3-AC3, US3-AC6, FR-012 to FR-016, FR-019, FR-020, SC-003
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/write-guards.test.mjs` → expected: the order tests and
     the `bot_managed` comment test fail. If the US1 and US2 code already refuses a case, take a **mutation RED** for it
     instead: delete that guard's check in `src/proposals.mjs`, watch its row fail, then revert.
 - [ ] T041 [P] [US3] Write a real-git refusal test in
   `mcp-servers/pdlc/tests/integration/local-copy-refusals.integration.test.mjs`. Build each copy state against a bare
-  repository:
+  repository addressed through `originUrlFor` as a `file://` URL, set up as in T027:
   - dirty (a modified tracked file, and separately one untracked file): `copy_dirty`;
   - on another branch, and detached HEAD: `copy_off_branch`;
   - a local commit ahead of `origin`: `copy_diverged`;
@@ -628,7 +657,9 @@ install runbook.
   - creating the clone folder and connecting it to the Claude Desktop project;
   - updating the skill from `proposal-intake.zip`, whenever the master changes;
   - T006's four observations (log location, token storage, Node version, git);
-  - troubleshooting by refusal code.
+  - troubleshooting by refusal code;
+  - **the audit trail**: where the host's log for `pdlc` is (T006), how to find a call by `correlation_id` and read
+    its `audit` line, how to match a write to the forge's issue history, and the observed retention (research R17).
 
   The runbook names no forge host or tailnet address.
   - **Scenarios covered**: US5-AC1, US5-AC3, FR-025
@@ -663,7 +694,10 @@ verb, the `after_specify` hook and its skill, and the backlog skill's pick-up ru
   - a filter naming `type/proposal` while the forge fake lacks it is refused locally, before any listing request.
   - **Scenarios covered**: US7-AC3, FR-030, research R15
   - **Verify RED**: `node --test --test-name-pattern "proposal label" scripts/__tests__/backlog.test.mjs` → expected:
-    the new tests fail, `type/proposal` not in TAXONOMY
+    the `TAXONOMY`, guard and type-count tests fail, because `type/proposal` is not in `TAXONOMY`. The local-refusal
+    test already passes, because `backlog.mjs` resolves names against the repository's own labels
+    (`scripts/backlog.mjs:262`). For it, take a **mutation RED**: make the resolver pass unknown names through, watch
+    the test fail, then revert.
 - [ ] T055 [P] [US7] Add `ready` tests to `scripts/__tests__/backlog.test.mjs`:
   - an open `type/proposal` + `status/proposal-draft` item is not listed, and `(n draft proposal(s) not listed)` is
     printed;
@@ -675,7 +709,8 @@ verb, the `after_specify` hook and its skill, and the backlog skill's pick-up ru
 - [ ] T056 [P] [US7] Add `close-proposal` tests to `scripts/__tests__/backlog.test.mjs`, covering every row of
   [contracts/close-proposal-cli.md](contracts/close-proposal-cli.md) and the preconditions, effect and idempotence
   under `data-model.md` close-proposal:
-  - an open proposal with `spec.md` present gets one comment, then a close, in that order, and exits 0;
+  - an open proposal with `spec.md` present gets one comment, then a close, in that order, and exits 0. No label
+    request is recorded, so the labels are unchanged (FR-008);
   - the comment text is exactly
     ``Superseded by spec `specs/NNN-slug/` (branch `<branch from git>`).``;
   - a re-run after a simulated close failure sees the comment and completes the close;
@@ -792,7 +827,10 @@ live check is quickstart §7, after MCM's own feature merges, outside this PR.
   - create a draft, refuse a duplicate, read it back;
   - update to ready; `stale` after a helper edit;
   - refuse a non-proposal; refuse another owner and an unknown repository;
-  - `check_setup` returns `ok`.
+  - `check_setup` returns `ok`;
+  - `sync_repo` on `ci-smoke` returns `cloned` into a temp clone root, then `up_to_date`. `repo_status` reports
+    `behind: 0` and `clean: true`. The clone's `.git/config` holds no token and no userinfo, which proves the
+    `GIT_CONFIG_*` authentication against the real, private forge (research R2).
 
   The helper creates the labels idempotently, titles every issue `Proposal: pdlc-it-<run id>-…`, and closes its own
   issues at the end. With the variable unset, the target **fails**, naming it.
@@ -880,7 +918,10 @@ live check is quickstart §7, after MCM's own feature merges, outside this PR.
   2. reinstall the bundle and re-upload the skill (T052);
   3. run quickstart §5 (end to end on BELAY: SC-001, SC-005, SC-009) and §6 (independence: SC-010).
 
-  Record the outcome in the PR's closing comment. Quickstart §7 (SC-007) waits for MCM's feature.
+  Record the outcome in the PR's closing comment.
+  - **Deferred, outside this PR**: quickstart §7 (SC-007, US6-AC2 and US6-AC3) runs after MCM's own feature merges,
+    following the guide from T064. Its result goes in the closing comment of MCM's feature, which links back to this
+    one.
 
 ---
 
