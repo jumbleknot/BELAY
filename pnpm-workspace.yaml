@@ -2,6 +2,7 @@ packages:
   - 'frontend/*'
   - 'backend/*'
   - 'packages/*'
+  - 'mcp-servers/*'
 
 # ═════════════════════════════════════════════════════════════════════════════════════════════════
 # `allowBuilds`: which dependencies may run install scripts. A postinstall script is arbitrary code

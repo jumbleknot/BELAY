@@ -101,7 +101,7 @@ host facts the packaging depends on.
       be edited. The new hook is recorded in the Spec Kit runbook instead (T069).
     - `integration tier`: `openwiki/invariants/testing-tiers.md:26` → T072
 
-- [ ] T002 Amend the constitution to **1.1.0** in `.specify/memory/constitution.md`. Use `/speckit-constitution` so the
+- [X] T002 Amend the constitution to **1.1.0** in `.specify/memory/constitution.md`. Use `/speckit-constitution` so the
   Sync Impact Report and the version history are written.
   - Add an **Operator-tool MCP servers** subsection: local stdio servers that a desktop or IDE assistant launches for
     one operator. Node (pnpm and Nx) or Python is permitted, and no Dockerfile is required. They must still meet the
@@ -119,7 +119,7 @@ host facts the packaging depends on.
     - the version line reads 1.1.0, and the Sync Impact Report names the amended sections;
     - `git grep -n "dedicated Python Docker container"` finds only text scoped to Agent Gateway servers;
     - `node scripts/check-speckit-overrides.mjs` exits 0.
-- [ ] T003 [P] Write `docs/decisions/ADR-0005-operator-tool-mcp-servers.md`, covering:
+- [X] T003 [P] Write `docs/decisions/ADR-0005-operator-tool-mcp-servers.md`, covering:
   - the M1 amendment, including the tailnet transport rule and the host-log audit rule;
   - the M2 `.mcpb` bundle packaging and the hoisted `pnpm deploy`;
   - the two runtime dependencies (`@modelcontextprotocol/sdk`, `zod`) and the dev dependency (`@anthropic-ai/mcpb`),
@@ -131,13 +131,13 @@ host facts the packaging depends on.
   Add its row to `docs/decisions/README.md`.
   - **Done when**: the ADR follows the existing ADR shape (Status, Context, Decision, Consequences), and the README
     index lists it.
-- [ ] T004 Refresh `openwiki/process/constitution.md` for 1.1.0 with `/wiki-refresh`:
+- [X] T004 Refresh `openwiki/process/constitution.md` for 1.1.0 with `/wiki-refresh`:
   `node scripts/wiki-refresh.mjs --diff`, then `--record`, never a hand-typed hash. Add
   `openwiki/decisions/adr-0005-operator-tool-mcp-servers.md` with `resource` pointing at the ADR, and list it in
   `openwiki/decisions/index.md`. Depends on T002 and T003.
   - **Done when**: `node scripts/wiki-refresh.mjs --stale` reports neither page, and `pnpm nx run scripts:lint` passes
     the OKF gate.
-- [ ] T005 Scaffold the Nx project `pdlc`:
+- [X] T005 Scaffold the Nx project `pdlc`:
   - `mcp-servers/pdlc/package.json`: `@belay/pdlc`, private, `type: module`, `engines.node >=20`,
     `"packageManager"` equal to the root's (constitution: each project declares it). Exact pins for
     `@modelcontextprotocol/sdk` and `zod`; dev dependency `@anthropic-ai/mcpb`.
@@ -154,6 +154,13 @@ host facts the packaging depends on.
   - **Done when**:
     - `CI=true pnpm install --frozen-lockfile` passes with no `ERR_PNPM_IGNORED_BUILDS` and no `allowBuilds` change;
     - `mcp-servers/pdlc/package.json`'s `packageManager` equals the root `package.json`'s;
+      **Deviation (2026-11-25, awaiting maintainer approval)**: the field is NOT declared in the nested
+      manifest. `scripts/check-toolchain-consistency.mjs` (rule `package-manager-once`, run by
+      `scripts:lint`) and `openwiki/invariants/package-manager-enforcement.md` require `packageManager`
+      exactly once, in the root, because an agreeing copy drifts (MCM measured it). That conflicts with
+      constitution line 148 ("each project's `package.json` must declare"), a pre-existing
+      inconsistency this feature did not introduce. The guard wins here, so the project inherits the
+      root's pin;
     - `pnpm nx show project pdlc` lists the five targets;
     - `pnpm nx run scripts:sast` passes (the SCA check over the new packages).
 - [ ] T006 **Host measurements** (research R12; plan phase 2). These must be done before T031 and T047 depend on

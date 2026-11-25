@@ -1,0 +1,15 @@
+# Coverage policy for the pdlc Nx project (feature 014, research R16).
+#
+# Read by `node scripts/check-coverage.mjs --policy mcp-servers/pdlc/coverage-policy.yaml`, the gate
+# step of `pdlc:test`. It lives inside the project root so a changed floor invalidates a cached pass.
+# The floor is the constitution's 70% of lines, per module and in total. The shape, and the shape of
+# an exception, are the same as scripts/coverage-policy.yaml.
+
+version: 1
+
+floor: 70
+
+include:
+  - "mcp-servers/pdlc/src/*.mjs"
+
+exceptions: []
