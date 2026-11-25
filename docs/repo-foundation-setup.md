@@ -652,6 +652,17 @@ goes in the register (step 14).
   allowlist entry instead proves nothing when the built image does not carry the CVE.
 - **The dispatched run's number in the UI is not its API id.** `ci-status` reports the API id, so say both when you
   ask someone to look.
+- **A builder on a shared host runner must not write shared host state.** The image build needs a Docker daemon, so
+  it runs on the host runner, which other projects' runners share as the same Unix user, tool cache included. BELAY's
+  builder ran `install-pnpm.sh` there as a global npm install. That put BELAY's pnpm first on PATH for every other
+  project on the host, and the next MovieCollectionManager job failed its pnpm version check (item #79). On the host
+  runner, install into a job-private prefix (`PNPM_PREFIX: ${{ runner.temp }}/…`) and remove it in an `if: always()`
+  step. `scripts/__tests__/host-runner-shared-state.guard.test.mjs` scans every workflow's host-runner jobs for this;
+  port it with the builder. The structural fix is a separate Unix user for each project's runner, which needs root
+  on the host.
+- **A cancelled builder run is usually a superseded one.** The workflow's `concurrency` group cancels an older run
+  when a newer push to `main` arrives, and the forge UI shows no reason. Confirm from the registry that the newer
+  commit's tag was published.
 
 **Check:** the sweep posts `sweep/verdict` with an image count. The throwaway-branch builder run fails at the scan step,
 with `Push` skipped.
@@ -716,6 +727,14 @@ Then:
   `node-version` datasource. Match it by name.
 - **Routine updates wait for the window, even on a manual dispatch.** To force one early, tick its box on the
   Dependency Dashboard, then dispatch a live run. A PR forced this way does not prove the window works.
+- **With "block on outdated branch" on `main`, bot PRs merge one at a time.** Each merge outdates every other open
+  PR. Don't push to a bot branch yourself: tick the PR's rebase box on the Dependency Dashboard, dispatch a live
+  run, wait for CI, merge, and repeat. Merge your own PRs in the gaps, rebasing them yourself.
+- **The first window may open no lock-file PR, and that can be correct.** Renovate's result `no-work` means the lock
+  file is already current. Confirm it by regenerating the lock file from scratch (`pnpm install --lockfile-only`
+  after deleting it) and checking the diff is empty.
+- **Before merging a bot PR, read its diff for a pin CI cannot see.** For example, a version bump whose download has
+  a checksum pinned elsewhere. Check that the new release's download URL resolves.
 
 **Check:**
 - The dry run posts `renovate/mode` `DRY RUN` and `renovate/verdict` `✅ … done, 0 PR(s) created`, and creates nothing.
@@ -756,6 +775,10 @@ Raise the retention floor for the two new jobs.
 - **`/actions/tasks` returns `{ workflow_runs, total_count }` with no `x-total-count` header**, and `run_started_at`
   is the start time. A paginated reader must handle that shape and fail closed on a short read.
 - **Find bot issues by label and title, never by number**, and never let a closed issue silence the report.
+- **Judge the window by its own run's verdict, never the newest one on the commit.** Every bot run on an unchanged
+  `main` posts `renovate/verdict` to the same commit, and the combined status keeps only the newest. BELAY's first
+  scheduled report read a later security-cron run's `not-scheduled` in place of the window run's `no-work`, a false
+  failure (item #77). Read the status history and pick the verdict whose `target_url` links to the window run's number.
 
 **Check:**
 - A dispatched health job creates the tracking issue, labelled `status/bot-managed`.

@@ -4,8 +4,8 @@ title: CI guardrails, the failure digest, and the PR loop
 description: The single guardrails Forgejo Actions workflow required on main — what it runs and how to reproduce it locally, how a failure is read back from the redacted digest and its package bundle with ci-status.mjs, the dedicated repository runner and the one exception to it (the dev-container image job, which never runs pull-request code), the sast job beside guardrails, the report-only registry-retention job, branch protection, the terminal PR loop through forge-pr.mjs, and the rule every new job must follow.
 tags: [ci, forgejo, pull-requests, runbook]
 resource: docs/runbooks/ci.md
-resource-sha256: bb2dcb266c3b9f894bc6a17fff8dffbe5f6d483dba8599378e28b200748a8313
-timestamp: 2026-11-24T12:44:11.188Z
+resource-sha256: 93cc24b8b894fa802c86ce81defe3d2b6459387d3023b2ddaa5e7ad1d8e55b35
+timestamp: 2026-11-25T12:18:44.711Z
 ---
 
 # CI guardrails, the failure digest, and the PR loop
@@ -64,6 +64,11 @@ node scripts/forge-pr.mjs merge <n> --expect-head "$(git rev-parse HEAD)"
     needs a Docker daemon. It runs on the shared host runner (`runs-on: kvm`), which has the host's
     Docker, so it **must never run pull-request code**. Its triggers are push to `main`, dispatch and
     the weekly schedule, and a guard test fails on any `pull_request` trigger.
+  - **A host-runner job never writes shared host state.** The host runner shares its Actions tool cache
+    with other projects' runners, so a global npm install there changes their tools (on 2026-11-25 a
+    global pnpm install broke MovieCollectionManager's pnpm check, item #79). On `kvm`, `install-pnpm.sh`
+    runs with a job-private `PNPM_PREFIX` under `runner.temp`, removed by an `if: always()` step; a guard
+    scans every workflow's `kvm` jobs.
   - **Its result is not readable from the run.** The forge cannot read back the step summary, so the
     published digest is resolved from the registry (see the [dev container](./devcontainer.md)). It scans the
     built image **before** `Push`, and a fixable Critical publishes nothing ([image scanning](image-scanning.md)).
