@@ -65,9 +65,10 @@ So a change to Spec Kit's behaviour takes one of three forms, in order of prefer
 | 2b | `/speckit-converge` appends its **Convergence** tasks in the row 2 format: a test + implementation pair with **Verify RED** / **Verify GREEN** for any code gap, "Done when" for docs/config, and a **Doc-impact sweep** task for a gap that renames, moves or removes an identifier. Upstream writes one-line tasks that never see the override | `.claude/skills/speckit-converge/SKILL.md` (step 7, the append contract) | Registered local edit to a Spec Kit-owned file | It is the skill itself | `local-edit-reverted`, `unregistered-edit`, `registry-stale` |
 | 3 | The governing principles every spec, plan and task list is checked against | `.specify/memory/constitution.md` | Project-owned | Every `/speckit-*` command reads it | none needed: upgrades do not touch it |
 | 5 | Spec Kit extensions **git 1.0.5** (feature branch before `/speckit-specify`, optional commit offers around every command) and **agent-context 1.0.3** (refreshes the Spec Kit section of the agent context file after specify and plan) | `.specify/extensions/git/`, `.specify/extensions/agent-context/`, `.specify/extensions/.registry`, and the skills `.claude/skills/speckit-git-{feature,validate,remote,initialize,commit}/` and `.claude/skills/speckit-agent-context-update/` | Vendor files installed by `specify extension add` | Each `/speckit-*` skill reads `.specify/extensions.yml` and runs the registered hooks | `extension-lost`, `extension-unregistered`, `extension-changed` |
-| 5a | The hooks the extensions register (20, two of them mandatory: `before_constitution` → `speckit.git.initialize` and `before_specify` → `speckit.git.feature`), **plus two hand-added hooks**: `before_converge` and `after_converge` → `speckit.git.commit` (optional), so `/speckit-converge` offers the same commits as every other command | `.specify/extensions.yml`; the expected list is `EXTENSION_HOOKS` in `scripts/check-speckit-overrides.mjs` (hand-added entries carry `local: true`) | Vendor file plus a registered local edit (the two converge hooks) | Read by every `/speckit-*` skill's hook checks | `hook-lost`, `hook-unregistered` |
+| 5a | The hooks the extensions register (20, two of them mandatory: `before_constitution` → `speckit.git.initialize` and `before_specify` → `speckit.git.feature`), **plus three hand-added hooks**: `before_converge` and `after_converge` → `speckit.git.commit` (optional), so `/speckit-converge` offers the same commits as every other command; and `after_specify` → `belay` `speckit.belay.close-proposal` (**mandatory**, priority 20), which closes the proposal a new spec came from (row 7) | `.specify/extensions.yml`; the expected list is `EXTENSION_HOOKS` in `scripts/check-speckit-overrides.mjs` (hand-added entries carry `local: true`) | Vendor file plus a registered local edit (the three hand-added hooks) | Read by every `/speckit-*` skill's hook checks | `hook-lost`, `hook-unregistered` |
 | 5b | agent-context writes to **AGENTS.md**, never the `CLAUDE.md` shim | `.specify/extensions/agent-context/agent-context-config.yml` (`context_file: AGENTS.md`) | Project-owned (extension config: installed once, preserved on reinstall, in no manifest) | Read by `speckit.agent-context.update` | `project-file-lost` |
 | 6 | `/speckit-taskstoissues` fans a feature's `tasks.md` out to the Forgejo backlog through `scripts/taskstoissues.mjs`, which drives `scripts/backlog.mjs`: a milestone per feature, one issue per task (deduplicated by task id), dependencies for ordering. Spec Kit 1.x has no core `taskstoissues` command, so the skill is the project's own | `.claude/skills/speckit-taskstoissues/SKILL.md` (forked from spec-kit 0.16.5 by way of MovieCollectionManager); runbook: [backlog.md](backlog.md) | Project-owned (in no manifest) | It is the skill itself | `project-file-lost`, `project-file-managed` |
+| 7 | `/speckit-belay-close-proposal`, run by the `after_specify` hook (row 5a): reads `.specify/feature.json`, finds exactly one `Proposal #<n>` in the new spec's **Input** line, and runs `node scripts/backlog.mjs close-proposal <n> --spec <feature dir>`, which comments a link to the spec and then closes the proposal (feature 014). No marker: it does nothing. Two different numbers: it asks | `.claude/skills/speckit-belay-close-proposal/SKILL.md`; runbook: [backlog.md](backlog.md) | Project-owned (in no manifest) | Invoked as the hook command `speckit.belay.close-proposal` | `project-file-lost`, `project-file-managed`; the hook itself: `hook-lost` |
 | 4 | The CLI version this repository was initialised with | `speckit_version` in `.specify/init-options.json`; the version named on [the spec-driven development page](../../openwiki/process/spec-driven-development.md) | Pins | n/a | none: keep the two equal by hand in the upgrade PR |
 
 Rows 1, 2, 2a, 2b, 5, 5a and 5b are the ones an upgrade can break. The gate checks that this
@@ -75,7 +76,8 @@ table names `.specify/templates/overrides/tasks-template.md`,
 `docs/templates/feature-test-tasks-template.md`, `.specify/extensions.yml`, every file in its
 `LOCAL_EDITS` registry and every file in its `PROJECT_OWNED` list (`inventory-stale`).
 `PROJECT_OWNED` holds files this repository keeps as its own that no manifest lists: today, the
-agent-context config (row 5b) and `/speckit-taskstoissues` (row 6).
+agent-context config (row 5b), `/speckit-taskstoissues` (row 6) and `/speckit-belay-close-proposal`
+(row 7).
 
 ### Known gaps
 
@@ -153,9 +155,10 @@ below on the bot's branch before it merges. Never merge the raw bump.
    `.specify/extensions.yml` and `.specify/extensions/.registry` from the extension manifests and
    **preserves** existing config files such as `agent-context-config.yml` (checked 2026-11-22 with
    git 1.0.5 and agent-context 1.0.3). Expect:
-   - `hook-lost` for `before_converge` and `after_converge`, which the reinstall drops. Re-add the
-     two entries at the end of `hooks:`, as in row 5a (`git diff HEAD -- .specify/extensions.yml`
-     shows them).
+   - `hook-lost` for `before_converge`, `after_converge` and the `after_specify` → `belay`
+     close-proposal hook, which the reinstall drops. Re-add the converge entries at the end of
+     `hooks:` and the close-proposal entry at the end of `after_specify:`, as in row 5a
+     (`git diff HEAD -- .specify/extensions.yml` shows them).
    - `extension-changed` if the new CLI bundles a newer extension. Update its `version` in
      `EXTENSIONS` and row 5, and check its hooks.
    - `hook-unregistered` or `hook-lost` if the new version adds, drops or changes a hook. Update
@@ -187,7 +190,7 @@ below on the bot's branch before it merges. Never merge the raw bump.
 | `registry-stale` | A `LOCAL_EDITS` file is no longer listed in any manifest, so Spec Kit no longer manages it | To keep the file, move the entry to `PROJECT_OWNED` and update its row. If it is no longer needed, drop the entry and the row |
 | `project-file-lost` | A `PROJECT_OWNED` file is missing or lost its marker. An upgrade deletes files that drop out of its manifest | Restore it from git history |
 | `project-file-managed` | A `PROJECT_OWNED` file is listed in a manifest again, so the next `--force` upgrade overwrites it | Move the entry back to `LOCAL_EDITS`, or rename the project file so the paths no longer collide |
-| `hook-lost` | A hook in `EXTENSION_HOOKS` is missing from `.specify/extensions.yml`, is disabled, or has its `optional` flag changed. After an extension reinstall this is expected for the hand-added `converge` hooks (row 5a) | Re-add the hook in the installer's format, as listed in row 5a. If upstream changed a hook on purpose, update `EXTENSION_HOOKS` and row 5a |
+| `hook-lost` | A hook in `EXTENSION_HOOKS` is missing from `.specify/extensions.yml`, is disabled, or has its `optional` flag changed. After an extension reinstall this is expected for the three hand-added hooks (row 5a) | Re-add the hook in the installer's format, as listed in row 5a. If upstream changed a hook on purpose, update `EXTENSION_HOOKS` and row 5a |
 | `hook-unregistered` | `.specify/extensions.yml` has a hook that `EXTENSION_HOOKS` does not list, usually a new hook from an extension upgrade | Register it in `EXTENSION_HOOKS` and row 5a, or remove it |
 | `extension-lost` | A registered extension is missing from `.specify/extensions/.registry` or disabled there, its `extension.yml` or one of its command skills is gone, or `.registry` / `extensions.yml` is missing or unreadable | `specify extension add <id> --force`, re-add the hand-added hooks (row 5a), then re-run the gate |
 | `extension-unregistered` | `.registry` lists an extension that `EXTENSIONS` does not | Register it in `EXTENSIONS`, `EXTENSION_HOOKS` and the table, or `specify extension remove <id>` |

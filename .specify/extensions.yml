@@ -111,6 +111,14 @@ hooks:
     prompt: Execute speckit.agent-context.update?
     description: Refresh agent context after specification
     condition: null
+  - extension: belay
+    command: speckit.belay.close-proposal
+    enabled: true
+    optional: false
+    priority: 20
+    prompt: Close the proposal this spec came from?
+    description: Close the source proposal with a link to the new spec (feature 014)
+    condition: null
   after_clarify:
   - extension: git
     command: speckit.git.commit

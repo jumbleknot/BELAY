@@ -99,6 +99,11 @@ export const PROJECT_OWNED = [
     marker: 'scripts/backlog.mjs',
     why: 'fans tasks out to the Forgejo backlog through scripts/backlog.mjs; project-owned because Spec Kit 1.x has no core taskstoissues command',
   },
+  {
+    file: '.claude/skills/speckit-belay-close-proposal/SKILL.md',
+    marker: 'backlog.mjs close-proposal',
+    why: 'the after_specify hook (feature 014): closes the proposal a spec came from; BELAY\'s own, in no manifest',
+  },
 ];
 
 export const EXTENSIONS_YML = '.specify/extensions.yml';
@@ -144,6 +149,10 @@ export const EXTENSION_HOOKS = [
   // commit offer every other command makes. A reinstall drops these two.
   { event: 'before_converge', extension: 'git', command: 'speckit.git.commit', optional: true, local: true },
   { event: 'after_converge', extension: 'git', command: 'speckit.git.commit', optional: true, local: true },
+  // Hand-added (feature 014): after /speckit-specify, close the proposal the spec came from, through
+  // .claude/skills/speckit-belay-close-proposal/ and `backlog.mjs close-proposal`. Mandatory, so a
+  // proposal never stays open beside its own spec. A reinstall drops it.
+  { event: 'after_specify', extension: 'belay', command: 'speckit.belay.close-proposal', optional: false, local: true },
 ];
 
 /** `speckit.git.feature` → `.claude/skills/speckit-git-feature/SKILL.md`. */

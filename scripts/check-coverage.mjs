@@ -276,7 +276,7 @@ const USAGE = `Usage: check-coverage.mjs --run | [--policy <file>] [--report <lc
   --run              delete the report, run ${TEST_GLOB} under coverage, then gate (scripts:test)
   --report <lcov>    gate an existing report only (default ${REPORT_PATH})
   --policy <file>    judge with this policy instead of ${POLICY_PATH}, for another Nx project that runs
-                     its own tests under coverage (pdlc:test uses mcp-servers/pdlc/coverage-policy.yaml)
+                     its own tests under coverage and keeps its own policy in its project root
   --selftest         judge synthetic reports; no test run (scripts:lint)
 Exit: 0 pass · 1 below the floor, no data, or a missing/malformed report · 2 bad arguments or policy
       · under --run, the test runner's own code when tests failed`;

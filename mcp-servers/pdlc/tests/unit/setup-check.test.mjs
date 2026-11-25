@@ -18,8 +18,9 @@ function rig({ labels, form, inEffect = true, branch = 'main' }) {
   const forge = fakeForge({ labels });
   forge.state.repos[0].default_branch = branch;
   if (form !== undefined) forge.state.files[`belay:${FORM_PATH}`] = form;
-  if (inEffect) forge.state.templates.belay = [{ name: 'Backlog item', file_name: 'backlog-item.yaml' }, { name: 'Proposal', file_name: 'proposal.yaml' }];
-  else forge.state.templates.belay = [{ name: 'Backlog item', file_name: 'backlog-item.yaml' }];
+  // Measured 2026-11-25: issue_templates answers file_name as the FULL path in the repository.
+  if (inEffect) forge.state.templates.belay = [{ name: 'Backlog item', file_name: '.forgejo/issue_template/backlog-item.yaml' }, { name: 'Proposal', file_name: '.forgejo/issue_template/proposal.yaml' }];
+  else forge.state.templates.belay = [{ name: 'Backlog item', file_name: '.forgejo/issue_template/backlog-item.yaml' }];
   const client = createForgeClient({ config, fetch: forge.fetch });
   const allowlist = createRepoAllowlist({ forge: client, config, existsSync: () => false });
   return { forge, allowlist, check: createSetupCheck({ forge: client, allowlist, config }) };
@@ -87,4 +88,10 @@ test('an unknown repository is refused before any label or file request', async 
   const r = rig({ labels: REQUIRED, form: MASTER });
   await assert.rejects(r.check.check({ repo: 'nope' }), (e) => e.code === 'unknown_repo');
   assert.ok(r.forge.calls.every((c) => c.path === '/repos/search'));
+});
+
+test('a proposal form elsewhere (another folder\'s proposal.yaml) does not count as in effect', async () => {
+  const r = rig({ labels: REQUIRED, form: MASTER, inEffect: false });
+  r.forge.state.templates.belay.push({ name: 'Proposal', file_name: '.gitea/issue_template/proposal.yaml' });
+  assert.equal((await r.check.check({ repo: 'BELAY' })).form, 'not_in_effect');
 });

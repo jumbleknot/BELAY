@@ -38,8 +38,9 @@ export function createSetupCheck({ forge, allowlist, config, masterForm = readCo
       if (text === null) form = 'missing';
       else {
         const templates = (await forge.get(`${path}/issue_templates`, { capability: 'read issue templates' })) ?? [];
-        // The forge skips a malformed form silently, so presence alone proves nothing (R7).
-        if (!templates.some((t) => t?.file_name === FORM_FILE_NAME)) form = 'not_in_effect';
+        // The forge skips a malformed form silently, so presence alone proves nothing (R7). Measured
+        // 2026-11-25: `file_name` is the full repository path; a bare name is accepted for older builds.
+        if (!templates.some((t) => t?.file_name === FORM_PATH || t?.file_name === FORM_FILE_NAME)) form = 'not_in_effect';
         else form = lf(text) === lf(masterForm) ? 'ok' : 'out_of_step';
       }
 

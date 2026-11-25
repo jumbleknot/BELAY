@@ -93,3 +93,13 @@ hooks:
 test('empty hooks', () => {
   assert.deepEqual(parseExtensionsYml('installed: []\nhooks: {}\n'), { installed: [], hooks: {} });
 });
+
+// Feature 014: the real file carries the hand-added close-proposal hook, mandatory.
+import { readFileSync as readFileSync014 } from 'node:fs';
+test('close-proposal: the real .specify/extensions.yml has after_specify → belay speckit.belay.close-proposal, optional false', () => {
+  const real = parseExtensionsYml(readFileSync014(new URL('../../.specify/extensions.yml', import.meta.url), 'utf8'));
+  const h = (real.hooks.after_specify ?? []).find((x) => x.extension === 'belay' && x.command === 'speckit.belay.close-proposal');
+  assert.ok(h, 'the close-proposal hook is missing');
+  assert.equal(h.optional, false);
+  assert.equal(h.enabled, true);
+});

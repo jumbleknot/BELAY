@@ -117,6 +117,11 @@ measured that a form present only on a feature branch is absent from `issue_temp
   `issue_templates`. The forge skips a malformed form silently, so presence alone proves nothing.
 - **Out of step**: the bytes differ from the master.
 
+**Measured during implementation (2026-11-25)**: `issue_templates` answers `file_name` as the **full repository
+path**, `.forgejo/issue_template/backlog-item.yaml`, not the bare file name assumed above. `check_setup` therefore
+matches `.forgejo/issue_template/proposal.yaml` (and the bare name, for a forge build that answers it that way),
+and `backlog.mjs validate-form` strips the folder before comparing with the working tree.
+
 ## R8 — Label resolution, filtering and the state swap
 
 **Measured**: `GET /repos/{o}/{r}/labels` answers with `x-total-count`, and BELAY has 12 labels. Feature 003 measured

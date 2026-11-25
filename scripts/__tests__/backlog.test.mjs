@@ -505,11 +505,14 @@ test('the taxonomy covers type, priority and status families', () => {
     'status/bot-managed',
     'dependencies',
     'security',
+    // Feature 014: the proposal family (its colours and descriptions are guarded against the contract below).
+    'type/proposal',
+    'status/proposal-draft',
   ]) {
     assert.ok(names.includes(n), `taxonomy missing ${n}`);
   }
   // Still exact, so an unplanned label fails here rather than appearing on the forge unannounced.
-  assert.equal(names.length, 12, `expected exactly the twelve BELAY labels, got: ${names.join(', ')}`);
+  assert.equal(names.length, 14, `expected exactly the fourteen BELAY labels, got: ${names.join(', ')}`);
 });
 
 test('form validation is driven by the ENUMERATED templates, not by issue_config/validate', () => {
@@ -767,4 +770,278 @@ test('bot-managed: the text note counts what was not listed', () => {
 test('bot-managed: an ordinary item is still listed, and nothing is excluded', () => {
   const { ready, excluded } = selectReadyItems([botItem(9, ['priority/p1'])], { 9: [] });
   assert.deepEqual([ready.length, excluded.length], [1, 0]);
+});
+
+// ── feature 014: BELAY adopts proposals ────────────────────────────────────────────────────────────
+// The labels come from the pdlc server's shared CONTRACT file (never its code: FR-035), `ready` hides
+// draft proposals, and `close-proposal` is the one close path for a proposal (contracts/close-proposal-cli.md).
+import * as backlog014 from '../backlog.mjs';
+import { execFileSync as execFileSync014 } from 'node:child_process';
+import { parse as parseYaml014 } from 'yaml';
+
+const REPO_ROOT_014 = join(HERE, '..', '..');
+const PROPOSAL_LABELS = JSON.parse(readFileSync(join(REPO_ROOT_014, 'mcp-servers', 'pdlc', 'contract', 'proposal-labels.json'), 'utf8'));
+
+test('proposal label: TAXONOMY contains type/proposal and status/proposal-draft', () => {
+  const names = TAXONOMY.map((l) => l.name);
+  assert.ok(names.includes('type/proposal'));
+  assert.ok(names.includes('status/proposal-draft'));
+});
+
+test('proposal label: every contract label in TAXONOMY has the contract\'s exact name, colour and description', () => {
+  for (const row of PROPOSAL_LABELS) {
+    const mine = TAXONOMY.find((l) => l.name === row.name);
+    assert.ok(mine, `${row.name} is in the contract but not in TAXONOMY`);
+    assert.deepEqual({ name: mine.name, color: mine.color, description: mine.description }, row, row.name);
+  }
+});
+
+test('proposal label: type/proposal counts as an item\'s single type/*', () => {
+  const { typeOf } = backlog014;
+  assert.equal(typeof typeOf, 'function', 'backlog.mjs exports typeOf');
+  assert.equal(typeOf({ labels: [{ name: 'priority/p2' }, { name: 'type/proposal' }, { name: 'status/needs-spec' }] }), 'type/proposal');
+  assert.equal(typeOf({ labels: [{ name: 'type/bug' }] }), 'type/bug');
+  assert.equal(typeOf({ labels: [{ name: 'type/unplanned' }] }), '—', 'only the taxonomy\'s type family counts');
+});
+
+/** Run a backlog command against a stubbed forge. `route(method, path, url, body)` answers {status, data, headers}. */
+async function runCmd014(argv, route) {
+  const calls = [];
+  const out = [];
+  const realFetch = globalThis.fetch;
+  const realIssue = process.env.FORGE_ISSUE_TOKEN;
+  const realRead = process.env.FORGE_TOKEN;
+  const realLog = console.log;
+  process.env.FORGE_ISSUE_TOKEN = 'test-token';
+  console.log = (...a) => out.push(a.join(' '));
+  globalThis.fetch = async (url, init = {}) => {
+    const u = new URL(url);
+    const method = init.method ?? 'GET';
+    const body = init.body ? JSON.parse(init.body) : undefined;
+    calls.push({ method, path: u.pathname.replace(/^.*\/api\/v1/, ''), query: Object.fromEntries(u.searchParams), body });
+    const a = await route(method, u.pathname.replace(/^.*\/api\/v1/, ''), u, body);
+    if (a?.transport) throw new Error('connect ECONNREFUSED');
+    const status = a?.status ?? 200;
+    return { ok: status < 300, status, headers: new Headers(a?.headers ?? {}), text: async () => JSON.stringify(a?.data ?? {}) };
+  };
+  try {
+    const code = await backlogMain(argv).catch((e) => { out.push(e.message); return e.code ?? -1; });
+    return { code, calls, out: out.join('\n'), writes: calls.filter((c) => c.method !== 'GET') };
+  } finally {
+    globalThis.fetch = realFetch;
+    console.log = realLog;
+    if (realIssue === undefined) delete process.env.FORGE_ISSUE_TOKEN; else process.env.FORGE_ISSUE_TOKEN = realIssue;
+    if (realRead === undefined) delete process.env.FORGE_TOKEN; else process.env.FORGE_TOKEN = realRead;
+  }
+}
+
+const labelsRoute = (names) => names.map((name, i) => ({ id: 500 + i, name }));
+
+test('proposal label: a filter naming type/proposal is refused locally, before any listing, when the forge lacks it', async () => {
+  const r = await runCmd014(['list', '--label', 'type/proposal'], (method, path) => {
+    if (path.endsWith('/labels')) return { data: labelsRoute(['type/bug', 'priority/p1']) };
+    return { data: [] };
+  });
+  assert.equal(r.code, 2);
+  assert.match(r.out, /No such label: "type\/proposal"/);
+  assert.equal(r.calls.filter((c) => c.path.endsWith('/issues')).length, 0);
+});
+
+const issue014 = (number, labels, extra = {}) => ({ number, title: `item ${number}`, state: 'open', labels: labels.map((name) => ({ name })), ...extra });
+
+async function runReady014(items) {
+  return runCmd014(['ready', ...(arguments[1] ?? [])], (method, path) => {
+    if (/\/issues$/.test(path)) return { data: items, headers: { 'x-total-count': String(items.length) } };
+    if (/\/dependencies$/.test(path)) return { data: [] };
+    return { data: [] };
+  });
+}
+
+test('ready.*draft: an open draft proposal is not listed, and the note counts it', async () => {
+  const r = await runReady014([
+    issue014(1, ['type/proposal', 'status/proposal-draft', 'priority/p1']),
+    issue014(2, ['type/feature', 'priority/p2']),
+  ]);
+  assert.equal(r.code, 0);
+  assert.doesNotMatch(r.out, /#1 /);
+  assert.match(r.out, /#2 /);
+  assert.match(r.out, /\(1 draft proposal\(s\) not listed\)/);
+});
+
+test('ready.*draft: a ready proposal (status/needs-spec) is listed in priority order like any other item', async () => {
+  const r = await runReady014([
+    issue014(3, ['type/feature', 'priority/p2']),
+    issue014(4, ['type/proposal', 'status/needs-spec', 'priority/p1']),
+  ]);
+  const order = [...r.out.matchAll(/^#(\d+)/gm)].map((m) => Number(m[1]));
+  assert.deepEqual(order, [4, 3]);
+  assert.match(r.out, /type\/proposal/);
+  assert.doesNotMatch(r.out, /draft proposal/);
+});
+
+test('ready.*draft: selectReadyItems excludes a draft with its reason, beside the bot dashboard', () => {
+  const { ready, excluded } = selectReadyItems([
+    issue014(5, ['type/proposal', 'status/proposal-draft']),
+    issue014(6, ['status/bot-managed']),
+    issue014(7, ['type/chore']),
+  ], { 7: [] });
+  assert.deepEqual(ready.map((i) => i.number), [7]);
+  assert.deepEqual(excluded, [{ number: 5, reason: 'status/proposal-draft' }, { number: 6, reason: 'status/bot-managed' }]);
+  assert.equal(excludedNote(excluded), '(1 bot-managed item(s) not listed) (1 draft proposal(s) not listed)');
+});
+
+test('ready.*draft: the --json output carries the excluded count', async () => {
+  const r = await runReady014([
+    issue014(8, ['type/proposal', 'status/proposal-draft']),
+    issue014(9, ['type/proposal', 'status/proposal-draft']),
+    issue014(10, ['type/bug']),
+  ], ['--json']);
+  const json = JSON.parse(r.out);
+  assert.deepEqual(json.excludedCount, { 'status/proposal-draft': 2 });
+  assert.deepEqual(json.ready.map((i) => i.number), [10]);
+});
+
+// close-proposal: comment, then close; idempotent; refuses anything that is not an open proposal.
+const SPEC_DIR = 'specs/014-pdlc-proposal-intake';
+const BRANCH = execFileSync014('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).trim();
+const COMMENT = `Superseded by spec \`${SPEC_DIR}/\` (branch \`${BRANCH}\`).`;
+
+function proposalForge(issue, { comments = [], failClose = false, status } = {}) {
+  const state = { issue: { ...issue }, comments: [...comments] };
+  const route = (method, path, u, body) => {
+    if (status) return status;
+    if (method === 'GET' && /\/issues\/\d+$/.test(path)) return { data: state.issue };
+    if (method === 'GET' && /\/issues\/\d+\/comments$/.test(path)) return { data: state.comments };
+    if (method === 'POST' && /\/issues\/\d+\/comments$/.test(path)) { state.comments.push({ body: body.body }); return { status: 201, data: { id: 1 } }; }
+    if (method === 'PATCH' && /\/issues\/\d+$/.test(path)) {
+      if (failClose) return { status: 500, data: { message: 'boom' } };
+      state.issue.state = body.state; return { status: 201, data: state.issue };
+    }
+    return { status: 404, data: {} };
+  };
+  return { state, route };
+}
+
+const openProposal = (labels = ['type/proposal', 'status/needs-spec', 'priority/p2']) => issue014(42, labels, { title: 'Proposal: Import' });
+
+test('close-proposal: an open proposal whose spec.md exists gets one comment, then a close, and exits 0; no label request', async () => {
+  const f = proposalForge(openProposal());
+  const r = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], f.route);
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(r.writes.map((w) => `${w.method} ${w.path.replace(/^\/repos\/[^/]+\/[^/]+/, '')}`), ['POST /issues/42/comments', 'PATCH /issues/42']);
+  assert.deepEqual(r.writes[1].body, { state: 'closed' });
+  assert.ok(r.calls.every((c) => !c.path.includes('/labels')), 'labels are left unchanged (FR-008)');
+});
+
+test('close-proposal: the comment text is exact, with the branch read from git', async () => {
+  const f = proposalForge(openProposal());
+  const r = await runCmd014(['close-proposal', '42', '--spec', `${SPEC_DIR}/`], f.route);
+  assert.equal(r.writes[0].body.body, COMMENT);
+});
+
+test('close-proposal: a re-run after a failed close sees the comment and completes the close', async () => {
+  const f = proposalForge(openProposal(), { failClose: true });
+  const first = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], f.route);
+  assert.notEqual(first.code, 0);
+  assert.equal(f.state.comments.length, 1);
+  const g = proposalForge(f.state.issue, { comments: f.state.comments });
+  const second = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], g.route);
+  assert.equal(second.code, 0, second.out);
+  assert.deepEqual(second.writes.map((w) => w.method), ['PATCH']);
+  assert.equal(g.state.comments.length, 1, 'no second comment');
+});
+
+test('close-proposal: already closed with the comment exits 0 with "already closed" and writes nothing', async () => {
+  const f = proposalForge({ ...openProposal(), state: 'closed' }, { comments: [{ body: COMMENT }] });
+  const r = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], f.route);
+  assert.equal(r.code, 0);
+  assert.match(r.out, /already closed/);
+  assert.deepEqual(r.writes, []);
+});
+
+test('close-proposal: closed WITHOUT the comment exits 2 (someone else closed it), writing nothing', async () => {
+  const f = proposalForge({ ...openProposal(), state: 'closed' });
+  const r = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], f.route);
+  assert.equal(r.code, 2);
+  assert.doesNotMatch(r.out, /Unknown command/);
+  assert.match(r.out, /closed without/i);
+  assert.deepEqual(r.writes, []);
+});
+
+test('close-proposal: a missing spec.md, no type/proposal, or status/bot-managed exits 2 with nothing written', async () => {
+  const missing = await runCmd014(['close-proposal', '42', '--spec', 'specs/999-not-a-feature'], proposalForge(openProposal()).route);
+  assert.equal(missing.code, 2);
+  assert.match(missing.out, /spec\.md/);
+  assert.deepEqual(missing.calls, [], 'refused before any forge request');
+  const notProposal = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], proposalForge(openProposal(['type/feature'])).route);
+  assert.equal(notProposal.code, 2);
+  assert.deepEqual(notProposal.writes, []);
+  const bot = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], proposalForge(openProposal(['type/proposal', 'status/bot-managed'])).route);
+  assert.equal(bot.code, 2);
+  assert.deepEqual(bot.writes, []);
+  const pr = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], proposalForge({ ...openProposal(), pull_request: {} }).route);
+  assert.equal(pr.code, 2);
+});
+
+test('close-proposal: a malformed --spec, or none, or no item number exits 2 before any request', async () => {
+  for (const argv of [['close-proposal', '42'], ['close-proposal', '--spec', SPEC_DIR], ['close-proposal', '42', '--spec', '../etc'], ['close-proposal', '42', '--spec', 'docs/proposals']]) {
+    const r = await runCmd014(argv, proposalForge(openProposal()).route);
+    assert.equal(r.code, 2, argv.join(' '));
+    assert.doesNotMatch(r.out, /Unknown command/, argv.join(' '));
+    assert.deepEqual(r.calls, [], argv.join(' '));
+  }
+});
+
+test('close-proposal: credential, authorisation and transport failures exit 3, 4 and 5', async () => {
+  const realIssue = process.env.FORGE_ISSUE_TOKEN;
+  delete process.env.FORGE_ISSUE_TOKEN;
+  const { main: m } = await import('../backlog.mjs');
+  const realLog = console.log; console.log = () => {};
+  const noCred = await m(['close-proposal', '42', '--spec', SPEC_DIR]).catch((e) => e.code);
+  console.log = realLog;
+  if (realIssue !== undefined) process.env.FORGE_ISSUE_TOKEN = realIssue;
+  assert.equal(noCred, 3);
+  assert.equal((await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], proposalForge(openProposal(), { status: { status: 403, data: {} } }).route)).code, 4);
+  assert.equal((await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], proposalForge(openProposal(), { status: { transport: true } }).route)).code, 5);
+});
+
+test('close-proposal: the same-repository write guard refuses --repo naming another repository', async () => {
+  const r = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR, '--repo', 'someone/elsewhere'], proposalForge(openProposal()).route);
+  assert.equal(r.code, 2);
+  assert.doesNotMatch(r.out, /Unknown command/);
+  assert.match(r.out, /someone\/elsewhere|origin/);
+  assert.deepEqual(r.writes, []);
+});
+
+test('close-proposal: --help documents it as the named exception to "no close verb"', async () => {
+  const r = await runCmd014(['--help'], () => ({}));
+  assert.match(r.out, /close-proposal <n> --spec specs\/NNN-slug/);
+  assert.match(r.out, /the one exception/i);
+  assert.doesNotMatch(r.out, /there is no close verb\b(?! except)/);
+});
+
+// form copies: BELAY's two forms both validate, and the proposal form files proposals as drafts.
+const formTemplate014 = (file) => {
+  const y = parseYaml014(readFileSync(join(REPO_ROOT_014, '.forgejo', 'issue_template', file), 'utf8'));
+  // Measured 2026-11-25: the forge answers file_name as the full repository path.
+  return { name: y.name, file_name: `.forgejo/issue_template/${file}`, labels: y.labels, body: y.body.map((b) => ({ type: b.type, id: b.id ?? '0' })) };
+};
+
+test('form copy: describeFormValidation reports both the backlog-item and the proposal form', () => {
+  const msg = describeFormValidation([formTemplate014('backlog-item.yaml'), formTemplate014('proposal.yaml')], { valid: true, message: '' });
+  assert.match(msg, /Backlog item/);
+  assert.match(msg, /Proposal — fields: feature-name, problem, proposed-value, personas, goals-success, rough-scope, open-questions, out-of-scope, priority/);
+});
+
+test('form copy: the proposal form files issues with type/proposal and status/proposal-draft', () => {
+  assert.deepEqual([...formTemplate014('proposal.yaml').labels].sort(), ['status/proposal-draft', 'type/proposal']);
+});
+
+test('form copy: a form in the working tree that the forge does not enumerate is reported as not yet on the default branch', () => {
+  const msg = describeFormValidation([formTemplate014('backlog-item.yaml')], { valid: true, message: '' }, ['backlog-item.yaml', 'proposal.yaml']);
+  assert.match(msg, /proposal\.yaml — in this working tree, not yet on the default branch/);
+  assert.doesNotMatch(msg, /backlog-item\.yaml — in this working tree/);
+  const none = describeFormValidation([], { valid: true, message: '' }, ['proposal.yaml']);
+  assert.match(none, /no issue form is in effect/i);
+  assert.match(none, /proposal\.yaml — in this working tree, not yet on the default branch/);
 });

@@ -35,3 +35,8 @@ test('every row of proposal-labels.json has a name, a six-hex colour and a descr
     assert.ok(labels.some((l) => l.name === name), name);
   }
 });
+
+test('form copy: BELAY\'s own .forgejo/issue_template/proposal.yaml equals the master byte for byte (FR-029)', () => {
+  const belayCopy = readFileSync(new URL('../../../../.forgejo/issue_template/proposal.yaml', import.meta.url));
+  assert.ok(belayCopy.equals(readFileSync(contract('proposal.yaml'))), 'BELAY\'s copy drifted from the master: copy contract/proposal.yaml over it');
+});

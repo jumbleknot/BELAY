@@ -692,7 +692,7 @@ verb, the `after_specify` hook and its skill, and the backlog skill's pick-up ru
 
 ### Tests for User Story 7 (TDD) ⚠️
 
-- [ ] T054 [P] [US7] Add label tests to `scripts/__tests__/backlog.test.mjs`:
+- [X] T054 [P] [US7] Add label tests to `scripts/__tests__/backlog.test.mjs`:
   - `TAXONOMY` contains `type/proposal` and `status/proposal-draft`;
   - a guard asserts their `name`, `color` and `description` equal the rows of
     `mcp-servers/pdlc/contract/proposal-labels.json` (`data-model.md` Proposal labels.Name and Proposal labels.Colour).
@@ -705,7 +705,7 @@ verb, the `after_specify` hook and its skill, and the backlog skill's pick-up ru
     test already passes, because `backlog.mjs` resolves names against the repository's own labels
     (`scripts/backlog.mjs:262`). For it, take a **mutation RED**: make the resolver pass unknown names through, watch
     the test fail, then revert.
-- [ ] T055 [P] [US7] Add `ready` tests to `scripts/__tests__/backlog.test.mjs`:
+- [X] T055 [P] [US7] Add `ready` tests to `scripts/__tests__/backlog.test.mjs`:
   - an open `type/proposal` + `status/proposal-draft` item is not listed, and `(n draft proposal(s) not listed)` is
     printed;
   - a `type/proposal` + `status/needs-spec` item is listed in priority order like any other;
@@ -713,7 +713,7 @@ verb, the `after_specify` hook and its skill, and the backlog skill's pick-up ru
   - **Scenarios covered**: US7-AC2, FR-031
   - **Verify RED**: `node --test --test-name-pattern "ready.*draft" scripts/__tests__/backlog.test.mjs` → expected: the
     new tests fail, because the draft is listed
-- [ ] T056 [P] [US7] Add `close-proposal` tests to `scripts/__tests__/backlog.test.mjs`, covering every row of
+- [X] T056 [P] [US7] Add `close-proposal` tests to `scripts/__tests__/backlog.test.mjs`, covering every row of
   [contracts/close-proposal-cli.md](contracts/close-proposal-cli.md) and the preconditions, effect and idempotence
   under `data-model.md` close-proposal:
   - an open proposal with `spec.md` present gets one comment, then a close, in that order, and exits 0. No label
@@ -730,7 +730,7 @@ verb, the `after_specify` hook and its skill, and the backlog skill's pick-up ru
   - **Scenarios covered**: US7-AC4, FR-008, FR-033, research R14
   - **Verify RED**: `node --test --test-name-pattern "close-proposal" scripts/__tests__/backlog.test.mjs` → expected:
     the new tests fail with an unknown verb
-- [ ] T057 [P] [US7] Add form-copy tests:
+- [X] T057 [P] [US7] Add form-copy tests:
   - in `mcp-servers/pdlc/tests/unit/master-copies.test.mjs`, assert `.forgejo/issue_template/proposal.yaml` equals the
     master byte for byte (FR-029);
   - in `scripts/__tests__/backlog.test.mjs`, assert that `describeFormValidation` passes for both
@@ -740,7 +740,7 @@ verb, the `after_specify` hook and its skill, and the backlog skill's pick-up ru
   - **Verify RED**:
     `node --test --test-name-pattern "copy|form" mcp-servers/pdlc/tests/unit/master-copies.test.mjs scripts/__tests__/backlog.test.mjs`
     → expected: the copy test fails with ENOENT for `.forgejo/issue_template/proposal.yaml`
-- [ ] T058 [P] [US7] Add Spec Kit gate tests to `scripts/__tests__/check-speckit-overrides.test.mjs` and
+- [X] T058 [P] [US7] Add Spec Kit gate tests to `scripts/__tests__/check-speckit-overrides.test.mjs` and
   `scripts/__tests__/extensions-yml.test.mjs`:
   - the `after_specify` entry `belay` / `speckit.belay.close-proposal` / `optional: false` is in `EXTENSION_HOOKS` with
     `local: true`;
@@ -751,7 +751,7 @@ verb, the `after_specify` hook and its skill, and the backlog skill's pick-up ru
   - **Verify RED**:
     `node --test --test-name-pattern "close-proposal" scripts/__tests__/check-speckit-overrides.test.mjs scripts/__tests__/extensions-yml.test.mjs`
     → expected: the new tests fail, because the entries are absent
-- [ ] T059 [P] [US7] Write the independence guard in `scripts/__tests__/pdlc-independence.guard.test.mjs`. It scans
+- [X] T059 [P] [US7] Write the independence guard in `scripts/__tests__/pdlc-independence.guard.test.mjs`. It scans
   `scripts/*.mjs`, `scripts/lib/`, `.specify/`, `.claude/skills/` and `.forgejo/issue_template/` for any import from,
   or invocation of, `mcp-servers/pdlc/src`, any `mcp__pdlc__` tool reference, or a check for the server's presence,
   and fails on a hit. It does not scan `scripts/__tests__/` or `mcp-servers/`. Its matcher is a function, also run
@@ -765,7 +765,7 @@ verb, the `after_specify` hook and its skill, and the backlog skill's pick-up ru
 
 ### Implementation for User Story 7
 
-- [ ] T060 [US7] Implement the BELAY adoption in `scripts/backlog.mjs` (prerequisite: T054, T055 and T056 verified
+- [X] T060 [US7] Implement the BELAY adoption in `scripts/backlog.mjs` (prerequisite: T054, T055 and T056 verified
   RED):
   - add the two `TAXONOMY` entries;
   - make `type/proposal` count as a type;
@@ -775,18 +775,18 @@ verb, the `after_specify` hook and its skill, and the backlog skill's pick-up ru
   - update `--help` to replace "there is no close verb" with the named exception.
   - **Verify GREEN**: the T054, T055 and T056 commands → expected: 0 failures. Then
     `node --test scripts/__tests__/backlog.test.mjs` passes in full.
-- [ ] T061 [US7] Create `.forgejo/issue_template/proposal.yaml` as a byte copy of
+- [X] T061 [US7] Create `.forgejo/issue_template/proposal.yaml` as a byte copy of
   `mcp-servers/pdlc/contract/proposal.yaml` (prerequisite: T057 verified RED).
   - **Verify GREEN**: the T057 command → expected: 0 failures. Then `node scripts/backlog.mjs validate-form` reports
     both forms, with the new one "not yet on the default branch".
-- [ ] T062 [US7] Add the hook and its skill (prerequisite: T058 verified RED):
+- [X] T062 [US7] Add the hook and its skill (prerequisite: T058 verified RED):
   - add the `after_specify` hook in [contracts/close-proposal-cli.md](contracts/close-proposal-cli.md) to
     `.specify/extensions.yml`;
   - register it in `EXTENSION_HOOKS` (`local: true`) and the skill in `PROJECT_OWNED` in
     `scripts/check-speckit-overrides.mjs`;
   - write `.claude/skills/speckit-belay-close-proposal/SKILL.md`, following the contract's "Skill behaviour" steps 1–3.
   - **Verify GREEN**: the T058 command → expected: 0 failures. Then `node scripts/check-speckit-overrides.mjs` exits 0.
-- [ ] T063 [US7] Update `.claude/skills/forgejo-issues/SKILL.md` with a "Proposals" section. It covers:
+- [X] T063 [US7] Update `.claude/skills/forgejo-issues/SKILL.md` with a "Proposals" section. It covers:
   - the two states and their labels;
   - that `ready` lists ready proposals and hides drafts;
   - the pick-up convention from contracts/close-proposal-cli.md (`show <n>`, then `/speckit-specify` with
@@ -864,7 +864,7 @@ live check is quickstart §7, after MCM's own feature merges, outside this PR.
 
   Then refresh `openwiki/runbooks/backlog.md` with `/wiki-refresh`.
   - **Done when**: `node scripts/wiki-refresh.mjs --stale` does not list `openwiki/runbooks/backlog.md`.
-- [ ] T069 [P] Add the `after_specify` hook and the `speckit-belay-close-proposal` skill to the inventory table in
+- [X] T069 [P] Add the `after_specify` hook and the `speckit-belay-close-proposal` skill to the inventory table in
   `docs/runbooks/spec-kit.md`, then refresh `openwiki/runbooks/spec-kit.md`.
   - **Done when**: the inventory lists both, and `--stale` does not list the page.
 - [ ] T070 [P] Update `docs/runbooks/ci.md`: what `guardrails` runs now includes the three `pdlc` targets, and

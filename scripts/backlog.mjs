@@ -19,7 +19,9 @@
 //   - `labels=<unknown-name>` is SILENTLY IGNORED and returns the UNFILTERED set — so a typo reads as
 //     "matched everything". Every label and milestone name is resolved locally first, and refused here.
 
-import { readFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { redactForPublication } from './ci-digest-redact.mjs';
 import { forgeEndpoint, stripControlChars } from './ci-status.mjs';
@@ -62,16 +64,43 @@ export const TAXONOMY = [
   { name: 'status/bot-managed', color: '#bfdadc', description: 'Owned by the dependency bot; never listed as ready work' },
   { name: 'dependencies', color: '#0366d6', description: 'A dependency-bot PR' },
   { name: 'security', color: '#ee0701', description: 'A dependency-bot PR fixing a published advisory' },
+  // Feature 014: proposals. A proposal is an issue labelled type/proposal, draft while it is shaped and
+  // status/needs-spec once ready. Names, colours and descriptions are copied from the shared contract,
+  // mcp-servers/pdlc/contract/proposal-labels.json, and a test holds them equal (FR-030).
+  { name: 'type/proposal', color: '#c2e0c6', description: 'A feature idea before it has a spec' },
+  { name: 'status/proposal-draft', color: '#fef2c0', description: 'Proposal still being shaped; not ready to specify' },
 ];
+
+/** The type family: an item's single type is the one of these it carries (type/proposal included). */
+const TYPE_LABELS = TAXONOMY.map((l) => l.name).filter((n) => n.startsWith('type/'));
 
 const PRIORITY_ORDER = ['priority/p1', 'priority/p2', 'priority/p3'];
 
 /** The dependency bot's dashboard label (feature 011). Its issue is the bot's state, never ready work. */
 export const BOT_MANAGED_LABEL = 'status/bot-managed';
 
+/** A proposal still being shaped (feature 014). Not ready work until it is confirmed (status/needs-spec). */
+export const PROPOSAL_LABEL = 'type/proposal';
+export const PROPOSAL_DRAFT_LABEL = 'status/proposal-draft';
+
+/** What `ready` deliberately leaves out, in the order the note reports it. */
+const EXCLUDED_REASONS = [
+  { label: BOT_MANAGED_LABEL, note: (n) => `(${n} bot-managed item(s) not listed)` },
+  { label: PROPOSAL_DRAFT_LABEL, note: (n) => `(${n} draft proposal(s) not listed)` },
+];
+
+/** How many items `ready` left out, per reason. */
+export function excludedCounts(excluded) {
+  const counts = {};
+  for (const { reason } of excluded) counts[reason] = (counts[reason] ?? 0) + 1;
+  return counts;
+}
+
 /** The one-line note `ready` prints for what it deliberately did not list, or null. */
 export function excludedNote(excluded) {
-  return excluded.length ? `(${excluded.length} bot-managed item(s) not listed)` : null;
+  const counts = excludedCounts(excluded);
+  const parts = EXCLUDED_REASONS.filter((r) => counts[r.label]).map((r) => r.note(counts[r.label]));
+  return parts.length ? parts.join(' ') : null;
 }
 
 // ── Credentials (,) ───────────────────────────────────────────────────────────────────
@@ -327,6 +356,9 @@ export function selectReadyItems(items, blockers = {}) {
     const names = labelNames(item);
     // The bot's dashboard is an issue, but it is the bot's state, not work (feature 011, FR-014).
     if (names.includes(BOT_MANAGED_LABEL)) { excluded.push({ number: item.number, reason: BOT_MANAGED_LABEL }); continue; }
+    // A draft proposal is still being shaped; a ready one (status/needs-spec) is listed like any item
+    // (feature 014, FR-031).
+    if (names.includes(PROPOSAL_DRAFT_LABEL)) { excluded.push({ number: item.number, reason: PROPOSAL_DRAFT_LABEL }); continue; }
     const labelled = names.includes('status/blocked');
     const consulted = Object.prototype.hasOwnProperty.call(blockers, item.number);
     const openBlockers = consulted
@@ -456,15 +488,21 @@ export function planMissingNames(desired, existing) {
  * on a pushed feature branch (`contents/…?ref=<branch>` → 200) and `issue_templates` still returned
  * `null` — which is what makes the default-branch claim proven rather than merely plausible.
  */
-export function describeFormValidation(templates, config) {
+export function describeFormValidation(templates, config, localFiles = []) {
   const list = Array.isArray(templates) ? templates : [];
+  // A form committed on this branch but not yet merged is in the working tree and absent from the
+  // forge's list (feature 014: BELAY's second form, proposal.yaml, is exactly this until merge).
+  // Measured 2026-11-25: `file_name` is the full repository path (.forgejo/issue_template/<file>).
+  const enumerated = new Set(list.map((t) => String(t.file_name ?? '').replace(/^\.forgejo\/issue_template\//, '')));
+  const pending = localFiles.filter((f) => !enumerated.has(f))
+    .map((f) => `\n  ○ ${f} — in this working tree, not yet on the default branch (re-run after it merges)`).join('');
   if (!list.length) {
     return (
       'No issue form is in effect: `issue_templates` enumerates none. The forge reads ' +
       '.forgejo/issue_template/ from the DEFAULT BRANCH only (measured), so this is the expected answer ' +
       'while the form is on a feature branch — re-run after it merges. Note that ' +
       '`issue_config/validate` reporting valid is NOT evidence of a working form: it answers valid with ' +
-      'zero templates present, because it validates the issue config rather than the YAML.'
+      'zero templates present, because it validates the issue config rather than the YAML.' + pending
     );
   }
   // Filter by TYPE, not by `id`: the forge assigns the markdown intro block `id: "0"` — a truthy string
@@ -479,7 +517,7 @@ export function describeFormValidation(templates, config) {
     .join('\n');
   const configNote =
     config && config.valid === false ? `\n⚠ issue config reports invalid: ${config.message}` : '';
-  return `Issue form(s) in effect on the default branch:\n${described}${configNote}`;
+  return `Issue form(s) in effect on the default branch:\n${described}${pending}${configNote}`;
 }
 
 // ── Command layer ──────────────────────────────────────────────────────────────────────────────────
@@ -499,6 +537,7 @@ const HELP = `backlog.mjs — the agent-driven backlog on this repository's forg
     dep <n> (--blocked-by <m> | --blocks <m>) [--remove]
     setup-labels [--dry-run]
     setup-milestone <name> [--description D]
+    close-proposal <n> --spec specs/NNN-slug [--json]
 
   Exit codes: 0 ok · 1 unexpected · 2 usage/validation · 3 missing credential · 4 authorization · 5 transport
 
@@ -507,7 +546,9 @@ const HELP = `backlog.mjs — the agent-driven backlog on this repository's forg
     - a page caps at 50 rows (default 30); totals come from x-total-count, never from the row count
     - labels=<unknown> is SILENTLY IGNORED and returns the unfiltered set, so unknown names are
       refused locally instead of being sent
-    - closing is a state change on update; there is no close verb
+    - closing is a state change on update. close-proposal is the one exception: it closes a
+      proposal whose spec now exists, posting a comment that links the spec FIRST, and is idempotent
+      (exit 0 "already closed" when this flow closed it; exit 2 when someone else did)
     - a blocked item cannot be closed until it is unblocked
     - issue and pull-request numbers share ONE sequence — write "item #N" when you mean a backlog item
     - Projects boards expose no API in this build: labels are the shared truth, the board is not
@@ -541,6 +582,7 @@ function parseArgs(argv) {
     else if (a === '--blocks') out.blocks = Number(val());
     else if (a === '--description') out.description = val();
     else if (a === '--repo') out.repo = val();
+    else if (a === '--spec') out.spec = val();
     else if (a === '--json') out.json = true;
     else if (a === '--dry-run') out.dryRun = true;
     else if (a === '--remove') out.remove = true;
@@ -598,7 +640,8 @@ async function resolveMilestoneId(c, name) {
 }
 
 const priorityOf = (item) => labelNames(item).find((n) => PRIORITY_ORDER.includes(n)) ?? '—';
-const typeOf = (item) => labelNames(item).find((n) => n.startsWith('type/')) ?? '—';
+/** The item's single type: the one label it carries from the taxonomy's type family, or '—'. */
+export const typeOf = (item) => labelNames(item).find((n) => TYPE_LABELS.includes(n)) ?? '—';
 
 function renderTable(items) {
   if (!items.length) {
@@ -662,11 +705,11 @@ const COMMANDS = {
     // exactly the question where a silently partial answer is worse than no answer.
     const truncated = describeTruncation(total, items.length);
     // The label is the cheap pre-filter; only the survivors cost a dependency call.
-    const preFiltered = items.filter((i) => !labelNames(i).includes('status/blocked') && !labelNames(i).includes(BOT_MANAGED_LABEL));
+    const preFiltered = items.filter((i) => !['status/blocked', BOT_MANAGED_LABEL, PROPOSAL_DRAFT_LABEL].some((l) => labelNames(i).includes(l)));
     const blockers = await blockersFor(c, preFiltered);
     const { ready, warnings, excluded } = selectReadyItems(items, blockers);
     if (opts.json) {
-      return void emit(JSON.stringify({ truncated: truncated ?? null, ready: ready.map((i) => distillItem(i)), excluded }, null, 2));
+      return void emit(JSON.stringify({ truncated: truncated ?? null, ready: ready.map((i) => distillItem(i)), excluded, excludedCount: excludedCounts(excluded) }, null, 2));
     }
     if (truncated) {
       emit(`${truncated}  ⚠ this answer is drawn from those rows only — the top priority may be outside it.`);
@@ -855,13 +898,72 @@ const COMMANDS = {
     emit(`created milestone ${name}`);
   },
 
+  /**
+   * Close a proposal once its spec exists (feature 014, FR-033; contracts/close-proposal-cli.md). The
+   * comment is posted BEFORE the close, so a close that fails after the comment is completed by a
+   * re-run, which sees the comment. Labels are never touched (FR-008).
+   */
+  async 'close-proposal'(opts) {
+    const n = itemNumber(opts._[0]);
+    const spec = normalizeSpecDir(opts.spec);
+    if (!existsSync(join(spec, 'spec.md'))) {
+      throw new BacklogError(`${spec}/spec.md does not exist in this working tree — run close-proposal from the feature branch after /speckit-specify; nothing was written`, EXIT.usage);
+    }
+    const c = connect({ write: true, intendedRepo: opts.repo });
+    const item = (await c.call(`${c.R}/issues/${n}`)).data;
+    const names = labelNames(item);
+    if (item.pull_request) throw new BacklogError(`#${n} is a pull request, not a proposal; nothing was written`, EXIT.usage);
+    if (!names.includes(PROPOSAL_LABEL)) throw new BacklogError(`item #${n} is not labelled ${PROPOSAL_LABEL}; close-proposal closes proposals only; nothing was written`, EXIT.usage);
+    if (names.includes(BOT_MANAGED_LABEL)) throw new BacklogError(`item #${n} carries ${BOT_MANAGED_LABEL}; it belongs to the dependency bot; nothing was written`, EXIT.usage);
+
+    const marker = `${spec}/`;
+    const comments = await allComments(c, n);
+    const commented = comments.some((cm) => String(cm.body ?? '').includes(marker));
+    const done = (status) => (opts.json ? emit(JSON.stringify({ number: n, spec: marker, status })) : emit(`proposal #${n} ${status} (superseded by ${marker})`));
+    if (item.state === 'closed') {
+      if (commented) return void done('already closed');
+      throw new BacklogError(`proposal #${n} was closed without this flow's comment (someone else closed it); reopen it in the web UI first if it should be superseded by ${marker}`, EXIT.usage);
+    }
+    if (!commented) {
+      const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).trim();
+      await c.call(`${c.R}/issues/${n}/comments`, { method: 'POST', body: { body: `Superseded by spec \`${marker}\` (branch \`${branch}\`).` } });
+    }
+    try {
+      await c.call(`${c.R}/issues/${n}`, { method: 'PATCH', body: { state: 'closed' } });
+    } catch (e) {
+      throw classifyUpdateFailure(e, n);
+    }
+    done('closed');
+  },
+
   async 'validate-form'() {
     const c = connect();
     const templates = (await c.call(`${c.R}/issue_templates`)).data;
     const config = (await c.call(`${c.R}/issue_config/validate`)).data;
-    emit(describeFormValidation(templates, config));
+    let local = [];
+    try { local = readdirSync('.forgejo/issue_template').filter((f) => /\.ya?ml$/.test(f)).sort(); } catch { /* no forms folder */ }
+    emit(describeFormValidation(templates, config, local));
   },
 };
+
+/** `specs/NNN-slug` (a trailing / allowed): the only shape a spec folder has. Anything else is refused. */
+export function normalizeSpecDir(raw) {
+  const spec = String(raw ?? '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
+  if (!/^specs\/\d{3}-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(spec)) {
+    throw new BacklogError(`close-proposal needs --spec specs/NNN-slug (got ${raw === undefined ? 'nothing' : JSON.stringify(String(raw))})`, EXIT.usage);
+  }
+  return spec;
+}
+
+async function allComments(c, n) {
+  const out = [];
+  for (let page = 1; page <= 20; page++) {
+    const rows = (await c.call(`${c.R}/issues/${n}/comments?page=${page}&limit=${PAGE_LIMIT_CAP}`)).data ?? [];
+    out.push(...rows);
+    if (rows.length < PAGE_LIMIT_CAP) break;
+  }
+  return out;
+}
 
 /**
  * A refusal to close a blocked item must be distinguishable from every other failure ().
