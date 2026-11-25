@@ -117,6 +117,8 @@ host facts the packaging depends on.
     the line 821 diagram.
   - **Done when**:
     - the version line reads 1.1.0, and the Sync Impact Report names the amended sections;
+      *(The report was reviewed and then removed before merge, at the maintainer's direction on 2026-11-25, as the
+      `/speckit-constitution` skill prescribes. The version history comment keeps the 1.1.0 entry.)*
     - `git grep -n "dedicated Python Docker container"` finds only text scoped to Agent Gateway servers;
     - `node scripts/check-speckit-overrides.mjs` exits 0.
 - [X] T003 [P] Write `docs/decisions/ADR-0005-operator-tool-mcp-servers.md`, covering:
@@ -828,7 +830,7 @@ live check is quickstart §7, after MCM's own feature merges, outside this PR.
 
 ## Phase 10: Polish and cross-cutting concerns
 
-- [ ] T065 [P] *(Written; Verify RED observed. Verify GREEN waits for ci-smoke's proposal.yaml — operator.)* Write the live-forge tests in `mcp-servers/pdlc/tests/integration-forge/proposals.forge.test.mjs`, and
+- [X] T065 [P] *(Verify RED observed. Verify GREEN 2026-11-25, after the maintainer committed proposal.yaml to ci-smoke: 5/5 pass, skip 0; ci-smoke then had 0 open issues, and the 7 labels in `proposal-labels.json` exist there.)* Write the live-forge tests in `mcp-servers/pdlc/tests/integration-forge/proposals.forge.test.mjs`, and
   the `pdlc:integration-forge` target. The target maps `FORGE_ISSUE_TOKEN` to `PDLC_FORGE_TOKEN` at the point of use
   (research R16). The scenarios are those of quickstart §2 against `ci-smoke`:
   - create a draft, refuse a duplicate, read it back;

@@ -9,24 +9,6 @@ VERSION HISTORY:
   MCP rules scoped to servers the Agent Gateway serves (feature 014, ADR-0005) (2026-11-25) [CURRENT]
 -->
 
-<!--
-SYNC IMPACT REPORT (v1.0.1 → v1.1.0, MINOR: a new subsection and materially expanded guidance)
-- Added sections:
-  - AI Agents Development Principles § Operator-Tool MCP Servers (class, stack, transport rule,
-    audit rule)
-- Modified sections:
-  - Transport Security § TLS: points at the operator-tool transport rule
-  - Logging & Monitoring § Log Retention: points at the operator-tool audit rule
-  - MCP Tool Layer: "Each MCP Server Is an Isolated Docker Container" scoped to Agent Gateway servers
-  - AI Agent Technology Stack Requirements: preamble, Tooling Protocol and MCP Server Dockerfile
-    scoped to Agent Gateway servers
-  - Monorepo Directory Structure: the mcp-servers/ tree comment names both classes
-  - C4 Container Diagram (AI Agents layer): the MCP Tool Servers node scoped to the gateway
-- Removed sections: none
-- Templates: no template change needed (plan-template's Constitution Check reads the file at run time)
-- Deferred TODOs: none
--->
-
 # BELAY Constitution
 
 BELAY (Build, Engineering, Lifecycle & Automation Yard) is a polyglot monorepo of shared SDLC, PDLC, DevSecOps and engineering tooling that other repositories use. This document sets out the core, immutable principles for developing that tooling, and the Frontend Apps, Backend Services, AI Agents and MCP servers in this repo, with an AI Assistant, so that the work is secure, consistent, extensible, scalable and maintainable.
