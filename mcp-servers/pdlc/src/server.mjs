@@ -73,10 +73,51 @@ const isEntryPoint = () => {
   try { return process.argv[1] !== undefined && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url; } catch { return false; }
 };
 
-if (isEntryPoint()) {
-  const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
+/**
+ * The production wiring: configuration from the environment (Claude Desktop's user_config, through the
+ * manifest's mcp_config.env), then every module, then stdio. A ConfigError stops the server with ONE
+ * redacted stderr line naming the variable, before anything else starts (spec FR-004).
+ */
+export async function main({ env = process.env, stderr = process.stderr } = {}) {
+  const { loadConfig, ConfigError } = await import('./config.mjs');
   const { createLogger } = await import('./log.mjs');
   const { createRedactor } = await import('./redact.mjs');
-  const redact = createRedactor();
-  await createServer({ log: createLogger({ redact }), redact }).connect(new StdioServerTransport());
+
+  let config;
+  try {
+    config = loadConfig(env);
+  } catch (e) {
+    if (!(e instanceof ConfigError)) throw e;
+    const redact = createRedactor({ secrets: [env.PDLC_FORGE_TOKEN] });
+    createLogger({ stream: stderr, redact }).error(`cannot start: ${e.message}; set it in the extension's settings`, { variable: e.variable });
+    return 1;
+  }
+
+  const [{ StdioServerTransport }, { createForgeClient }, { createRepoAllowlist }, { createProposals },
+    { createLocalCopy }, { createGitRunner }, { createSetupCheck }] = await Promise.all([
+    import('@modelcontextprotocol/sdk/server/stdio.js'), import('./forge-client.mjs'), import('./repo-allowlist.mjs'),
+    import('./proposals.mjs'), import('./local-copy.mjs'), import('./git-runner.mjs'), import('./setup-check.mjs'),
+  ]);
+  const redact = createRedactor({ secrets: [config.token] });
+  const log = createLogger({ stream: stderr, redact });
+  const forge = createForgeClient({ config });
+  const allowlist = createRepoAllowlist({ forge, config });
+  const deps = {
+    log, redact, allowlist,
+    proposals: createProposals({ forge, allowlist, config }),
+    setupCheck: createSetupCheck({ forge, allowlist, config }),
+    localCopy: createLocalCopy({
+      cloneRoot: config.cloneRoot,
+      originUrlFor: (name) => `${config.forgeUrl}/${encodeURIComponent(config.owner)}/${encodeURIComponent(name)}.git`,
+      git: createGitRunner({ token: config.token }),
+    }),
+  };
+  await createServer(deps).connect(new StdioServerTransport());
+  log.info(`started ${SERVER_NAME} ${SERVER_VERSION} for owner ${config.owner}`);
+  return null;
+}
+
+if (isEntryPoint()) {
+  const code = await main();
+  if (code !== null) process.exitCode = code;
 }

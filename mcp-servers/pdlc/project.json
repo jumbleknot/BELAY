@@ -10,11 +10,12 @@
         "cwd": "{workspaceRoot}",
         "parallel": false,
         "commands": [
-          "node mcp-servers/pdlc/scripts/check-syntax.mjs"
+          "node mcp-servers/pdlc/scripts/check-syntax.mjs",
+          "pnpm --dir mcp-servers/pdlc exec mcpb validate manifest.json"
         ]
       },
       "metadata": {
-        "description": "Syntax-check every module under src/ and scripts/ with node --check."
+        "description": "Syntax-check every module under src/ and scripts/ with node --check, then validate manifest.json against the mcpb manifest schema."
       }
     },
     "test": {

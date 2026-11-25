@@ -1,0 +1,97 @@
+{
+  "manifest_version": "0.3",
+  "name": "pdlc",
+  "display_name": "pdlc: proposal intake",
+  "version": "0.1.0",
+  "description": "File and refine feature proposals as forge issues, and keep read-only local copies of the repositories, for the proposal-intake skill.",
+  "long_description": "An operator-tool MCP server for one operator (BELAY constitution 1.1.0, ADR-0005). It reads and writes only issues labelled type/proposal in repositories under the configured owner, and fast-forwards read-only local copies. It never closes, deletes or relabels arbitrary issues, and never commits, branches or pushes.",
+  "author": {
+    "name": "BELAY"
+  },
+  "server": {
+    "type": "node",
+    "entry_point": "src/server.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": [
+        "${__dirname}/src/server.mjs"
+      ],
+      "env": {
+        "PDLC_FORGE_URL": "${user_config.forge_url}",
+        "PDLC_FORGE_OWNER": "${user_config.forge_owner}",
+        "PDLC_FORGE_TOKEN": "${user_config.forge_token}",
+        "PDLC_CLONE_ROOT": "${user_config.clone_root}"
+      }
+    }
+  },
+  "tools": [
+    {
+      "name": "list_repos",
+      "description": "List the repositories under the configured owner, with description, default branch and whether a local proposal copy exists."
+    },
+    {
+      "name": "repo_status",
+      "description": "Report a repository's local proposal copy: path, branch, clean or dirty, and commits behind or ahead of the default branch. Fetches; changes no files."
+    },
+    {
+      "name": "sync_repo",
+      "description": "Create the local proposal copy if absent (blobless clone of the default branch), otherwise fast-forward it. Refuses a dirty, off-branch, diverged or foreign copy and changes nothing."
+    },
+    {
+      "name": "check_setup",
+      "description": "Check that the repository has the proposal labels and the proposal form on its default branch, in step with the master. Reports; creates nothing. ok:false is a result, not an error."
+    },
+    {
+      "name": "list_proposals",
+      "description": "List proposals (issues labelled type/proposal) by status (draft, ready or all), optional search query, and issue state (default open)."
+    },
+    {
+      "name": "get_proposal",
+      "description": "Read one proposal: its sections, labels, status, priority, comments, url and updated_at. Refuses an issue that is not a proposal."
+    },
+    {
+      "name": "create_proposal",
+      "description": "File a new proposal with the title \"Proposal: <feature name>\", the given sections, one priority label and the draft or ready status. Refuses when an open proposal has the same title."
+    },
+    {
+      "name": "update_proposal",
+      "description": "Edit a proposal: replace only the given sections, and optionally the title, priority or status. Refuses as stale when the issue changed since expected_updated_at. Returns the new updated_at."
+    },
+    {
+      "name": "add_comment",
+      "description": "Add a comment to a proposal. Returns the comment's url and the issue's new updated_at."
+    }
+  ],
+  "user_config": {
+    "forge_url": {
+      "type": "string",
+      "title": "Forge URL",
+      "description": "The forge root, such as http://<forge host>:3000. The scheme is used as written; no path.",
+      "required": true
+    },
+    "forge_owner": {
+      "type": "string",
+      "title": "Forge owner",
+      "description": "The one user account whose repositories the server may address.",
+      "required": true
+    },
+    "forge_token": {
+      "type": "string",
+      "title": "Forge token (pdlc)",
+      "description": "A dedicated forge token named pdlc, with write:issue and read:repository only, used by nothing else.",
+      "sensitive": true,
+      "required": true
+    },
+    "clone_root": {
+      "type": "directory",
+      "title": "Clone folder",
+      "description": "An existing folder for the read-only local copies, one sub-folder per repository. Connect it to the Claude Desktop project.",
+      "required": true
+    }
+  },
+  "compatibility": {
+    "platforms": [
+      "win32"
+    ]
+  }
+}

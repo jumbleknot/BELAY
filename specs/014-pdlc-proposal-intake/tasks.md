@@ -615,7 +615,7 @@ install runbook.
 **Independent Test**: `pnpm nx run pdlc:pack` produces both files, and `mcpb validate` passes. Then quickstart §3
 (install) and §4 (startup refusal) on the host.
 
-- [ ] T047 [P] [US5] Write the manifest test in `mcp-servers/pdlc/tests/unit/manifest.test.mjs`, checking against
+- [ ] T047 [P] [US5] *(Written and GREEN except the `runtimes.node` assertion, which waits on T006's Node observation.)* Write the manifest test in `mcp-servers/pdlc/tests/unit/manifest.test.mjs`, checking against
   research R12:
   - `manifest_version` is `"0.3"`, and every required field is present;
   - `server.type` is `node`, with `entry_point` set to `src/server.mjs`;
@@ -628,23 +628,23 @@ install runbook.
   - **Scenarios covered**: US5-AC1, FR-001, FR-004
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/manifest.test.mjs` → expected: 1 failing file, ENOENT for
     `manifest.json`
-- [ ] T048 [P] [US5] Write the startup test in `mcp-servers/pdlc/tests/unit/server-startup.test.mjs`. Spawn
+- [X] T048 [P] [US5] Write the startup test in `mcp-servers/pdlc/tests/unit/server-startup.test.mjs`. Spawn
   `node mcp-servers/pdlc/src/server.mjs` four times, each with one `PDLC_*` variable removed and a canary token set.
   Each run must exit non-zero within 5 s, stderr must name the removed variable, and the canary must appear in neither
   stdout nor stderr.
   - **Scenarios covered**: US5-AC2, FR-004, FR-018
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/server-startup.test.mjs` → expected: 4 failing, because
     the entry does not yet catch `ConfigError` into an exit naming the variable
-- [ ] T049 [US5] Write `mcp-servers/pdlc/manifest.json`, and add `mcpb validate` to the `pdlc:lint` target in
+- [X] T049 [US5] Write `mcp-servers/pdlc/manifest.json`, and add `mcpb validate` to the `pdlc:lint` target in
   `mcp-servers/pdlc/project.json` (prerequisite: T047 verified RED).
   - **Verify GREEN**: the T047 command → expected: 0 failures. Then `pnpm nx run pdlc:lint` passes.
-- [ ] T050 [US5] Implement the stdio entry's startup path in `mcp-servers/pdlc/src/server.mjs`:
+- [X] T050 [US5] Implement the stdio entry's startup path in `mcp-servers/pdlc/src/server.mjs`:
   - load the config, and on `ConfigError` write one redacted stderr line naming the variable, then exit 1;
   - otherwise connect `StdioServerTransport`.
 
   Prerequisite: T048 verified RED.
   - **Verify GREEN**: the T048 command → expected: 0 failures
-- [ ] T051 [US5] Write `mcp-servers/pdlc/scripts/pack.mjs` and the `pdlc:pack` target, following research R12's build
+- [X] T051 [US5] Write `mcp-servers/pdlc/scripts/pack.mjs` and the `pdlc:pack` target, following research R12's build
   steps:
   1. `pnpm --filter @belay/pdlc deploy --prod --config.node-linker=hoisted` into a stage under `target/pdlc/`;
   2. copy `contract/`, `skill/` and `manifest.json` into the stage;
