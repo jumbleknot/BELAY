@@ -69,7 +69,10 @@ The forge renders a submitted form as one `### <label>` block per field, in form
 ## Parsing rules
 
 1. Scan line by line. A line equal to `### <H>` (trailing spaces trimmed) starts a section **only if** `<H>` is the
-   next heading not yet seen, in the order above. Otherwise the line is content.
+   next heading not yet seen, in the order above. Otherwise the line is content. *Clarified during implementation
+   (2026-11-25):* a later heading may skip ahead only when every heading it skips is absent from the rest of the
+   body. A deleted heading therefore does not swallow every section after it (rule 3: "neither is fatal"), while a
+   user's own `### …` line, or a known heading typed out of place, stays content.
 2. Section content is the text between its heading and the next recognised heading, with surrounding blank lines
    trimmed. `_No response_` reads back as the empty string.
 3. Text before the first recognised heading produces the warning `text before first section`. A heading that never

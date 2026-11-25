@@ -331,7 +331,7 @@ real bare repository. Live, quickstart §2 (create, duplicate, read back) agains
 
 ### Tests for User Story 1 (TDD) ⚠️
 
-- [ ] T024 [P] [US1] Write tests for the body format in `mcp-servers/pdlc/tests/unit/proposal-body.test.mjs`:
+- [X] T024 [P] [US1] Write tests for the body format in `mcp-servers/pdlc/tests/unit/proposal-body.test.mjs`:
   - `renderBody(sections)` emits the nine `### <Heading>` blocks in the order of `data-model.md` Proposal section.id
     and Proposal section.Heading, with `_No response_` for an empty optional section;
   - `parseBody(text)` follows rules 1–4 of [contracts/proposal-body.md](contracts/proposal-body.md): an
@@ -343,7 +343,7 @@ real bare repository. Live, quickstart §2 (create, duplicate, read back) agains
   - **Scenarios covered**: US1-AC4 (body), US1-AC6, SC-002, FR-010
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/proposal-body.test.mjs` → expected: 1 failing file,
     `ERR_MODULE_NOT_FOUND`
-- [ ] T025 [P] [US1] Write the master-copy guards in `mcp-servers/pdlc/tests/unit/master-copies.test.mjs`, reading the
+- [X] T025 [P] [US1] Write the master-copy guards in `mcp-servers/pdlc/tests/unit/master-copies.test.mjs`, reading the
   form with `yaml`:
   - the master form's field labels equal the heading list exported by `src/proposal-body.mjs`, in order (FR-011);
   - the form's `labels:` are exactly `type/proposal` and `status/proposal-draft` (FR-021);
@@ -351,7 +351,7 @@ real bare repository. Live, quickstart §2 (create, duplicate, read back) agains
   - **Scenarios covered**: FR-011, FR-021, FR-022
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/master-copies.test.mjs` → expected: 1 failing file,
     `ERR_MODULE_NOT_FOUND` for `src/proposal-body.mjs`
-- [ ] T026 [P] [US1] Write unit tests for the local copy in `mcp-servers/pdlc/tests/unit/local-copy.test.mjs`, with
+- [X] T026 [P] [US1] Write unit tests for the local copy in `mcp-servers/pdlc/tests/unit/local-copy.test.mjs`, with
   a git-runner double. Cover:
   - `status(repo)` computes each field from `data-model.md`: Local proposal copy.path, .exists, .branch, .dirty,
     .behind, .ahead;
@@ -368,7 +368,7 @@ real bare repository. Live, quickstart §2 (create, duplicate, read back) agains
   - **Scenarios covered**: US1-AC2, US1-AC3, edge case (default branch not `main`)
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/local-copy.test.mjs` → expected: 1 failing file,
     `ERR_MODULE_NOT_FOUND`
-- [ ] T027 [P] [US1] Write a real-git integration test in
+- [X] T027 [P] [US1] Write a real-git integration test in
   `mcp-servers/pdlc/tests/integration/local-copy.integration.test.mjs`. In a temp directory:
   - create a bare "forge" repository with a `main` and a non-`main` default variant, with
     `uploadpack.allowFilter=true` set on it. It is addressed as a `file://` URL through `originUrlFor`, because a
@@ -384,7 +384,7 @@ real bare repository. Live, quickstart §2 (create, duplicate, read back) agains
   - **Scenarios covered**: US1-AC2, US1-AC3, FR-017 (credential not stored)
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/integration/local-copy.integration.test.mjs` → expected: 1
     failing file, `ERR_MODULE_NOT_FOUND` for `src/local-copy.mjs`
-- [ ] T028 [P] [US1] Write tests for creating and reading proposals in
+- [X] T028 [P] [US1] Write tests for creating and reading proposals in
   `mcp-servers/pdlc/tests/unit/proposals.test.mjs`, with forge, labels and allowlist doubles.
   - `create`:
     - the title is `Proposal: <feature_name>` (`data-model.md` Proposal.title);
@@ -407,7 +407,7 @@ real bare repository. Live, quickstart §2 (create, duplicate, read back) agains
   - **Scenarios covered**: US1-AC4, US1-AC5, FR-005, FR-009, research R9, R10
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/proposals.test.mjs` → expected: 1 failing file,
     `ERR_MODULE_NOT_FOUND`
-- [ ] T029 [P] [US1] Write tool-level tests for US1 in `mcp-servers/pdlc/tests/unit/tools.test.mjs`, over
+- [X] T029 [P] [US1] Write tool-level tests for US1 in `mcp-servers/pdlc/tests/unit/tools.test.mjs`, over
   `InMemoryTransport` with doubles behind `deps`. `list_repos`, `repo_status`, `sync_repo`, `create_proposal` and
   `get_proposal` each return the output shape in [contracts/tools.md](contracts/tools.md), with `structuredContent`.
   `repo` is matched case-insensitively and returned canonically.
@@ -417,26 +417,26 @@ real bare repository. Live, quickstart §2 (create, duplicate, read back) agains
 
 ### Implementation for User Story 1
 
-- [ ] T030 [US1] Implement `mcp-servers/pdlc/src/proposal-body.mjs`: `SECTIONS` (`data-model.md` Proposal section.id
+- [X] T030 [US1] Implement `mcp-servers/pdlc/src/proposal-body.mjs`: `SECTIONS` (`data-model.md` Proposal section.id
   and Proposal section.Heading), `renderBody` and `parseBody` (prerequisite: T024 and T025 verified RED).
   - **Verify GREEN**:
     `node --test mcp-servers/pdlc/tests/unit/proposal-body.test.mjs mcp-servers/pdlc/tests/unit/master-copies.test.mjs`
     → expected: 0 failures
-- [ ] T031 [US1] Implement `status` and `sync` (clone and fast-forward only; the refusals come in T043) in
+- [X] T031 [US1] Implement `status` and `sync` (clone and fast-forward only; the refusals come in T043) in
   `mcp-servers/pdlc/src/local-copy.mjs`, as `createLocalCopy({cloneRoot, originUrlFor, git})`. Follow the sync transitions under `data-model.md` Local proposal copy
   (prerequisite: T026 and T027 verified RED).
   - **Verify GREEN**:
     `node --test mcp-servers/pdlc/tests/unit/local-copy.test.mjs mcp-servers/pdlc/tests/integration/local-copy.integration.test.mjs`
     → expected: 0 failures
-- [ ] T032 [US1] Implement `create` and `get` in `mcp-servers/pdlc/src/proposals.mjs` (prerequisite: T028 verified
+- [X] T032 [US1] Implement `create` and `get` in `mcp-servers/pdlc/src/proposals.mjs` (prerequisite: T028 verified
   RED).
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/proposals.test.mjs` → expected: 0 failures
-- [ ] T033 [US1] Wire `list_repos`, `repo_status`, `sync_repo`, `create_proposal` and `get_proposal` in
+- [X] T033 [US1] Wire `list_repos`, `repo_status`, `sync_repo`, `create_proposal` and `get_proposal` in
   `mcp-servers/pdlc/src/tools.mjs`, and log each write at INFO with tool, repository and number, never the body
   (research R17) (prerequisite: T029 verified RED).
   - **Verify GREEN**: the T029 command → expected: 0 failures. Then `pnpm nx run pdlc:test` and
     `pnpm nx run pdlc:integration` pass, with skip count 0.
-- [ ] T034 [P] [US1] Write the skill master test in `mcp-servers/pdlc/tests/unit/skill-master.test.mjs`. It checks
+- [X] T034 [P] [US1] Write the skill master test in `mcp-servers/pdlc/tests/unit/skill-master.test.mjs`. It checks
   that `mcp-servers/pdlc/skill/proposal-intake/SKILL.md`:
   - names exactly the nine tool names of `src/tool-contract.mjs` and no other `snake_case` tool call;
   - contains the three R18 edits, found by marker phrases:
@@ -446,7 +446,7 @@ real bare repository. Live, quickstart §2 (create, duplicate, read back) agains
   - **Scenarios covered**: FR-003, FR-023, FR-024, research R18
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/skill-master.test.mjs` → expected: 1 failing file,
     ENOENT for the skill
-- [ ] T035 [US1] Create `mcp-servers/pdlc/skill/proposal-intake/SKILL.md` from
+- [X] T035 [US1] Create `mcp-servers/pdlc/skill/proposal-intake/SKILL.md` from
   `docs/proposals/claude-desktop-proposal-intake/SKILL.md`, with the three R18 edits (prerequisite: T034 verified
   RED).
   - **Verify GREEN**: the T034 command → expected: 0 failures

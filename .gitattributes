@@ -62,3 +62,5 @@ pnpm-lock.yaml    -diff linguist-generated
 # check-openwiki-governance normalizes line endings, and its test asserts a passing exit. Strip the
 # CRLF and that test still PASSES while no longer testing CRLF at all: a silently weakened gate.
 scripts/__tests__/fixtures/** -text
+# Same reason for the pdlc server's fixtures: a web-form body carries the browser's CRLF (feature 014).
+mcp-servers/pdlc/tests/**/fixtures/** -text
