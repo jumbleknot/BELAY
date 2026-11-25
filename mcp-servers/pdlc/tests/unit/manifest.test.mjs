@@ -55,6 +55,17 @@ test('compatibility is win32 only', () => {
   assert.deepEqual(manifest.compatibility.platforms, ['win32']);
 });
 
+test('runtimes.node is the server\'s engines floor, and the Node Claude Desktop bundles satisfies it', () => {
+  // T006, measured on the Windows host 2026-11-25 (research R12): the extension ran on Claude Desktop's
+  // own runtime (process.execPath was Claude.exe in its MSIX package), at Node v24.22.3.
+  const MEASURED_BUNDLED_NODE = 'v24.22.3';
+  const range = manifest.compatibility.runtimes?.node;
+  assert.equal(range, `${pkg.engines.node}.0.0`);
+  const floor = Number(/^>=(\d+)\.0\.0$/.exec(range)?.[1]);
+  assert.ok(Number.isInteger(floor), `a plain ">=N.0.0" floor, got ${range}`);
+  assert.ok(Number(MEASURED_BUNDLED_NODE.slice(1).split('.')[0]) >= floor, `${MEASURED_BUNDLED_NODE} meets ${range}`);
+});
+
 test('the manifest version equals package.json\'s', () => {
   assert.equal(manifest.version, pkg.version);
 });

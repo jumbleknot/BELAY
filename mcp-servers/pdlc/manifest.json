@@ -92,6 +92,9 @@
   "compatibility": {
     "platforms": [
       "win32"
-    ]
+    ],
+    "runtimes": {
+      "node": ">=20.0.0"
+    }
   }
 }

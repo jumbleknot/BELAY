@@ -228,6 +228,27 @@ test (FR-003) reads the server's `tools/list` over the actual protocol, not a ha
    manifest's `runtimes.node` is set from the observation.
 4. **Server logs**: where server stderr lands, so the runbook can name the log file.
 
+**Measured on the host (2026-11-25)**, with the throwaway `pdlc-hello` extension (T006). Claude Desktop is the
+Microsoft Store (MSIX) build, package `Claude_6.28899.6.0_x64__<publisher id>`.
+1. **Child processes: `git` is reachable.** The extension's process inherits the user's full `PATH` (42 entries,
+   including `C:\Program Files\Git\cmd` and `C:\Program Files\Git\mingw64\bin`). `execFile('git', ['--version'])`
+   returned `git version 2.53.0.windows.1` (Git for Windows, above the 2.31 floor for `GIT_CONFIG_COUNT`), and
+   `where git` found `C:\Program Files\Git\cmd\git.exe` first. No `git_path` setting is needed (T053 not needed).
+2. **Node: Claude Desktop's own runtime, v24.22.3.** `process.execPath` was `Claude.exe` inside the MSIX package
+   (`C:\Program Files\WindowsApps\Claude_…\app\Claude.exe`), not a system Node. The manifest declares
+   `compatibility.runtimes.node: ">=20.0.0"`, the server's `engines` floor, which v24.22.3 meets.
+3. *Server logs*: not yet found. `%APPDATA%\Claude\logs` does not exist on the MSIX build, and the virtualised
+   `%LOCALAPPDATA%\Packages\Claude_…\LocalCache\Roaming\Claude\logs` held no file with the marker. **Pending.**
+4. *Sensitive storage*: not yet found; `%APPDATA%\Claude` does not exist on the MSIX build. **Pending.**
+
+Also observed:
+- The bundle is unpacked to `%LOCALAPPDATA%\Claude-Data\claude_<publisher id>\Claude Extensions\local.mcpb.<author>.<name>\`,
+  so Claude Desktop's data folder on this build is `%LOCALAPPDATA%\Claude-Data\claude_<publisher id>\`, not
+  `%APPDATA%\Claude`. That is where observations 3 and 4 are searched next.
+- The server's working directory is `C:\WINDOWS\system32`. `pdlc` never depends on it: every git call passes an
+  explicit `cwd`, and `PDLC_CLONE_ROOT` must be absolute.
+- The `sensitive` value reached the server through `${user_config.…}` substitution into `mcp_config.env`, as R12 states.
+
 ## R13 — Where things live (no new top-level folder)
 
 **Decision**: everything new sits under folders that already exist, so no structural ADR is needed for layout.

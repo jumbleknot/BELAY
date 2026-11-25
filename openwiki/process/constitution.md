@@ -4,8 +4,8 @@ title: The governing constitution
 description: BELAY's ratified, versioned constitution, derived from MovieCollectionManager's — the non-negotiable principles (AI assistant constraints, security, TDD), the common stack rules (pnpm, Nx, RTK, dependency pinning, documentation and the doc-impact sweep), the per-layer principles a future project inherits, and the amendment process every spec and plan is checked against.
 tags: [constitution, governance, process, spec-kit]
 resource: .specify/memory/constitution.md
-resource-sha256: 749eaa8b6f1011270e85e5a1d0b64a86b803ac4adde782d1a1532f4cfd6da163
-timestamp: 2026-11-25T11:22:42.891Z
+resource-sha256: 8611f5ddd5c7480ba1260163ec48c92af4f1e02330e1c4005d4fde03c54ba8a8
+timestamp: 2026-11-25T12:39:02.048Z
 ---
 
 # The governing constitution
@@ -28,7 +28,9 @@ must never contradict it.
     Integrity**.
   - **Logging & Monitoring**.
 - **Common technology stack and standards:**
-  - pnpm only, and Nx for every test, lint, build, e2e and deploy operation;
+  - pnpm only, with `packageManager` declared once, in the root `package.json` (stated so since 1.1.0;
+    1.0.x said every project declares it, which the enforced check forbids), and Nx for every test,
+    lint, build, e2e and deploy operation;
   - RTK in every AI-assisted shell;
   - **Dependency Security**: the lock file pins installs, lockstep groups are exact, and other
     dependencies may use `^`;

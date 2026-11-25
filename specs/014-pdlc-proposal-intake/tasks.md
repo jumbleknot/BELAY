@@ -156,16 +156,17 @@ host facts the packaging depends on.
   - **Done when**:
     - `CI=true pnpm install --frozen-lockfile` passes with no `ERR_PNPM_IGNORED_BUILDS` and no `allowBuilds` change;
     - `mcp-servers/pdlc/package.json`'s `packageManager` equals the root `package.json`'s;
-      **Deviation (2026-11-25, awaiting maintainer approval)**: the field is NOT declared in the nested
+      **Deviation (2026-11-25, approved by the maintainer the same day)**: the field is NOT declared in the nested
       manifest. `scripts/check-toolchain-consistency.mjs` (rule `package-manager-once`, run by
       `scripts:lint`) and `openwiki/invariants/package-manager-enforcement.md` require `packageManager`
       exactly once, in the root, because an agreeing copy drifts (MCM measured it). That conflicts with
-      constitution line 148 ("each project's `package.json` must declare"), a pre-existing
+      the constitution's Package Manager rule ("each project's `package.json` must declare"), a pre-existing
       inconsistency this feature did not introduce. The guard wins here, so the project inherits the
-      root's pin;
+      root's pin. Resolved by folding a correction into the 1.1.0 amendment (T002): the constitution's Package
+      Manager rule now states "declared exactly once, in the root";
     - `pnpm nx show project pdlc` lists the five targets;
     - `pnpm nx run scripts:sast` passes (the SCA check over the new packages).
-- [ ] T006 **Host measurements** (research R12; plan phase 2). These must be done before T031 and T047 depend on
+- [ ] T006 *(Observations 1 and 2 recorded 2026-11-25; 3 (log) and 4 (sensitive storage) being re-measured under `%LOCALAPPDATA%\Claude-Data`.)* **Host measurements** (research R12; plan phase 2). These must be done before T031 and T047 depend on
   them.
   - Build a throwaway "hello" extension in the scratchpad, never committed. It needs a one-tool server whose tool runs
     `git --version` through `execFile` and returns `process.version`, `process.env.PATH`'s git entry and
@@ -617,7 +618,7 @@ install runbook.
 **Independent Test**: `pnpm nx run pdlc:pack` produces both files, and `mcpb validate` passes. Then quickstart §3
 (install) and §4 (startup refusal) on the host.
 
-- [ ] T047 [P] [US5] *(Written and GREEN except the `runtimes.node` assertion, which waits on T006's Node observation.)* Write the manifest test in `mcp-servers/pdlc/tests/unit/manifest.test.mjs`, checking against
+- [X] T047 [P] [US5] *(`runtimes.node` assertion added 2026-11-25 from T006's Node v24.22.3: RED `actual: undefined, expected: '>=20.0.0'`; GREEN 8/8, skip 0; `mcpb validate` passes.)* Write the manifest test in `mcp-servers/pdlc/tests/unit/manifest.test.mjs`, checking against
   research R12:
   - `manifest_version` is `"0.3"`, and every required field is present;
   - `server.type` is `node`, with `entry_point` set to `src/server.mjs`;
@@ -673,7 +674,7 @@ install runbook.
   The runbook names no forge host or tailnet address.
   - **Scenarios covered**: US5-AC1, US5-AC3, FR-025
   - **Done when**: the runbook covers every item in quickstart §3, and `node scripts/check-topology-scrub.mjs` passes.
-- [ ] T053 [US5] **Conditional on T006**: if `git` was not reachable from the extension, add a `git_path` `user_config`
+- [X] T053 *(Not needed: T006 observed `git version 2.53.0.windows.1` from `C:\Program Files\Git\cmd\git.exe` on the extension's inherited `PATH`.)* [US5] **Conditional on T006**: if `git` was not reachable from the extension, add a `git_path` `user_config`
   entry (type `file`), mapped to `PDLC_GIT_PATH`. That means changing `mcp-servers/pdlc/src/config.mjs` (optional
   setting), `src/git-runner.mjs` and `manifest.json`, together with tests in `tests/unit/config.test.mjs` and
   `tests/unit/manifest.test.mjs`, written RED first. Otherwise mark this task "not needed: <T006 observation>".

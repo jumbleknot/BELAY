@@ -4,8 +4,8 @@ title: The pdlc server — proposal intake from Claude Desktop
 description: How the pdlc operator-tool MCP server lets a Claude Desktop session on the workstation file and refine feature proposals as forge issues and keep read-only local copies — building and installing the .mcpb with its four settings, the dedicated pdlc token and its two scopes, the skill update rule, the audit trail in the host's stderr log joined to the forge timeline by correlation_id, the refusal codes, and the hand-off that makes another repository (MCM) accept proposals.
 tags: [pdlc, mcp, claude-desktop, proposals, runbook]
 resource: docs/runbooks/pdlc.md
-resource-sha256: 5b62f0668dcba1db176de210b2880e9a951ccfb4f4485994fc42b6cdfc65364b
-timestamp: 2026-11-25T04:11:40.916Z
+resource-sha256: 6a5fa5f3faa2d6f3472cb55ba5c9e577836963be89b3299629dd9da16660b63f
+timestamp: 2026-11-25T12:40:03.208Z
 ---
 
 # The pdlc server — proposal intake from Claude Desktop
@@ -30,6 +30,9 @@ Full detail is in [docs/runbooks/pdlc.md](../../docs/runbooks/pdlc.md).
 - **The audit log is the host's capture of stderr**, one `audit` line per call, allowed or refused, joined to the
   forge's issue timeline by `correlation_id`. Its location and retention are measured on the workstation and
   recorded in the runbook; until then they are pending.
+- **The workstation needs only Git for Windows.** Measured on the Microsoft Store build: the server runs on
+  Claude Desktop's own Node (v24), and finds `git` on the user's inherited `PATH`. Its data folder is under
+  `%LOCALAPPDATA%\Claude-Data`, not `%APPDATA%\Claude`.
 - **Rebuild and re-upload after every merge** that changes the server or the master skill. Nothing updates itself.
 - **A contract change is breaking.** A tool, parameter, enum, heading or section-id change moves the skill, the
   manifest and every target's form copy in the same PR; `check_setup` reports a target's copy as `out_of_step`.

@@ -101,16 +101,20 @@ test('round trip holds for generated inputs, with empties normalised to ""', () 
 });
 
 test('a web-form submission parses into the same section set as a rendered body', () => {
-  // PROVISIONAL fixture (2026-11-25): built from the forge's documented form rendering, with CRLF inside
-  // textarea values as browsers submit them. Replace it with a real capture from ci-smoke once its
-  // proposal form is on the default branch (quickstart §2).
+  // Captured 2026-11-25 from a real submission through ci-smoke's proposal form (issue #10), byte for byte
+  // except the feature name's value. The forge joins fields with LF and keeps the browser's CRLF inside
+  // textarea values (the form's prefilled Goals and Rough scope templates), and ends the body with "\n\n".
   const text = readFileSync(new URL('./fixtures/web-form-proposal.md', import.meta.url), 'utf8');
+  assert.ok(text.includes('\r\n') && text.endsWith('p2\n\n'), 'the fixture keeps the captured line endings');
   const web = parseBody(text);
   assert.deepEqual(web.warnings, []);
   assert.deepEqual(Object.keys(web.sections), SECTION_IDS);
-  assert.equal(web.sections.feature_name, 'Import export spreadsheet');
-  assert.equal(web.sections.problem, 'Collectors keep their lists in spreadsheets.\nThere is no way to bring them in.\n\n### Notes from the call\nA user heading inside a textarea stays content.');
+  assert.equal(web.sections.feature_name, 'Example test proposal');
+  assert.equal(web.sections.problem, 'This is for testing');
+  assert.equal(web.sections.goals_success, '**Goals**\n- This is for testing\n\n**Success criteria / done when**\n- [ ]\n- [ ]');
+  assert.equal(web.sections.rough_scope, '**Functional**\n- This is for testing\n\n**Non-functional**\n-');
   assert.equal(web.sections.open_questions, '');
+  assert.equal(web.sections.out_of_scope, '');
   assert.equal(web.sections.priority, 'p2');
   assert.deepEqual(parseBody(renderBody(web.sections)).sections, web.sections);
 });

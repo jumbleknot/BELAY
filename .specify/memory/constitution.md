@@ -6,7 +6,8 @@ VERSION HISTORY:
   (lock file pins installs; lockstep groups exact; other ranges allowed) (2026-11-22)
 - v1.1.0: Operator-tool MCP servers admitted as a second MCP server class (local stdio,
   Node or Python, no Dockerfile), with their transport and audit rules; the Python/Docker
-  MCP rules scoped to servers the Agent Gateway serves (feature 014, ADR-0005) (2026-11-25) [CURRENT]
+  MCP rules scoped to servers the Agent Gateway serves (feature 014, ADR-0005); Package Manager
+  corrected to the enforced rule: `packageManager` is declared once, in the root (2026-11-25) [CURRENT]
 -->
 
 # BELAY Constitution
@@ -127,7 +128,7 @@ Conditional Access (CA) policies — including network location checks, device c
 ### Common Technology Stack and Standards
 
 - **Git Management:** Always use a single root-level `.gitignore` for monorepo-wide patterns (e.g., /.gitignore). Project-specific `.gitignore` files may supplement the root for framework-specific artifacts (e.g., Expo build outputs) but must not duplicate or contradict root entries.
-- **Package Manager:** pnpm is the required package manager for all JavaScript/TypeScript projects. npm and yarn are prohibited. Each project's `package.json` must declare `"packageManager": "pnpm@<version>"`. A root `pnpm-workspace.yaml` must list all frontend and backend package directories.
+- **Package Manager:** pnpm is the required package manager for all JavaScript/TypeScript projects. npm and yarn are prohibited. The root `package.json` declares `"packageManager": "pnpm@<version>"` exactly once; a workspace package must not declare its own, because a second copy silently wins in a nested workspace and drifts on the next bot update (ADR-0001; enforced by `check-toolchain-consistency.mjs`, rule `package-manager-once`). A root `pnpm-workspace.yaml` must list all frontend and backend package directories.
 - **Monorepo Build Tool:** Nx must be used to manage polyglot builds across the monorepo. All test, lint, build, e2e, and deploy operations must be executed through Nx targets (`pnpm nx run <project>:<target>`), not by invoking package manager scripts directly. pnpm scripts in `package.json` are permitted only as implementation details called by Nx targets, never as the primary invocation path.
 - **Environment & Secret Files:**
   - Create a root `.env` and `.env.local` for shared configuration, but use individual `.env` and `.env.local` files in each project (e.g., /backend/{{service-name}}/.env, /frontend/{{app-name}}/.env) for project specific configuration.

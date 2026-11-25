@@ -81,13 +81,13 @@ merges with a pull request; after it merges, rebuild with `pdlc:pack` and re-upl
 
 ### Measured on the host
 
-**Pending T006**: these four facts are measured with a throwaway extension on the workstation and recorded in
-research R12. Until then, nothing below is to be relied on.
+Measured on 2026-11-25 with a throwaway extension on the workstation (Claude Desktop, Microsoft Store build), and
+recorded in research R12. The rows still marked *pending* are not to be relied on yet.
 
 | Fact | Observed |
 | --- | --- |
-| Is `git` found from the extension, and from which `PATH` | *pending T006* |
-| The Node version Claude Desktop bundles | *pending T006* |
+| Is `git` found from the extension, and from which `PATH` | Yes. The extension inherits the user's full `PATH`; `git` resolved to `C:\Program Files\Git\cmd\git.exe` (Git for Windows 2.53.0). No `git_path` setting is needed |
+| The Node version Claude Desktop bundles | v24.22.3, run by `Claude.exe` itself, not a system Node. The manifest requires `>=20.0.0` |
 | Where the server's stderr lands (the audit log), and its rotation and retention | *pending T006* |
 | Where a `sensitive` setting is stored | *pending T006* |
 
