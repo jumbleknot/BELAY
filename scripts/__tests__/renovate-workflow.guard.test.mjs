@@ -68,7 +68,8 @@ test('the validator and the run use the same version expression, installed --bef
 
 test('the run environment: platform, endpoint, no autodiscover, no onboarding, docker pages, allowed commands, JSON log', () => {
   const env = stepEnv(/^Run Renovate /);
-  assert.equal(env.RENOVATE_PLATFORM, 'gitea');
+  // `forgejo`, never `gitea`: Renovate is removing Forgejo support from its gitea platform (item #70).
+  assert.equal(env.RENOVATE_PLATFORM, 'forgejo', 'the gitea platform is losing Forgejo support upstream');
   assert.equal(env.RENOVATE_ENDPOINT, '${{ github.server_url }}/api/v1/');
   assert.equal(env.RENOVATE_REPOSITORIES, '${{ github.repository }}');
   assert.equal(String(env.RENOVATE_AUTODISCOVER), 'false');

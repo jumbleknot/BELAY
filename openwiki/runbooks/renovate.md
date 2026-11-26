@@ -4,8 +4,8 @@ title: The dependency bot (Renovate) — what it proposes, when, and how it fail
 description: BELAY's self-hosted Renovate on the belay runner, as the restricted belay-renovate account — it proposes and never merges; a security channel four times a day and a Wednesday window in UTC; every pin managed or excluded, held to rules C1–C11 by check-renovate-config.mjs; version-and-sha256 pairs moved together and verified on every PR; the dashboard kept out of backlog ready; and a run judged from its own log, never its exit code.
 tags: [renovate, dependencies, supply-chain, ci, runbook]
 resource: docs/runbooks/renovate.md
-resource-sha256: 28a49352dbd85e5841044b48ae789b9a09bc2673faf42ed2099f3c67bd5c2cd5
-timestamp: 2026-11-25T11:13:13.027Z
+resource-sha256: 6e71251669d94c68a30dedf47f1b2d02d7760b6b7eaa59d3f1f1606079d1c229
+timestamp: 2026-11-26T04:03:08.131Z
 ---
 
 # The dependency bot (Renovate)
@@ -42,6 +42,8 @@ pull requests; CI judges them like any other, and a human merges. Automerge is o
 
 ## Gotchas
 
+- **The platform is `forgejo`, not `gitea`** (item #70): Renovate is removing Forgejo support from its gitea
+  platform. The host type is `forgejo` too, so key any host rule for the forge on `forgejo`.
 - **Never hand-close a bot PR**: the bot reads it as rejected and never proposes that version again. Add a
   hold instead, with `Why:`, `item #N` and `Re-check:`.
 - **A base re-pin that discharges an image-scan allowlist entry** must also delete the entry in the same PR.

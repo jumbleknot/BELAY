@@ -33,7 +33,7 @@ The steps, in order:
 6. Validate the config: `renovate-config-validator --strict --no-global renovate.json`, at
    `$(node scripts/check-renovate-config.mjs --print-renovate-version)`, with `npx --before=<now − 3 d>`.
 7. Run Renovate with this environment:
-   - `RENOVATE_PLATFORM=gitea`
+   - `RENOVATE_PLATFORM=forgejo` (was `gitea` until item #70; Renovate is removing Forgejo from its gitea platform)
    - `RENOVATE_ENDPOINT=${{ github.server_url }}/api/v1/`
    - `RENOVATE_REPOSITORIES=${{ github.repository }}`
    - `RENOVATE_AUTODISCOVER=false`

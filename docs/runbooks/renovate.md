@@ -235,6 +235,22 @@ A fast-forward or squash merge is never reaped. That is the safe direction, and 
 validator step runs the **new** version against `renovate.json` before anything uses it. Also check the new
 release's `engines.node` against the workflow's `node-version`. MCM measured a minor release raising it.
 
+## The platform
+
+The workflow runs Renovate with `RENOVATE_PLATFORM: forgejo`. Until item #70 it used `gitea`, which logged
+`Detected Forgejo instance, please use 'forgejo' platform instead` on every run. Renovate's docs say Forgejo support
+will be removed from the `gitea` platform. A bot PR that raised `RENOVATE_VERSION` past that release would pass CI and
+then fail its first run.
+
+The two platforms share one implementation (`createPlatform` in Renovate's gitea module). They keep separate
+config, caches and host types:
+
+- **Host type `forgejo`.** A `hostRules` entry keyed on `gitea` would no longer apply. BELAY has none, because the
+  token comes from `RENOVATE_TOKEN`. Key any future host rule for the forge on `forgejo`.
+- **The repository cache started empty** at the switch, so that first run could rebase open bot PRs once.
+- **Upstream tested the `forgejo` path against Forgejo 16.** This forge runs 15.0.3. Its version checks pass: native
+  automerge needs 10.0.0, and BELAY turns automerge off anyway.
+
 ## The token
 
 `belay-renovate` is a **restricted** Forgejo user with **Write** access to this repository only. Its token is the

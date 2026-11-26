@@ -85,7 +85,8 @@ jobs:
         run: bash scripts/ci-log-step.sh renovate-validate-config npx --yes --before="$(node -e 'process.stdout.write(new Date(Date.now()-3*864e5).toISOString())')" --package renovate@$(node scripts/check-renovate-config.mjs --print-renovate-version) -- renovate-config-validator --strict --no-global renovate.json
       - name: Run Renovate
         env:
-          RENOVATE_PLATFORM: gitea
+          # `forgejo`, not `gitea`: Renovate is removing Forgejo support from its gitea platform (item #70).
+          RENOVATE_PLATFORM: forgejo
           RENOVATE_ENDPOINT: ${{ github.server_url }}/api/v1/
           RENOVATE_REPOSITORIES: ${{ github.repository }}
           RENOVATE_AUTODISCOVER: 'false'
