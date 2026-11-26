@@ -271,6 +271,17 @@ Also observed:
   explicit `cwd`, and `PDLC_CLONE_ROOT` must be absolute.
 - The `sensitive` value reached the server through `${user_config.…}` substitution into `mcp_config.env`, as R12 states.
 
+**Measured during T080 (2026-11-26), with the real bundle.**
+- **A Project coordinator (Beta) project does not get the extension.** The first quickstart §5 attempt ran in a
+  project of that type (a coordinator and threads, the clone folder connected). The skill found no `pdlc` tools and
+  stopped, and its reply pointed at "your Claude Code MCP config", so the threads run as local agent sessions with
+  their own tool set. `main.log` showed `started pdlc 0.1.0` with no `ERROR` lines, so the server was healthy.
+- **A plain chat gets the extension, and asks for the folder.** The same session in a plain chat outside any project
+  had the tools. When the skill first read the clone, the chat asked for access to the clone folder; once approved,
+  `sync_repo` cloned BELAY into it and the skill read the wiki, constitution and spec list from there. So no
+  folder is connected in advance, and the runbook's earlier "connect the clone folder to the project" step is
+  replaced by "start in a plain chat, approve the folder request".
+
 ## R13 — Where things live (no new top-level folder)
 
 **Decision**: everything new sits under folders that already exist, so no structural ADR is needed for layout.

@@ -64,7 +64,9 @@ pnpm nx run pdlc:pack         # → target/pdlc/pdlc-<version>.mcpb and target/p
 1. Copy both files to the host (VS Code Explorer → right-click → **Download**).
 2. Open the `.mcpb` in Claude Desktop and fill in the four settings: forge URL, owner, token and clone folder.
 3. Upload `proposal-intake.zip` as a skill, replacing the earlier copy.
-4. Connect the clone folder to the Claude Desktop project.
+4. Run every session below in a **plain chat**, not in a Claude Desktop project: a Project coordinator (Beta) project
+   does not get the extension (research R12, measured 2026-11-26). When the chat asks for access to the clone folder,
+   approve it.
 
 **Host measurements (research R12, before the runbook is finalised)**: record whether `git` was found, the Node
 version Claude Desktop bundles, the location of the server's log, and where the token setting is stored.

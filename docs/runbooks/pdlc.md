@@ -67,11 +67,17 @@ Download both to the workstation (VS Code Explorer → right-click → **Downloa
 
 3. Enable the extension.
 
-### Connect the clone folder and add the skill
+### Add the skill, and where to run a session
 
-1. In the Claude Desktop project you use for proposals, add the clone folder as a connected folder, so the session
-   can read each repository's files (`openwiki/`, `specs/`, the constitution) from its local copy.
-2. **Settings → Skills → Upload skill**, and pick `proposal-intake.zip`. Replace the earlier copy.
+1. **Settings → Skills → Upload skill**, and pick `proposal-intake.zip`. Replace the earlier copy.
+2. **Start every proposal session in a plain chat**, not in a Claude Desktop project. Measured 2026-11-26 (research
+   R12): a **Project coordinator (Beta)** project, with its coordinator and threads, does not get the installed
+   extension. The skill finds no `pdlc` tools there and stops, as designed, even though `main.log` shows the server
+   started cleanly. The same session in a plain chat works.
+3. **Nothing needs connecting in advance.** The server finds the clone folder from its own setting. When the skill
+   first reads a repository's files from its local copy (`openwiki/`, `specs/`, the constitution), the chat asks
+   for access to the clone folder. Approve it: without it the session cannot check the idea against existing specs
+   and wiki pages. The skill reads the copy and never writes to it; `sync_repo` is the only thing that changes it.
 
 ### Update the skill whenever the master changes
 
