@@ -664,7 +664,8 @@ install runbook.
     and how to revoke it;
   - building with `pdlc:pack` and downloading both files;
   - installing the `.mcpb` and filling in the four settings;
-  - creating the clone folder and connecting it to the Claude Desktop project;
+  - creating the clone folder, and running sessions in a plain chat that is granted access to it when asked
+    (corrected after T080, research R12);
   - updating the skill from `proposal-intake.zip`, whenever the master changes;
   - T006's four observations (log location, token storage, Node version, git);
   - troubleshooting by refusal code;
@@ -938,7 +939,8 @@ live check is quickstart §7, after MCM's own feature merges, outside this PR.
   Tick this task in the branch's LAST commit, and quote the branch and the PR number. **CI evidence is never recorded
   here.** The run ids, the CI verdict and the merge sha go in the PR's closing comment, and in the closing comment of
   each issue the PR resolves.
-- [ ] T080 **After merge** (operator, on `main`; not part of the PR):
+- [X] T080 *(Done 2026-11-26; outcome in PR #83's comments. §5 and §6 passed. Sessions must run in a plain chat:
+  research R12.)* **After merge** (operator, on `main`; not part of the PR):
   1. run `node scripts/backlog.mjs setup-labels` once in BELAY;
   2. reinstall the bundle and re-upload the skill (T052);
   3. run quickstart §5 (end to end on BELAY: SC-001, SC-005, SC-009) and §6 (independence: SC-010).
