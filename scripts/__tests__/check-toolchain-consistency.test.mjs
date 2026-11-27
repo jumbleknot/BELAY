@@ -159,8 +159,8 @@ test('an agreeing repo — several workflows and the toolchain image — is clea
     pkg: PKG,
     workflows: {
       'guardrails.yml': wfJob('belay', `${SETUP_NODE()}      - run: node scripts/a.mjs\n`),
-      'another.yml': wfJob('kvm', `${SETUP_NODE()}      - run: pnpm install\n`),
-      'no-node.yml': wfJob('kvm', '      - run: docker version\n'),
+      'another.yml': wfJob('belay-host', `${SETUP_NODE()}      - run: pnpm install\n`),
+      'no-node.yml': wfJob('belay-host', '      - run: docker version\n'),
     },
     dockerfiles: { [TOOLCHAIN]: 'FROM node:26-bookworm@sha256:' + 'c'.repeat(64) + '\n' },
   });
@@ -314,7 +314,7 @@ test('the toolchain image on another major than every setup-node is caught', asy
     pkg: PKG,
     workflows: {
       'a.yml': wfJob('belay', `${SETUP_NODE()}      - run: node a.mjs\n`),
-      'b.yml': wfJob('kvm', `${SETUP_NODE()}      - run: node a.mjs\n`),
+      'b.yml': wfJob('belay-host', `${SETUP_NODE()}      - run: node a.mjs\n`),
     },
     dockerfiles: { [TOOLCHAIN]: 'FROM node:24-bookworm\n' },
   });
@@ -337,8 +337,8 @@ test('a job running node with no setup-node fails, naming the job and the runner
   assert.match(d[0].problem, /node:26-bookworm/);
 });
 
-test('a kvm host job running pnpm with no setup-node fails too', async () => {
-  const d = await implicitFindings(inRepo('kvm', '      - run: pnpm install --frozen-lockfile\n'));
+test('a belay-host host job running pnpm with no setup-node fails too', async () => {
+  const d = await implicitFindings(inRepo('belay-host', '      - run: pnpm install --frozen-lockfile\n'));
   assert.equal(d.length, 1);
   assert.match(d[0].problem, /host's own Node/);
 });

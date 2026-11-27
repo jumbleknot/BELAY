@@ -1,13 +1,14 @@
-// Guard (items #79 and #84): a job on the shared host runner (`runs-on: kvm`) never writes shared
-// host state, and never reads a tool from it.
+// Guard (items #79, #84 and #92): a job on BELAY's host runner (`runs-on: belay-host`) never writes
+// state that outlives it on the host, and never reads a tool from there.
 //
-// That runner runs as the same Unix user as MovieCollectionManager's runner, so the two share its home
-// folder, its Actions tool cache and its Docker daemon. Measured 2026-11-25:
+// Measured 2026-11-25, while the host runner still ran as the same Unix user as MovieCollectionManager's:
 // - item #79: BELAY's devcontainer-image job installed pnpm 12.22.0 globally into the shared Node,
 //   and MCM's jobs failed their pnpm version check;
 // - item #84: the same job installed Trivy into the shared ~/.local/bin (which MCM's host jobs also
 //   write and run), let Trivy's database default to the shared ~/.cache/trivy, and `docker login`
 //   left BELAY's registry token in the shared ~/.docker/config.json.
+// Item #92 gave the host runner its own Unix user. The rules stay: that user's home still outlives
+// every job, so a fixed-path install there would leak from one commit's job into the next.
 //
 // The rules live in scripts/lib/host-runner-rules.mjs. Each one is proved here against a minimal bad
 // workflow (it must fire) and then held against every real workflow (it must not).
@@ -18,14 +19,14 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse } from 'yaml';
 
-import { hostJobs, hostRunnerViolations } from '../lib/host-runner-rules.mjs';
+import { HOST_LABEL, RETIRED_HOST_LABEL, hostJobs, hostRunnerViolations } from '../lib/host-runner-rules.mjs';
 
 const DIR = join(resolve(dirname(fileURLToPath(import.meta.url)), '..', '..'), '.forgejo', 'workflows');
 const realWorkflows = () => readdirSync(DIR).filter((f) => /\.ya?ml$/.test(f))
   .map((f) => ({ file: f, wf: parse(readFileSync(join(DIR, f), 'utf8')) }));
 
 /** One host job made of `steps`. */
-const wf = (steps) => ({ jobs: { j: { 'runs-on': 'kvm', steps } } });
+const wf = (steps) => ({ jobs: { j: { 'runs-on': HOST_LABEL, steps } } });
 const rules = (w) => hostRunnerViolations(w, 'x.yml').map((v) => v.rule);
 const T = '${{ runner.temp }}';
 
@@ -79,12 +80,17 @@ test('a container job is not a host job', () => {
   assert.deepEqual(hostRunnerViolations(w, 'c.yml'), []);
 });
 
+test('a runs-on list naming the host label is a host job', () => {
+  const w = { jobs: { j: { 'runs-on': [HOST_LABEL], steps: BAD['home-write'] } } };
+  assert.deepEqual(hostRunnerViolations(w, 'l.yml').map((v) => v.rule), ['home-write']);
+});
+
 // ── every real workflow passes, and the scan is not vacuous ──────────────────────────────────────
 
 test('the scan finds the host-runner job it guards, and that job has each guarded kind of step', () => {
   const jobs = realWorkflows().flatMap(({ file, wf: w }) => hostJobs(w, file));
   const build = jobs.find((h) => h.where === 'devcontainer-image.yml → build-publish');
-  assert.ok(build, 'devcontainer-image.yml → build-publish is not a kvm job any more');
+  assert.ok(build, `devcontainer-image.yml → build-publish is not a ${HOST_LABEL} job any more`);
   const runs = (build.job.steps ?? []).map((s) => s.run ?? '').join('\n');
   for (const needle of ['install-pnpm.sh', 'install-trivy.mjs', 'image-scan.mjs', 'docker login', 'GITHUB_PATH']) {
     assert.ok(runs.includes(needle), `build-publish no longer has "${needle}": update this guard to the new premise`);
@@ -94,4 +100,12 @@ test('the scan finds the host-runner job it guards, and that job has each guarde
 test('no real workflow breaks a host-runner rule', () => {
   const all = realWorkflows().flatMap(({ file, wf: w }) => hostRunnerViolations(w, file));
   assert.deepEqual(all.map((v) => `${v.where}: [${v.rule}] ${v.message}`), []);
+});
+
+// Item #92: the shared host runner is scoped to the other project after the move, so a BELAY job left
+// on its label would wait for a runner for ever, with no failure to read.
+test('no real workflow targets the retired shared host runner', () => {
+  const left = realWorkflows().flatMap(({ file, wf: w }) => Object.entries(w?.jobs ?? {})
+    .filter(([, j]) => [j?.['runs-on']].flat().includes(RETIRED_HOST_LABEL)).map(([name]) => `${file} → ${name}`));
+  assert.deepEqual(left, []);
 });

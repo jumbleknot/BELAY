@@ -1,9 +1,9 @@
 // Guard for .forgejo/workflows/devcontainer-image.yml (feature 004, T014).
 //
-// This workflow is the ONE job in BELAY that does not run on BELAY's own containerized runner: it
-// needs a Docker daemon, so it runs on the shared host runner (`kvm`), which has the host's Docker.
-// That makes the trigger set load-bearing for security: PULL-REQUEST CODE MUST NEVER RUN HERE, or a
-// PR could reach the host's Docker. Research R7.
+// This workflow is the ONE job in BELAY that does not run on BELAY's containerized runner: it needs
+// a Docker daemon, so it runs on BELAY's host runner (`belay-host`, item #92), directly on the host
+// with its Unix user's rootless Docker. That makes the trigger set load-bearing for security:
+// PULL-REQUEST CODE MUST NEVER RUN HERE, or a PR could run on the host and reach that Docker. Research R7.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -41,8 +41,22 @@ test('push is filtered on the image inputs and package.json', () => {
 test('one job, build-publish, on the host runner with a timeout', () => {
   const jobs = wf().jobs;
   assert.deepEqual(Object.keys(jobs), ['build-publish']);
-  assert.equal(jobs['build-publish']['runs-on'], 'kvm');
+  assert.equal(jobs['build-publish']['runs-on'], 'belay-host');
   assert.ok(Number(jobs['build-publish']['timeout-minutes']) > 0);
+});
+
+// Item #92: the runner moved from one Unix user to another, and a literal `/run/user/<uid>` would
+// have pointed the job at the old user's daemon (or none). Derive it from the uid the job runs as.
+test('DOCKER_HOST is derived from the job\'s own uid, never a hard-coded one', () => {
+  assert.doesNotMatch(raw(), /\/run\/user\/\d+/);
+  const job = wf().jobs['build-publish'];
+  assert.equal('DOCKER_HOST' in (job.env ?? {}), false, 'a job-level DOCKER_HOST would be a literal');
+  const steps = job.steps;
+  const at = steps.findIndex((s) => /DOCKER_HOST="unix:\/\/\/run\/user\/\$\(id -u\)\/docker\.sock"/.test(s.run ?? ''));
+  assert.ok(at >= 0, 'no step derives DOCKER_HOST from id -u');
+  assert.match(steps[at].run, /echo "DOCKER_HOST=\$DOCKER_HOST" >> "\$GITHUB_ENV"/);
+  const firstDocker = steps.findIndex((s) => /\bdocker\s+(build|push|login|inspect)\b/.test(s.run ?? ''));
+  assert.ok(at < firstDocker, `DOCKER_HOST is set at step ${at}, after the first docker use at ${firstDocker}`);
 });
 
 test('publishes belay-devcontainer and reports the digest-pinned reference', () => {

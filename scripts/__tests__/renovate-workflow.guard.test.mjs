@@ -35,7 +35,7 @@ test('a dispatch defaults to a dry run (FR-016)', () => {
   assert.match(job().env.RENOVATE_DRY_RUN, /workflow_dispatch.*inputs\.dryRun.*'full'/);
 });
 
-test('runs on the belay runner, never kvm, one run at a time', () => {
+test('runs on the belay container runner, never the belay-host host runner, one run at a time', () => {
   assert.equal(job()['runs-on'], 'belay');
   assert.deepEqual(wf().concurrency, { group: 'renovate', 'cancel-in-progress': false });
 });

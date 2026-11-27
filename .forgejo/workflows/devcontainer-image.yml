@@ -7,11 +7,12 @@
 # with open egress), never inside the sandbox: rustup's hosts are not allowlisted there (research R5).
 #
 # ⚠️ RUNNER EXCEPTION — AND THE RULE THAT MAKES IT SAFE.
-# Every other BELAY job runs on BELAY's own runner (`runs-on: belay`), which runs each job in a fresh
-# container with no host Docker access. This job needs a Docker daemon, so it runs on the shared
-# host runner (`kvm`), which has the host's rootless Docker. PULL-REQUEST CODE MUST THEREFORE NEVER
-# RUN HERE: the triggers are push to a protected branch, manual dispatch and the schedule only.
-# Adding `pull_request` or `pull_request_target` would let a PR reach the host's Docker daemon.
+# Every other BELAY job runs on BELAY's container runner (`runs-on: belay`), which runs each job in a
+# fresh container with no host Docker access. This job needs a Docker daemon, so it runs on BELAY's
+# host runner (`belay-host`, item #92), which runs jobs directly on the host, as its own Unix user,
+# with that user's rootless Docker. PULL-REQUEST CODE MUST THEREFORE NEVER RUN HERE: the triggers
+# are push to a protected branch, manual dispatch and the schedule only. Adding `pull_request` or
+# `pull_request_target` would let a PR run on the host and reach that Docker daemon.
 # Pinned by scripts/__tests__/devcontainer-image-workflow.guard.test.mjs.
 #
 # A `packageManager` bump is a toolchain change too: the image installs pnpm at that pin. Path
@@ -48,12 +49,11 @@ concurrency:
 
 jobs:
   build-publish:
-    # The shared, Docker-capable host runner. See the RUNNER EXCEPTION note above.
-    runs-on: kvm
+    # BELAY's Docker-capable host runner. See the RUNNER EXCEPTION note above.
+    runs-on: belay-host
     timeout-minutes: 60
     env:
-      # The ci user's rootless Docker daemon on the host runner (adjust 1001 if `id -u ci` differs).
-      DOCKER_HOST: unix:///run/user/1001/docker.sock
+      # DOCKER_HOST is not set here: the Docker check step derives it from the uid the job runs as.
       # Host-free registry coordinates: repository variables, never a git literal.
       REGISTRY: ${{ vars.REGISTRY }}
       NS: ${{ vars.NS }}
@@ -75,10 +75,14 @@ jobs:
           GATE_BEFORE: ${{ github.event.before }}
         run: bash scripts/ci-log-step.sh devcontainer-image-gate node scripts/devcontainer-image-gate.mjs
 
-      - name: Check the Docker CLI reaches the runner's daemon
+      # The runner user's own rootless daemon, derived rather than hard-coded (item #92): a literal uid
+      # breaks silently when the runner moves to another user, and reaches that uid's daemon if it exists.
+      - name: Point the Docker CLI at the runner user's daemon, and check it answers
         if: steps.gate.outputs.build == 'true'
         run: |
           bash scripts/ci-log-step.sh build-publish-check-docker bash -e /dev/stdin <<'CI_LOG_STEP'
+          DOCKER_HOST="unix:///run/user/$(id -u)/docker.sock"; export DOCKER_HOST
+          echo "DOCKER_HOST=$DOCKER_HOST" >> "$GITHUB_ENV"
           if ! command -v docker >/dev/null 2>&1; then
             echo "::error::docker CLI not found on the runner"; exit 1
           fi
@@ -104,9 +108,9 @@ jobs:
       # scan died with ERR_MODULE_NOT_FOUND and the push was skipped only because the step crashed:
       # that looks like the gate working, but no image was judged.
       # workflow-deps-installed.guard.test.mjs fails any job that repeats this.
-      # Into a JOB-PRIVATE prefix, never the global one (item #79): on this shared host runner the global
-      # prefix is the Node in the host's tool cache, which other projects' jobs also run, so a global
-      # install changes their pnpm. host-runner-shared-state.guard.test.mjs pins this, and the cleanup
+      # Into a JOB-PRIVATE prefix, never the global one (item #79): on a host runner the global prefix is
+      # the Node in the runner user's tool cache, which outlives the job, so a global install changes
+      # the pnpm of every later job there. host-runner-shared-state.guard.test.mjs pins this, and the cleanup
       # step at the end of the job.
       - name: Install pnpm (version from package.json packageManager)
         if: steps.gate.outputs.build == 'true'
@@ -118,9 +122,8 @@ jobs:
         if: steps.gate.outputs.build == 'true'
         run: bash scripts/ci-log-step.sh build-publish-install-deps pnpm install --frozen-lockfile
 
-      # Trivy, its database and the registry login are job-private too (item #84): the other project's host jobs
-      # install and run their own Trivy from the shared ~/.local/bin and use the shared ~/.cache/trivy,
-      # so a Trivy bump on either side would swap the other's binary, even mid-scan.
+      # Trivy, its database and the registry login are job-private too (item #84): anything under the
+      # runner user's ~/.local/bin, ~/.cache/trivy or ~/.docker outlives the job and is read by the next.
       - name: Install Trivy (pinned, sha256-verified)
         if: steps.gate.outputs.build == 'true'
         env:
@@ -156,7 +159,7 @@ jobs:
         if: steps.gate.outputs.build == 'true'
         env:
           REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
-          # The login is written HERE, never to the shared ~/.docker/config.json (item #84).
+          # The login is written HERE, never to the runner user's ~/.docker/config.json (item #84).
           DOCKER_CONFIG: ${{ runner.temp }}/belay-docker
         run: |
           bash scripts/ci-log-step.sh build-publish-push bash -e /dev/stdin <<'CI_LOG_STEP'
@@ -182,7 +185,7 @@ jobs:
           CI_LOG_STEP
 
       # Items #79 and #84: nothing this job installed, cached or logged in with outlives it on the
-      # shared host. Every runner.temp path above must be named here (the guard checks).
+      # host. Every runner.temp path above must be named here (the guard checks).
       - name: Remove the job-private tools, cache and login
         if: always() && steps.gate.outputs.build == 'true'
         env:

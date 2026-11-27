@@ -1,11 +1,14 @@
-// host-runner-rules.mjs: what a job on the shared host runner (`runs-on: kvm`) may not do (items #79, #84).
+// host-runner-rules.mjs: what a job on BELAY's host runner (`runs-on: belay-host`) may not do
+// (items #79, #84, #92).
 //
-// The host runner runs as the same Unix user as MovieCollectionManager's runner, so the two share one
-// home folder, one Actions tool cache and one Docker daemon. Anything a job writes to a fixed path
-// there, or puts on PATH from there, is shared with the other project, and a version bump on either
-// side changes it for both (measured 2026-11-25 with pnpm, item #79; Trivy, its cache and the Docker
-// login, item #84). So every tool, cache and credential a host job creates lives under
-// `${{ runner.temp }}`, and an `always()` step removes it.
+// A host job runs directly on the host, as the runner's Unix user, so that user's home folder, Actions
+// tool cache and Docker daemon outlive the job. Until item #92 that user was shared with
+// MovieCollectionManager's runner, and BELAY's job broke the other project's pnpm (item #79) and left
+// Trivy, its database and a registry login in the shared home (item #84). The host runner now has a
+// Unix user of its own, but the rule still holds: anything a job writes to a fixed path there, or puts
+// on PATH from there, is read by every later job, so a version bump stops being per-commit. So every
+// tool, cache and credential a host job creates lives under `${{ runner.temp }}`, and an `always()`
+// step removes it.
 //
 // Pure: takes a parsed workflow, returns violations. Pinned by
 // scripts/__tests__/host-runner-shared-state.guard.test.mjs, which proves each rule on a bad example.
@@ -13,10 +16,16 @@
 const PRIVATE = /^(\$\{\{\s*runner\.temp\s*\}\}|\$\{?RUNNER_TEMP\}?)\//;
 const isPrivate = (p) => PRIVATE.test(String(p ?? ''));
 
-/** The `runs-on: kvm` jobs of one workflow. */
+/** The label of BELAY's host runner, `ci-belay-host` (item #92). */
+export const HOST_LABEL = 'belay-host';
+
+/** The label of the shared host runner BELAY left in item #92. A job still on it queues for ever. */
+export const RETIRED_HOST_LABEL = 'kvm';
+
+/** The `runs-on: belay-host` jobs of one workflow. */
 export function hostJobs(wf, file) {
   return Object.entries(wf?.jobs ?? {})
-    .filter(([, j]) => [j?.['runs-on']].flat().includes('kvm'))
+    .filter(([, j]) => [j?.['runs-on']].flat().includes(HOST_LABEL))
     .map(([name, job]) => ({ where: `${file} → ${name}`, job, wf }));
 }
 
@@ -50,10 +59,10 @@ export function hostRunnerViolations(wf, file) {
       for (const [k, v] of Object.entries(step.env ?? {})) if (isPrivate(v)) privatePaths.push({ key: k, path: String(v) });
 
       if (/install-pnpm\.sh/.test(run) && !isPrivate(env.PNPM_PREFIX)) {
-        add(step, 'pnpm-prefix', 'install-pnpm.sh without a PNPM_PREFIX under runner.temp installs into the shared tool cache');
+        add(step, 'pnpm-prefix', 'install-pnpm.sh without a PNPM_PREFIX under runner.temp installs into the runner user\'s tool cache');
       }
       if (GLOBAL_INSTALL.test(run)) {
-        add(step, 'global-install', 'a global install (npm -g / corepack enable) writes the shared tool cache');
+        add(step, 'global-install', 'a global install (npm -g / corepack enable) writes the runner user\'s tool cache, which outlives the job');
       }
       for (const line of run.split('\n')) {
         if (!/>>\s*"?\$\{?GITHUB_PATH\}?"?/.test(line)) continue;
@@ -68,17 +77,17 @@ export function hostRunnerViolations(wf, file) {
       if (TRIVY_RUN.test(run)) {
         const flag = run.match(/--cache-dir[=\s]+(["']?)([^"'\s]+)\1/);
         if (!isPrivate(env.TRIVY_CACHE_DIR) && !(flag && isPrivate(resolveVars(flag[2], env)))) {
-          add(step, 'trivy-cache-default', 'runs Trivy without TRIVY_CACHE_DIR under runner.temp, so its database goes to the shared ~/.cache/trivy');
+          add(step, 'trivy-cache-default', 'runs Trivy without TRIVY_CACHE_DIR under runner.temp, so its database goes to the runner user\'s ~/.cache/trivy');
         }
       }
       if (/\bdocker\s+login\b/.test(run) && !isPrivate(env.DOCKER_CONFIG)) {
-        add(step, 'docker-config-default', 'docker login without DOCKER_CONFIG under runner.temp leaves the credential in the shared ~/.docker/config.json');
+        add(step, 'docker-config-default', 'docker login without DOCKER_CONFIG under runner.temp leaves the credential in the runner user\'s ~/.docker/config.json');
       }
       if (/^pnpm\/action-setup(@|$)/.test(uses)) {
-        add(step, 'pnpm-action-setup', 'pnpm/action-setup installs into the shared home folder (~/setup-pnpm)');
+        add(step, 'pnpm-action-setup', 'pnpm/action-setup installs into the runner user\'s home folder (~/setup-pnpm)');
       }
       if (/(^|\/)setup-node(@|$)/.test(uses) && step.with?.cache) {
-        add(step, 'setup-node-cache', 'setup-node `cache:` reads and writes a package-manager store in the shared home folder');
+        add(step, 'setup-node-cache', 'setup-node `cache:` reads and writes a package-manager store in the runner user\'s home folder');
       }
       for (const line of commandLines(run)) {
         if (HOME_PATH.test(line)) add(step, 'home-write', `a command names a home-folder path: ${line}`);
