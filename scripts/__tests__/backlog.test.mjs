@@ -508,11 +508,16 @@ test('the taxonomy covers type, priority and status families', () => {
     // Feature 014: the proposal family (its colours and descriptions are guarded against the contract below).
     'type/proposal',
     'status/proposal-draft',
+    // Feature 016: the stages after status/needs-spec (guarded against the contract below).
+    'status/spec-in-progress',
+    'status/ready-to-plan',
+    'status/in-engineering',
+    'status/merged',
   ]) {
     assert.ok(names.includes(n), `taxonomy missing ${n}`);
   }
   // Still exact, so an unplanned label fails here rather than appearing on the forge unannounced.
-  assert.equal(names.length, 14, `expected exactly the fourteen BELAY labels, got: ${names.join(', ')}`);
+  assert.equal(names.length, 18, `expected exactly the eighteen BELAY labels, got: ${names.join(', ')}`);
 });
 
 test('form validation is driven by the ENUMERATED templates, not by issue_config/validate', () => {
@@ -1044,4 +1049,21 @@ test('form copy: a form in the working tree that the forge does not enumerate is
   const none = describeFormValidation([], { valid: true, message: '' }, ['proposal.yaml']);
   assert.match(none, /no issue form is in effect/i);
   assert.match(none, /proposal\.yaml — in this working tree, not yet on the default branch/);
+});
+
+// Feature 016: the four stage labels a proposal moves through after `status/needs-spec` (data-model.md
+// "Label contract"; contracts/stages.md). Names, colours and descriptions are the contract, exactly.
+const STAGE_LABELS_016 = [
+  { name: 'status/spec-in-progress', color: '#fbca04', description: 'Spec being written and clarified by its author; not ready to plan' },
+  { name: 'status/ready-to-plan', color: '#0e8a16', description: 'Spec approved and published on its feature branch; pick up with /speckit-plan' },
+  { name: 'status/in-engineering', color: '#5319e7', description: 'Planning has started; the spec is locked from Claude Desktop' },
+  { name: 'status/merged', color: '#6f42c1', description: 'Feature branch merged into the default branch; the issue is closed' },
+];
+
+test('stage labels: TAXONOMY holds the four stage labels with their contract colour and description (FR-011)', () => {
+  for (const want of STAGE_LABELS_016) {
+    const mine = TAXONOMY.find((l) => l.name === want.name);
+    assert.ok(mine, `missing label ${want.name}`);
+    assert.deepEqual({ name: mine.name, color: mine.color, description: mine.description }, want, want.name);
+  }
 });

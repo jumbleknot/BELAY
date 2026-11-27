@@ -147,7 +147,7 @@ on it. A measurement records what was observed, in research.md, under the R it b
 
 **⚠️ CRITICAL**: no user story work starts before this phase is complete.
 
-- [ ] T009 [P] Test: the four stage labels in the shared contract and in `backlog.mjs`. In
+- [X] T009 [P] Test: the four stage labels in the shared contract and in `backlog.mjs`. In
   `mcp-servers/pdlc/tests/unit/master-copies.test.mjs`, assert `contract/proposal-labels.json` holds
   `status/spec-in-progress`, `status/ready-to-plan`, `status/in-engineering` and `status/merged`, with data-model.md
   "Label contract" colours and descriptions. Extend the existing TAXONOMY copy guard in
@@ -155,7 +155,7 @@ on it. A measurement records what was observed, in research.md, under the R it b
   - **Scenarios covered**: FR-011
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/master-copies.test.mjs` and
     `node --test scripts/__tests__/backlog.test.mjs` → expected: failing — `missing label status/spec-in-progress`
-- [ ] T010 Add the four labels to `mcp-servers/pdlc/contract/proposal-labels.json` and `scripts/backlog.mjs`
+- [X] T010 Add the four labels to `mcp-servers/pdlc/contract/proposal-labels.json` and `scripts/backlog.mjs`
   `TAXONOMY` (data-model.md Label contract) (prerequisite: T009 RED)
   - **Verify GREEN**: same commands as T009 → expected: 0 failures; then `pnpm nx run scripts:test` and
     `pnpm nx run pdlc:test` still pass

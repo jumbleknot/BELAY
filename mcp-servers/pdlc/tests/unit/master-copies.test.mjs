@@ -40,3 +40,20 @@ test('form copy: BELAY\'s own .forgejo/issue_template/proposal.yaml equals the m
   const belayCopy = readFileSync(new URL('../../../../.forgejo/issue_template/proposal.yaml', import.meta.url));
   assert.ok(belayCopy.equals(readFileSync(contract('proposal.yaml'))), 'BELAY\'s copy drifted from the master: copy contract/proposal.yaml over it');
 });
+
+// Feature 016: the four stage labels a proposal moves through after `status/needs-spec` (data-model.md
+// "Label contract"; contracts/stages.md). Names, colours and descriptions are the contract, exactly.
+const STAGE_LABELS_016 = [
+  { name: 'status/spec-in-progress', color: '#fbca04', description: 'Spec being written and clarified by its author; not ready to plan' },
+  { name: 'status/ready-to-plan', color: '#0e8a16', description: 'Spec approved and published on its feature branch; pick up with /speckit-plan' },
+  { name: 'status/in-engineering', color: '#5319e7', description: 'Planning has started; the spec is locked from Claude Desktop' },
+  { name: 'status/merged', color: '#6f42c1', description: 'Feature branch merged into the default branch; the issue is closed' },
+];
+
+test('stage labels: proposal-labels.json holds the four stage labels with their contract colour and description (FR-011)', () => {
+  for (const want of STAGE_LABELS_016) {
+    const row = labels.find((l) => l.name === want.name);
+    assert.ok(row, `missing label ${want.name}`);
+    assert.deepEqual(row, want, want.name);
+  }
+});

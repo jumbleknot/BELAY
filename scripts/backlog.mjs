@@ -69,6 +69,12 @@ export const TAXONOMY = [
   // mcp-servers/pdlc/contract/proposal-labels.json, and a test holds them equal (FR-030).
   { name: 'type/proposal', color: '#c2e0c6', description: 'A feature idea before it has a spec' },
   { name: 'status/proposal-draft', color: '#fef2c0', description: 'Proposal still being shaped; not ready to specify' },
+  // Feature 016: the stages a proposal moves through after status/needs-spec, one at a time, until it closes
+  // at status/merged (contracts/stages.md). Copied from the shared contract like the two above.
+  { name: 'status/spec-in-progress', color: '#fbca04', description: 'Spec being written and clarified by its author; not ready to plan' },
+  { name: 'status/ready-to-plan', color: '#0e8a16', description: 'Spec approved and published on its feature branch; pick up with /speckit-plan' },
+  { name: 'status/in-engineering', color: '#5319e7', description: 'Planning has started; the spec is locked from Claude Desktop' },
+  { name: 'status/merged', color: '#6f42c1', description: 'Feature branch merged into the default branch; the issue is closed' },
 ];
 
 /** The type family: an item's single type is the one of these it carries (type/proposal included). */

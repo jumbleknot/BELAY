@@ -5,5 +5,9 @@
   { "name": "priority/p1", "color": "#b60205", "description": "Do next" },
   { "name": "priority/p2", "color": "#e99695", "description": "Do soon" },
   { "name": "priority/p3", "color": "#f9d0c4", "description": "Do eventually" },
-  { "name": "status/bot-managed", "color": "#bfdadc", "description": "Owned by the dependency bot; never listed as ready work" }
+  { "name": "status/bot-managed", "color": "#bfdadc", "description": "Owned by the dependency bot; never listed as ready work" },
+  { "name": "status/spec-in-progress", "color": "#fbca04", "description": "Spec being written and clarified by its author; not ready to plan" },
+  { "name": "status/ready-to-plan", "color": "#0e8a16", "description": "Spec approved and published on its feature branch; pick up with /speckit-plan" },
+  { "name": "status/in-engineering", "color": "#5319e7", "description": "Planning has started; the spec is locked from Claude Desktop" },
+  { "name": "status/merged", "color": "#6f42c1", "description": "Feature branch merged into the default branch; the issue is closed" }
 ]
