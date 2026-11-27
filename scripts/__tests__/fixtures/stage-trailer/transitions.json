@@ -1,0 +1,23 @@
+{
+  "//": "contracts/stages.md 'Transitions': the only stage changes allowed, and who may make each. Shared by the pdlc server's tests and backlog.mjs's, so the two enforcing copies cannot drift. Any (from, to, by) not listed here is refused stage_transition_refused.",
+  "stages": ["draft", "ready", "spec-in-progress", "ready-to-plan", "in-engineering", "merged"],
+  "callers": ["start_spec", "approve_spec", "reopen_spec", "withdraw_spec", "update_proposal", "backlog.mjs", "feature-merged"],
+  "allowed": [
+    { "from": "ready", "to": "spec-in-progress", "by": ["start_spec", "backlog.mjs"] },
+    { "from": "spec-in-progress", "to": "ready-to-plan", "by": ["approve_spec"] },
+    { "from": "ready-to-plan", "to": "spec-in-progress", "by": ["reopen_spec"] },
+    { "from": "spec-in-progress", "to": "ready", "by": ["withdraw_spec"] },
+    { "from": "spec-in-progress", "to": "draft", "by": ["withdraw_spec"] },
+    { "from": "ready-to-plan", "to": "ready", "by": ["withdraw_spec"] },
+    { "from": "ready-to-plan", "to": "draft", "by": ["withdraw_spec"] },
+    { "from": "spec-in-progress", "to": "in-engineering", "by": ["backlog.mjs"] },
+    { "from": "ready-to-plan", "to": "in-engineering", "by": ["backlog.mjs"] },
+    { "from": "draft", "to": "merged", "by": ["feature-merged"] },
+    { "from": "ready", "to": "merged", "by": ["feature-merged"] },
+    { "from": "spec-in-progress", "to": "merged", "by": ["feature-merged"] },
+    { "from": "ready-to-plan", "to": "merged", "by": ["feature-merged"] },
+    { "from": "in-engineering", "to": "merged", "by": ["feature-merged"] },
+    { "from": "draft", "to": "ready", "by": ["update_proposal"] },
+    { "from": "ready", "to": "draft", "by": ["update_proposal"] }
+  ]
+}

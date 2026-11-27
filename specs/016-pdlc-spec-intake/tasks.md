@@ -172,7 +172,7 @@ on it. A measurement records what was observed, in research.md, under the R it b
     `Cannot find module '../lib/stage-trailer.mjs'`
 - [X] T012 Implement `scripts/lib/stage-trailer.mjs` (prerequisite: T011 RED)
   - **Verify GREEN**: `node --test scripts/__tests__/stage-trailer.test.mjs` → expected: 0 failures
-- [ ] T013 [P] Test: the server's stages module. In `mcp-servers/pdlc/tests/unit/stages.test.mjs`:
+- [X] T013 [P] Test: the server's stages module. In `mcp-servers/pdlc/tests/unit/stages.test.mjs`:
   - the transition table, every allowed row passing and every other (from, to, caller) pair refused
     `stage_transition_refused` ([contracts/stages.md](contracts/stages.md) "Transitions");
   - `stage_ambiguous` for two stage labels or none (data-model.md `Proposal issue.stage`);
@@ -182,7 +182,7 @@ on it. A measurement records what was observed, in research.md, under the R it b
   - **Scenarios covered**: US4-AC1, FR-010, FR-023
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/stages.test.mjs` → expected: failing —
     `Cannot find module '../../src/stages.mjs'`
-- [ ] T014 Implement `mcp-servers/pdlc/src/stages.mjs` (prerequisite: T013 RED; T012 done)
+- [X] T014 Implement `mcp-servers/pdlc/src/stages.mjs` (prerequisite: T013 RED; T012 done)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/stages.test.mjs` → expected: 0 failures
 - [ ] T015 [P] Test: extended git allowlist (research R4). In `mcp-servers/pdlc/tests/unit/git-runner.test.mjs`:
   - each new shape is accepted with valid arguments;

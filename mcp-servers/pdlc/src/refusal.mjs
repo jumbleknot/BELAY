@@ -7,6 +7,8 @@ export const REFUSAL_CODES = Object.freeze([
   'unknown_repo', 'not_a_proposal', 'bot_managed', 'unknown_label', 'stale', 'duplicate_title',
   'copy_dirty', 'copy_off_branch', 'copy_diverged', 'copy_foreign',
   'invalid_input', 'forge_auth', 'forge_unreachable', 'not_found',
+  // Feature 016 (contracts/tools.md "New refusal codes"), added as each is implemented.
+  'stage_transition_refused', 'stage_ambiguous',
 ]);
 
 export class Refusal extends Error {
