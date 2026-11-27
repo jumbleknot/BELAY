@@ -71,6 +71,20 @@ call is `execFile` with an argument array and a fixed script path inside the cop
 2. That the dry run gives the same `BRANCH_NAME` as a real run from Claude Code in the dev container, for the same
    copy and description.
 
+**Measured in the dev container, 2026-11-27 (T004, dev-container half)**: a fresh blobless clone of BELAY from the
+forge at `9350235`, whose `git ls-remote --heads origin` listed `main`, `015-self-healing-dependency-bot` and
+`chore-92-own-runners`. With `pwsh` 7.6.5:
+- `create-new-feature-branch.ps1 -Json -DryRun -ShortName pane-probe "Pane probe for feature 016"` →
+  `{"BRANCH_NAME":"016-pane-probe","FEATURE_NUM":"016","DRY_RUN":true}`;
+- the same without `-DryRun` (a real run, in that throwaway clone only, never pushed) →
+  `{"BRANCH_NAME":"016-pane-probe","FEATURE_NUM":"016"}`, and the clone was left on branch `016-pane-probe`;
+- `resolve-template.ps1 spec-template -Json` → keys `TEMPLATE_NAME`, `TEMPLATE_CONTENT` (4556 characters, starting
+  `# Feature Specification: [FEATURE NAME]`).
+
+The number is `016` because this feature's own branch had not been published: a branch only on a workstation or in a
+dev-container worktree is invisible to every other session's numbering. The workstation half (interpreter, and the
+dry run's `BRANCH_NAME` against the same forge branch set) is pending.
+
 **Alternatives rejected**:
 - **Run Claude Code headless (`claude -p "/speckit-specify …"`) from the server.** Spec Kit itself would run, but a
   second model would sit behind the first. It needs Claude Code and a login on the workstation, and it must never use
