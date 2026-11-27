@@ -165,11 +165,16 @@ result.
 | Read a file at a commit | `show <sha>:<path>` | Three-way re-apply (R8) |
 | Three-way merge of one file | `merge-file -p <ours> <base> <theirs>` | R8. Operates on temp files the server wrote |
 | Stage the feature's files | `add -- specs/<NNN-slug>` | Exactly the feature folder (FR-020) |
-| Commit | `commit -m <message> --no-verify` with a fixed message shape | `--no-verify`: no repository hook runs on the workstation |
+| Commit | `commit --no-verify -m <message>` with a fixed message shape (implemented in this order, T016) | `--no-verify`: no repository hook runs on the workstation |
 | Publish | `push origin refs/heads/<feature-branch>:refs/heads/<feature-branch>` | No `--force`, `+`, `--delete` or `--mirror`; source and destination are the same feature branch |
 | Fast-forward the worktree | `merge --ff-only origin/<feature-branch>` | Already allowed in shape |
 | Undo an unpublished commit | `reset --soft <sha>`, only where `<sha>` is the recorded remote tip and every commit after it is unpublished | Recovering from a publish that lost a race (R8) |
 | Diff for "what changed" | `diff --stat <a> <b> -- specs/<NNN-slug>` and `log --format=%H%x09%an%x09%s <a>..<b>` | FR-022 report |
+
+**Where each shape may run (implemented, T016)**: `add`, `commit`, `push` and `reset` only with the spec's own worktree
+as the working directory, never the copy; `worktree add` only from the copy; the scratch `fetch` and `checkout` only
+inside `<clone_root>/.pdlc-scratch/`. A `--shared` clone, or a fetch from any source but `origin`, must be the R1
+scratch shape; 014's other `clone` and `fetch` calls are unchanged.
 
 **Branch guard, checked before every commit, push and reset**: the branch is the one recorded for this proposal's spec
 in progress (R7). It is **not** the default branch, and it matches the repository's branch shape as the dry run
