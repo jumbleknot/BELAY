@@ -1,0 +1,403 @@
+# Research: PDLC spec intake
+
+**Feature**: [spec.md](spec.md) · **Plan**: [plan.md](plan.md) · **Date**: 2026-11-27
+
+Builds on [feature 014's research](../014-pdlc-proposal-intake/research.md) (R1 to R19). Its measurements still hold
+and are not repeated here. **Read** means taken from this repository's code on 2026-11-27. **Unverified** means not yet
+observed; each such item is measured by an early task before the design depends on it, and the runbook records what
+was observed, not what was assumed.
+
+## Decisions taken by the maintainer
+
+| # | Question | Answer |
+| --- | --- | --- |
+| M5 | Publishing branches needs repository write. Widen the `pdlc` token, or add a second one? | **Widen the `pdlc` token** to `write:issue` + `write:repository`. A second token would sit in the same process and the same settings file, so splitting buys little. The server's push guard (R6) and the default branch's protection are the two bounds (2026-11-27) |
+| M6 | Which credential moves the issue to merged in CI? | **The run token if it can comment on and close an issue in its own repository, otherwise `CI_DIGEST_TOKEN`** (already `write:issue`). Measured first (R11) (2026-11-27) |
+| M7 | How is the pane editor built? | **One hand-written, self-contained HTML file, no new dependency and no build step** (R9) (2026-11-27) |
+| M9 (pending, before the integration tasks) | `pdlc:integration` runs the real Spec Kit PowerShell scripts. The CI runner image (`node:26-bookworm`) is not known to have `pwsh`, and adding it is a new toolchain on the runner | **Open.** Options: (a) install a pinned, checksum-verified `pwsh` in the `guardrails` job (needs the maintainer's yes, per AGENTS.md); (b) run the script-executing integration tests only in a new operator-run tier, keeping the CI tier to real git without scripts. The plan assumes (a) until answered, and the first measuring task checks whether the runner already has it |
+| M8 (pending, task 1) | Approve the amendments to feature 014's decisions (spec Context table) | Recorded in **ADR-0006**, which supersedes the affected parts of ADR-0005. FR-034 orders it before any server code |
+
+## R1: How a Claude Desktop session runs the repository's own specify and clarify steps (spec FR-002, FR-006, FR-028)
+
+**Read**: Spec Kit's specify and clarify steps are prompts (`.claude/skills/speckit-specify/SKILL.md`,
+`.claude/skills/speckit-clarify/SKILL.md`) plus a few scripts. The specify prompt resolves the template with
+`.specify/scripts/powershell/resolve-template.ps1 spec-template -Json`. Its `before_specify` hook
+(`speckit.git.feature`) runs `.specify/extensions/git/scripts/powershell/create-new-feature-branch.ps1`, which
+computes the number and branch name and then runs `git checkout -b`.
+
+**Decision**: the Claude Desktop model **follows the target repository's own specify and clarify prompts**, read from
+the local copy, as Claude Code does. Each step that has to be right every time is a server tool:
+
+| Step in the prompt | Who does it |
+| --- | --- |
+| Number and branch name (`before_specify` hook) | The server runs the repository's own branch script **with `-DryRun -Json`**. That computes `BRANCH_NAME` and `FEATURE_NUM` and creates nothing (read: lines 483 to 492, 589 to 600). The server then creates the branch itself, through its git allowlist (R4) |
+| Template | The server runs the repository's `resolve-template` script and returns `TEMPLATE_CONTENT`. The script only reads |
+| Writing `spec.md` and `checklists/requirements.md` | The model writes them, through a path-guarded server tool (R5) |
+| Clarification questions and the `## Clarifications` record | The model follows the clarify prompt; the author answers in the chat; the model writes through the same tool |
+| `after_specify` hooks | R3 |
+
+So the repository's numbering, naming template, template overrides, presets and prompt wording all apply, and a Spec
+Kit upgrade in the target repository changes the Claude Desktop route with no change to BELAY.
+
+**The token never reaches repository code.** The dry run calls `git ls-remote --heads <remote>` (read: line 136),
+which would need the credential. Instead the server first fetches every remote head into `refs/remotes/origin/*`
+(a blobless fetch, so it is cheap), and runs the script with **no** `GIT_CONFIG_*` authentication in its environment.
+Its `ls-remote` then fails quietly (it is wrapped in `try` and `2>$null`), and its `git branch -a` scan sees every
+remote branch from the fresh fetch. This prevents the number clash this feature itself hit: number 015 was taken on
+the forge by another session's branch.
+
+**Script flavour**: `.specify/init-options.json` `script` chooses the interpreter. For `ps`, the server runs `pwsh` if
+it is on `PATH`, otherwise Windows PowerShell (`powershell.exe`). For `sh`, it runs Git for Windows' `bash.exe`. Every
+call is `execFile` with an argument array and a fixed script path inside the copy, never a shell string.
+
+**Unverified, measured on the host first** (task "measure spec-kit scripts on the workstation"):
+1. Whether `pwsh` is installed on the workstation, and whether both scripts run under Windows PowerShell 5.1 if it is
+   not.
+2. That the dry run gives the same `BRANCH_NAME` as a real run from Claude Code in the dev container, for the same
+   copy and description.
+
+**Alternatives rejected**:
+- **Run Claude Code headless (`claude -p "/speckit-specify …"`) from the server.** Spec Kit itself would run, but a
+  second model would sit behind the first. It needs Claude Code and a login on the workstation, and it must never use
+  `ANTHROPIC_API_KEY` (AGENTS.md). It would also need edit permissions inside the copy that no allowlist can bound,
+  and the clarify questions would have to be relayed through two conversations.
+- **Reimplement numbering and templates in the server.** Ruled out by FR-002: it drifts on the next Spec Kit upgrade.
+- **Run the branch script for real.** Its `git checkout -b` and `git fetch --all --prune` would be writes that the
+  server's allowlist cannot see before they happen, which breaks the constitution's operator-tool write-allowlist
+  rule. It would also need the token in the script's environment.
+
+## R2: Where a spec in progress lives: one worktree per feature
+
+**Decision**: each spec in progress gets its own **git worktree** of the local copy, at
+`<clone_root>/.pdlc-specs/<Repo>/<NNN-slug>/`. It is created with `git worktree add -b <branch> <path>
+origin/<default>`.
+
+- The copy at `<clone_root>/<Repo>` stays on its default branch, fast-forward only, exactly as feature 014 left it.
+  `sync_repo` and `repo_status` are unchanged, and grounding keeps reading the default branch.
+- Several specs can be in progress at once, one per proposal.
+- The author's edits are **uncommitted files** in the worktree between sessions (spec Assumptions: published on
+  approval). Resume is reading the worktree.
+- Claude Desktop's folder access already covers the clone folder (014 R12, measured), so the session can read the
+  worktree without a new approval. A folder name starting with `.` cannot be a repository name, so `list_repos`'s
+  "local copy exists" check is not confused.
+
+**Alternatives rejected**: switching the copy to the feature branch, which breaks `sync_repo` (it refuses an off-branch
+copy) and allows only one spec at a time; a second full clone per feature, which is slower and larger for the same
+result.
+
+## R3: Specify and clarify hooks in the Claude Desktop route
+
+**Decision**: the server reads the target repository's `.specify/extensions.yml` and classifies every hook on
+`before_specify`, `after_specify`, `before_clarify` and `after_clarify`:
+
+| Hook | In the Claude Desktop route |
+| --- | --- |
+| `speckit.git.feature` (mandatory) | Done by the server (R1 dry run, then R4) |
+| `speckit.git.commit` (optional) | Not run. The server commits once, on approval |
+| `speckit.agent-context.update` (optional) | Not run: it edits a Claude Code context file outside the spec folder. It runs at `after_plan` in VS Code as today |
+| `speckit.belay.spec-stage` (mandatory, new; R7) | Done by the server natively: the stage change and comment |
+| Any other **mandatory** hook | `check_spec_kit` reports it, and `start_spec` **refuses** with `spec_hook_unsupported`, naming it. No hook is skipped silently (spec Edge Cases) |
+| Any other optional hook | Not run, and listed in `check_spec_kit`'s result |
+
+## R4: The git allowlist, extended
+
+**Read**: `mcp-servers/pdlc/src/git-runner.mjs` allows `clone`, `fetch`, `status`, `rev-parse`, `rev-list`,
+`symbolic-ref`, `merge --ff-only <ref>` and `config --get <key>`. Every call passes `cwd` explicitly.
+
+**Decision**: add exact argument shapes, checked by `isAllowedGitCall`. No other verb or option is accepted:
+
+| Call | Shape | Why |
+| --- | --- | --- |
+| Fetch every head | `fetch origin +refs/heads/*:refs/remotes/origin/*` | Numbering sees every remote branch (R1) |
+| Create the worktree | `worktree add -b <feature-branch> <path> origin/<default>` | R2 |
+| List worktrees | `worktree list --porcelain` | Resume, and a foreign-folder check |
+| Read a file at a commit | `show <sha>:<path>` | Three-way re-apply (R8) |
+| Three-way merge of one file | `merge-file -p <ours> <base> <theirs>` | R8. Operates on temp files the server wrote |
+| Stage the feature's files | `add -- specs/<NNN-slug>` | Exactly the feature folder (FR-020) |
+| Commit | `commit -m <message> --no-verify` with a fixed message shape | `--no-verify`: no repository hook runs on the workstation |
+| Publish | `push origin refs/heads/<feature-branch>:refs/heads/<feature-branch>` | No `--force`, `+`, `--delete` or `--mirror`; source and destination are the same feature branch |
+| Fast-forward the worktree | `merge --ff-only origin/<feature-branch>` | Already allowed in shape |
+| Undo an unpublished commit | `reset --soft <sha>`, only where `<sha>` is the recorded remote tip and every commit after it is unpublished | Recovering from a publish that lost a race (R8) |
+| Diff for "what changed" | `diff --stat <a> <b> -- specs/<NNN-slug>` and `log --format=%H%x09%an%x09%s <a>..<b>` | FR-022 report |
+
+**Branch guard, checked before every commit, push and reset**: the branch is the one recorded for this proposal's spec
+in progress (R7). It is **not** the default branch, and it matches the repository's branch shape as the dry run
+produced it. A push whose destination is the default branch is refused even if the forge would also refuse it. The
+default branch's protection is a second, server-side bound (M5).
+
+**Commit identity**: `user.name` and `user.email` come from the workstation's own git configuration, the same identity
+the operator commits with. When either is missing, `approve_spec` refuses with `git_identity_missing` before writing
+anything. The message is `docs(<NNN>): approve spec for proposal item #<n>` followed by a body line
+`Approved in Claude Desktop by the spec's author.`
+
+## R5: The file-write allowlist (FR-020)
+
+**Decision**: `write_spec_file` writes only:
+- `specs/<NNN-slug>/spec.md`;
+- `specs/<NNN-slug>/checklists/*.md`.
+
+Anything else is refused with `path_outside_feature`. The path is resolved and compared after normalisation, and `..`,
+absolute paths, symlinks and an alternate data stream (`:` on Windows) are refused. Other files the specify or clarify
+prompts mention are not written: `.specify/feature.json` is gitignored, and setup-plan resolves the feature from the
+branch name when it is missing. Task "measure SC-002" confirms this on a fresh checkout. If a target repository's
+prompt needs another file, adding it is a change to this list and its test, as FR-020 requires.
+
+The pane's draft store (R9) writes only under `<clone_root>/.pdlc-drafts/<Repo>/`. Backups before a take-latest (R8)
+go only to `<clone_root>/.pdlc-backups/<Repo>/<NNN-slug>/<timestamp>/`.
+
+## R6: The widened credential (M5)
+
+**Decision**: the `pdlc` token's scope becomes `write:issue` + `write:repository`. `write:repository` includes read.
+The manifest's `forge_token` description and the runbook change with it.
+
+**What bounds it**:
+1. the server's push guard (R4): the feature branch only, never the default branch, never force;
+2. branch protection on each target's default branch.
+
+`check_setup` gains a **report-only** field `default_branch_protected`. The forge answers 403 to a branch-protection
+read without admin (014 measured this for the run token), so the field can be `unknown`. The runbook tells the
+operator to confirm protection by hand once per target repository.
+
+**Unverified, measured first**: that a `write:repository` token can push a new branch over HTTP with R2's
+`GIT_CONFIG_*` header, and is refused a direct push to BELAY's protected `main`. This is tested against `ci-smoke`
+after the operator protects its `main`.
+
+## R7: Stages as labels, and the stage record
+
+**Decision**: the stages are status labels, one per issue, in the shared label contract
+(`mcp-servers/pdlc/contract/proposal-labels.json`) and in `scripts/backlog.mjs` `TAXONOMY`:
+
+| Stage | Label | Issue state |
+| --- | --- | --- |
+| proposal, draft | `status/proposal-draft` (existing) | open |
+| proposal, ready | `status/needs-spec` (existing) | open |
+| spec in progress | `status/spec-in-progress` (new) | open |
+| ready to plan | `status/ready-to-plan` (new) | open |
+| in engineering | `status/in-engineering` (new) | open |
+| merged | `status/merged` (new) | closed |
+
+Changing stage removes the one old stage label and adds the new one, as 014 R8 does for draft and ready.
+
+**The stage record**: every stage change posts a comment whose last line is a machine-readable trailer:
+
+```text
+<!-- pdlc-stage: stage=ready-to-plan branch=016-pdlc-spec-intake spec=specs/016-pdlc-spec-intake/ -->
+```
+
+The rendered comment says the same thing in words (FR-015). The **most recent** trailer is authoritative for the
+branch and spec folder, which `ready` prints for `ready-to-plan` items (FR-016). A withdrawn spec's trailer has
+`stage=withdrawn`. `start_spec` reads all trailers, so a withdrawn branch is never reused (FR-019). The exact format
+is in [contracts/stages.md](contracts/stages.md).
+
+**Alternatives rejected**: the issue's `ref` field, which is unmeasured on this forge, holds one value, and is
+invisible to `backlog.mjs`'s existing reads; a milestone per feature, which is too heavy for one issue and conflicts
+with "milestones map to feature directories" for in-repository work.
+
+**The transition table** is the guard for FR-023, enforced in both the server and `backlog.mjs`:
+
+| From | To | Who |
+| --- | --- | --- |
+| ready | spec in progress | `start_spec` (Claude Desktop); `after_specify` hook (VS Code) |
+| spec in progress | ready to plan | `approve_spec` |
+| ready to plan | spec in progress | `reopen_spec` |
+| spec in progress, ready to plan | ready or draft | `withdraw_spec` |
+| spec in progress, ready to plan | in engineering | `after_plan` hook (VS Code) |
+| any open stage | merged (and closed) | the merge workflow (R10) |
+
+The VS Code route goes from **spec in progress** straight to **in engineering**, because the same engineer specifies
+and plans (spec FR-031). The merge workflow accepts any open stage, so a feature that skipped a stage still closes
+(spec Edge Cases).
+
+## R8: Taking the latest when the branch changed (FR-022, User Story 8 scenario 4)
+
+**Decision**:
+1. On resume and before every publish, `fetch origin +refs/heads/<feature-branch>:refs/remotes/origin/<feature-branch>`.
+   Compare the result with the tip the server last recorded for this worktree, kept in the worktree's
+   `.git`-adjacent state file `<clone_root>/.pdlc-specs/<Repo>/<NNN-slug>.state.json`.
+2. If the remote moved, refuse with `branch_changed`. Return the commits (author, subject) and a per-file diff stat.
+3. `take_latest_spec`:
+   a. back up every working file in the feature folder (R5 backup path);
+   b. if there is an unpublished local commit (a publish lost a race), `reset --soft` to the recorded remote tip, so
+      its content becomes working changes;
+   c. for each file the author changed, take `base` (recorded tip), `ours` (working file) and `theirs`
+      (`origin/<branch>`), and run `git merge-file -p`;
+   d. `merge --ff-only origin/<branch>`, then write each merged result back;
+   e. return the files with conflict markers, which the session shows to the author (spec Edge Cases).
+
+   Nothing is published. The stage does not move. The author approves again to publish.
+
+No published commit is rewritten: the only `reset` is of an unpublished commit, onto the published tip.
+
+## R9: The right-hand pane: an MCP App served by `pdlc` (FR-035 to FR-037; M7)
+
+**Background**: MCP Apps (the MCP extension for interactive UI) let a server declare a `ui://` HTML resource and attach
+it to a tool through `_meta.ui.resourceUri`. The host renders the HTML in a sandboxed frame. The page talks to the host
+over `postMessage` JSON-RPC: it can call the server's tools (including tools visible to the app only), and can update
+the model's context.
+
+**Decision**:
+- **Resource** `ui://pdlc/document-pane.html`: one self-contained HTML file in `mcp-servers/pdlc/ui/`, with inline CSS
+  and JS, no dependency and no build step (M7). It shows either a proposal (nine labelled textareas in contract order)
+  or a spec (an outline of its headings and one monospace textarea per file). It has a read-only mode.
+- **Model-visible tool** `show_document` opens the pane on a document and returns its current revision.
+- **App-only tool** `save_pane_edit`, with `_meta.ui.visibility: ["app"]`, is what the page calls when the author
+  stops typing (debounced) or presses Save. It writes:
+  - for a spec, the file in the worktree (through the same path guard, R5);
+  - for a proposal, a draft file under `.pdlc-drafts/` (R5).
+  Each write bumps the document's **revision**.
+- **No pane edit is lost (FR-036)**: every model-side write (`write_spec_file`, `create_proposal`, `update_proposal`)
+  takes `base_revision`, and the server refuses `pane_edit_pending` when the document has moved past it. The model then
+  re-reads with `get_spec` or `get_proposal_draft`, which returns the diff of what the pane changed. The skill tells the
+  author what it took in, and retries. This is the same stale-write pattern as 014 R9.
+- After every model-side write, the server notifies the pane through the host so it re-renders (FR-035: the pane
+  reflects chat edits).
+- **Read-only (FR-037)**: `show_document` opens the pane read-only for a spec at **in engineering** or later and for a
+  closed proposal. `save_pane_edit` refuses `document_locked` regardless of what the page sends.
+
+**Unverified, measured on the host first** (task "measure MCP Apps in Claude Desktop"), with a throwaway extension as
+014 T006 did:
+1. Whether Claude Desktop renders an MCP App **beside** the chat (the right-hand pane) rather than only inline in the
+   conversation, and how the page asks for that display mode.
+2. Whether an app-only tool call from the page reaches the server, and whether a later model turn sees the change.
+3. Whether a page can be told to re-render after a model-side write.
+
+**If (1) fails**, the spec's assumption applies: FR-035 and FR-036 go back to the maintainer and are not quietly
+dropped. The fallback already required by FR-037 (show the document in the chat) keeps the feature usable meanwhile.
+
+**Alternatives rejected**:
+- **Claude Desktop artifacts.** They are model-written, and the author cannot type into them, so FR-036 fails.
+- **The ext-apps SDK plus a bundler.** Rejected by M7: it needs new dependencies and a build toolchain.
+
+## R10: Merged: closing the issue on merge, in CI (FR-014, FR-038, FR-039)
+
+**Read**: `guardrails.yml` already runs on `push` to `main`. A merge made by `forge-pr.mjs merge` leaves a merge
+commit titled `Merge pull request '<title>' (#<pr>) from <branch> into main` (read: `git log` on `main`).
+
+**Decision**: a new workflow, `.forgejo/workflows/feature-merged.yml`, runs on `push` to `main`. Its one job runs
+`node scripts/feature-merged.mjs`, which:
+1. finds the merged pull request for the pushed commit. It asks the forge for the commit's pull request and falls back
+   to parsing the merge commit title (unverified: whether `GET /repos/{o}/{r}/commits/{sha}/pull` exists on this forge
+   build; measured first);
+2. finds the proposal: in the merged change's `specs/*/spec.md` files that the pull request added, exactly one
+   `Proposal #<n>` in an **Input** line. None means "not from a proposal": the script says so and exits 0. Two or more
+   means it refuses and comments nothing, exiting 0 with a warning, because a merge is never blocked;
+3. checks the issue is open, carries `type/proposal` and is not `status/bot-managed`;
+4. counts tests (R12);
+5. posts the closing comment, whose format is in [contracts/feature-merged.md](contracts/feature-merged.md), swaps
+   the stage label to `status/merged`, and closes the issue. The comment is posted before the close, so a re-run that
+   finds the comment only completes the close. It is idempotent, like 014's `close-proposal`.
+
+A pull request closed without merging never pushes to `main`, so it never triggers the workflow (FR-014).
+
+**Why a separate workflow and not a `guardrails` step**: the merge must not depend on, or be delayed by, counting.
+`guardrails` gates merges and has a 10-minute budget. A counting failure must never mark `main` red.
+
+## R11: The CI credential for the merge workflow (M6)
+
+**Unverified, measured first**: whether the run token (`github.token`) on this Forgejo build can comment on and close
+an issue in the same repository on a `push` event. 014 measured that the run token gets 403 on branch protection, so
+its issue permissions are not assumed.
+
+**Decision**: the workflow passes both to the script, as the digest step does. The script uses `GITHUB_TOKEN` first,
+and `CI_DIGEST_TOKEN` (already `write:issue`) only when the run token is refused. The runbook records which one the
+measurement showed. Neither is printed: the existing redactor covers both.
+
+## R12: Counting the feature's tests at merge (FR-038, FR-039)
+
+**Definitions**:
+- A **test** is one `node:test` test case (a `test()` or `it()`), identified by `(file path from the repository root,
+  full name path)`.
+- **Created** = identities present at the merge commit and absent at its first parent.
+- **Passed** = created tests whose outcome in the merge commit's run is pass. **Skipped** and **todo** are reported
+  separately and never counted as passed. **Failed** is reported too.
+
+**Decision**: `scripts/feature-merged.mjs` runs each CI test target twice through Nx:
+- once at the merge commit;
+- once at the first parent, in a temporary `git worktree`.
+
+Each run carries a collecting reporter that writes one JSON line per test (file, name path, outcome). The targets
+are listed in `scripts/feature-merged.config.json`: today `scripts:test`, `pdlc:test` and `pdlc:integration`, the same
+targets `guardrails` runs. A guard test fails when that list and `guardrails.yml`'s test steps disagree.
+
+**How the reporter is attached (unverified, measured first)**: through
+`NODE_OPTIONS=--test-reporter=<abs>/scripts/lib/collect-test-results.mjs --test-reporter-destination=<file>`
+alongside the default reporter. This depends on `node --test` accepting reporter flags from `NODE_OPTIONS`, and on
+`check-coverage.mjs --run` passing the environment through.
+
+- **If it works**: no Nx target changes.
+- **If it does not**: each test target gains an opt-in `--report <file>` argument, forwarded to `node --test` as
+  `--test-reporter`/`--test-reporter-destination`, with the default output unchanged.
+
+**When a count cannot be read** (a target fails to run, a reporter file is missing or unparsable, or the parent
+worktree cannot be built), the comment says which count is unknown and why. It never reports 0 (FR-039, AGENTS.md:
+"a tool's no is about the tool"). The close still happens.
+
+**Cost**: a second full test run on the parent, only for merges that came from a proposal, about the length of one
+`guardrails` run. The job's timeout is 30 minutes.
+
+**Alternatives rejected**:
+- **Counting `test(` calls in the diff.** It misses generated and table-driven tests, and it cannot report outcomes.
+- **Reusing the `pull_request` run's output.** The forge exposes no artifact or log API (014 and `ci.md`), and the
+  pull request run is of the head, not the merge.
+- **Whole-suite totals.** The spec defines created and passed over the feature's own tests (spec Assumptions).
+
+## R13: In engineering: the `after_plan` hook (FR-013)
+
+**Decision**: a new mandatory `after_plan` hook, `extension: belay`, `command: speckit.belay.spec-stage`, registered
+in `scripts/check-speckit-overrides.mjs` `EXTENSION_HOOKS` (`local: true`) and the Spec Kit runbook inventory, as 014
+did for `after_specify`.
+
+The same project-owned skill, renamed `.claude/skills/speckit-belay-spec-stage/` and replacing
+`speckit-belay-close-proposal`, serves both hook points. A skill cannot see which hook invoked it, so it decides from
+the feature folder:
+- with no `plan.md`, it is the `after_specify` point and sets **spec in progress**;
+- with `plan.md`, it is the `after_plan` point and sets **in engineering**.
+
+It finds the proposal number as 014 R14 does (one `Proposal #<n>` in the Input line) and runs
+`node scripts/backlog.mjs stage <n> <stage> --spec <dir> --branch <branch>`. That new verb replaces `close-proposal`.
+It enforces R7's transition table and writes R7's trailer.
+
+**Locking (FR-018)**: the server checks the issue's stage label before every spec write, reopen, approve and
+withdraw. The label is authoritative. A plan on an unpublished branch cannot lock anything, and the VS Code route
+always plans on a checked-out branch whose hook moves the label.
+
+**Independence (FR-031)**: the hook, the verb and the merge workflow use `backlog.mjs`, the forge and CI only. A guard
+test (014's existing "nothing references the server" test) covers the new files.
+
+**`close-proposal`**: removed. Its one caller (the `after_specify` hook) moves to `stage`. Proposals already closed by it
+stay closed (spec Assumptions). The doc-impact sweep lists every page that names it.
+
+## R14: Spec Kit presence and version (FR-005; User Story 7)
+
+**Decision**: `check_spec_kit` reads from the copy's default branch:
+- `.specify/init-options.json`: `speckit_version`, `script`, `feature_numbering`;
+- the presence of the two scripts in R1, and of the specify and clarify prompts;
+- `.specify/extensions.yml`, classified by R3.
+
+The server is tested against Spec Kit **1.4.x**, the version BELAY and MCM run. Another major or minor version answers
+`supported: false` with the version named. Widening the range is a contract change with its own test. When
+`init-options.json` is missing, the result is `initialised: false` (User Story 7). The skill then offers proposal work
+only, and says why in plain words.
+
+## R15: Approval checks (FR-008, FR-009)
+
+**Decision**: `approve_spec` refuses:
+- `spec_has_markers`: any `[NEEDS CLARIFICATION` in `spec.md`, with the list of markers;
+- `spec_not_clarified`: `spec.md` has no `## Clarifications` section with at least one `### Session` heading dated on or
+  after the spec's last start or reopen. The clarify prompt writes exactly that section. When clarify finds nothing to
+  ask, the skill records a session with the line `- No questions: no critical ambiguity found.`
+
+Approval then runs: commit (R4) → push → stage **ready to plan** with trailer (R7). The stage moves only after the push
+succeeds. A failed push leaves the commit local and the stage unchanged, and the next approve goes through R8.
+
+## R16: Contract versioning
+
+Adding tools and labels changes the fixed contract. Following 014's rule ("a contract change is breaking"):
+- the server becomes **0.2.0**;
+- the manifest, the master skill and the label contract move in the same change;
+- the contract test is updated to the new tool list;
+- `check_setup` reports a target with the old label set as `missing_labels` (the four new stage labels).
+
+The existing nine tools are unchanged except that `create_proposal` and `update_proposal` gain an optional
+`draft_revision` (R9). An old skill that does not send it still works, because the server checks the revision only
+when a pane draft exists for that proposal.
