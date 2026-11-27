@@ -184,7 +184,7 @@ on it. A measurement records what was observed, in research.md, under the R it b
     `Cannot find module '../../src/stages.mjs'`
 - [X] T014 Implement `mcp-servers/pdlc/src/stages.mjs` (prerequisite: T013 RED; T012 done)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/stages.test.mjs` → expected: 0 failures
-- [ ] T015 [P] Test: extended git allowlist (research R4). In `mcp-servers/pdlc/tests/unit/git-runner.test.mjs`:
+- [X] T015 [P] Test: extended git allowlist (research R4). In `mcp-servers/pdlc/tests/unit/git-runner.test.mjs`:
   - each new shape is accepted with valid arguments;
   - each is refused with any extra or altered argument: `push` with `--force`, `+`, `--delete`, `--mirror`, a
     different destination, or a default-branch destination; `commit` without `--no-verify`; `add` of a path outside
@@ -194,7 +194,7 @@ on it. A measurement records what was observed, in research.md, under the R it b
   - **Scenarios covered**: US8-AC2, US8-AC3, FR-021
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/git-runner.test.mjs` → expected: failing —
     `git push is not on the allowlist` for the valid push shape
-- [ ] T016 Extend `isAllowedGitCall` and add the push-target guard in `mcp-servers/pdlc/src/git-runner.mjs`. Keep the
+- [X] T016 Extend `isAllowedGitCall` and add the push-target guard in `mcp-servers/pdlc/src/git-runner.mjs`. Keep the
   existing verbs' rules unchanged (prerequisite: T015 RED)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/git-runner.test.mjs` → expected: 0 failures; then
     `node --test mcp-servers/pdlc/tests/unit/local-copy.test.mjs` still passes

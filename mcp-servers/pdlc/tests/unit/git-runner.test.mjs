@@ -91,3 +91,156 @@ test('a failing git call rejects with GitError carrying the exit code and a reda
   assert.equal(e.exitCode, 128);
   assert.doesNotMatch(`${e.message} ${e.stderr}`, /canary-/);
 });
+
+// ── Feature 016: exact argument shapes for one spec in progress (research R4; FR-020, FR-021) ─────────────────
+//
+// Each new shape is allowed only for a call that names the spec it belongs to (`spec`, below): its branch, its folder,
+// the copy and the clone root. Without it, every new shape is refused, so 014's callers and 014's refusal list above
+// are unchanged. With it, the arguments must match the shape EXACTLY: an extra, missing or altered argument is refused.
+import { Refusal } from '../../src/refusal.mjs';
+import { join } from 'node:path';
+
+const ROOT = '/clones';
+const SPEC = Object.freeze({
+  cloneRoot: ROOT, repo: 'BELAY', copyPath: join(ROOT, 'BELAY'), defaultBranch: 'main',
+  featureBranch: '017-pane-probe', specDir: 'specs/017-pane-probe', recordedRemoteTip: 'a'.repeat(40),
+});
+const WT = join(ROOT, '.pdlc-specs', 'BELAY', '017-pane-probe');
+const SCRATCH = join(ROOT, '.pdlc-scratch', 'BELAY-1a2b3c');
+const MERGE = join(ROOT, '.pdlc-backups', 'BELAY', '017-pane-probe', '20261127T233000Z', 'merge');
+const MSG = "docs(017): approve spec for proposal item #91\n\nApproved in Claude Desktop by the spec's author.";
+
+const SHAPES = [
+  { name: 'fetch every head', args: ['fetch', 'origin', '+refs/heads/*:refs/remotes/origin/*'], cwd: SPEC.copyPath },
+  { name: 'make the scratch clone', args: ['clone', '--shared', '--no-checkout', SPEC.copyPath, SCRATCH], cwd: ROOT },
+  { name: 'copy remote refs into scratch', args: ['fetch', SPEC.copyPath, '+refs/remotes/origin/*:refs/remotes/origin/*'], cwd: SCRATCH },
+  { name: 'check out scratch', args: ['checkout', '--detach', 'origin/main'], cwd: SCRATCH },
+  { name: 'create the worktree', args: ['worktree', 'add', '-b', '017-pane-probe', WT, 'origin/main'], cwd: SPEC.copyPath },
+  { name: 'list worktrees', args: ['worktree', 'list', '--porcelain'], cwd: SPEC.copyPath },
+  { name: 'read a file at a commit', args: ['show', `${'b'.repeat(40)}:specs/017-pane-probe/spec.md`], cwd: WT },
+  { name: 'three-way merge of one file', args: ['merge-file', '-p', join(MERGE, 'ours'), join(MERGE, 'base'), join(MERGE, 'theirs')], cwd: WT },
+  { name: 'stage the feature folder', args: ['add', '--', 'specs/017-pane-probe'], cwd: WT },
+  { name: 'commit', args: ['commit', '--no-verify', '-m', MSG], cwd: WT },
+  { name: 'publish', args: ['push', 'origin', 'refs/heads/017-pane-probe:refs/heads/017-pane-probe'], cwd: WT },
+  { name: 'fast-forward the worktree', args: ['merge', '--ff-only', 'origin/017-pane-probe'], cwd: WT },
+  { name: 'undo an unpublished commit', args: ['reset', '--soft', 'a'.repeat(40)], cwd: WT },
+  { name: 'diff stat', args: ['diff', '--stat', 'a'.repeat(40), 'b'.repeat(40), '--', 'specs/017-pane-probe'], cwd: WT },
+  { name: 'log', args: ['log', '--format=%H%x09%an%x09%s', `${'a'.repeat(40)}..${'b'.repeat(40)}`], cwd: WT },
+];
+
+test('016: every new shape runs when it names its spec', async () => {
+  const { x, git } = runner(() => ({ stdout: 'ok\n' }));
+  for (const s of SHAPES) assert.equal((await git.run(s.args, { cwd: s.cwd, spec: SPEC })).stdout, 'ok\n', s.name);
+  assert.deepEqual(x.calls.map((c) => c.args), SHAPES.map((s) => s.args));
+});
+
+test('016: the history-writing shapes are refused without a spec, before execFile', async () => {
+  const { x, git } = runner();
+  for (const s of SHAPES.filter((s) => ['checkout', 'worktree', 'show', 'merge-file', 'add', 'commit', 'push', 'reset', 'diff', 'log'].includes(s.args[0]))) {
+    await assert.rejects(git.run(s.args, { cwd: s.cwd }), GitVerbRefused, s.name);
+  }
+  assert.equal(x.calls.length, 0);
+});
+
+const REFUSED_016 = [
+  // push: force, delete, mirror, a different destination, a different or default branch, extra arguments
+  ['push', '--force', 'origin', 'refs/heads/017-pane-probe:refs/heads/017-pane-probe'],
+  ['push', 'origin', '+refs/heads/017-pane-probe:refs/heads/017-pane-probe'],
+  ['push', '--delete', 'origin', '017-pane-probe'],
+  ['push', '--mirror', 'origin'],
+  ['push', 'origin', 'refs/heads/017-pane-probe:refs/heads/other'],
+  ['push', 'origin', 'refs/heads/017-pane-probe:refs/heads/017-pane-probe', '--tags'],
+  ['push', 'upstream', 'refs/heads/017-pane-probe:refs/heads/017-pane-probe'],
+  ['push', 'origin', '017-pane-probe'],
+  ['push', 'origin', 'refs/heads/017-pane-probe'],
+  // commit: without --no-verify, another message shape, extra options
+  ['commit', '-m', MSG],
+  ['commit', '--no-verify', '-m', 'wip'],
+  ['commit', '--no-verify', '-m', MSG, '--amend'],
+  ['commit', '--no-verify', '--amend', '-m', MSG],
+  ['commit', '-a', '--no-verify', '-m', MSG],
+  // add: anything but exactly the feature folder
+  ['add', '--', 'specs/018-other'],
+  ['add', '--', 'specs'],
+  ['add', '--', '.'],
+  ['add', '-A'],
+  ['add', 'specs/017-pane-probe'],
+  ['add', '--', 'specs/017-pane-probe', '.specify/feature.json'],
+  ['add', '--', 'specs/017-pane-probe/../../.forgejo'],
+  // reset: only --soft onto the recorded remote tip
+  ['reset', '--hard', 'a'.repeat(40)],
+  ['reset', '--soft', 'c'.repeat(40)],
+  ['reset', '--soft', 'HEAD~1'],
+  ['reset', '--mixed', 'a'.repeat(40)],
+  ['reset', '--soft'],
+  // worktree: only add -b <feature> <path under .pdlc-specs/<Repo>/> origin/<default>, and list --porcelain
+  ['worktree', 'remove', WT],
+  ['worktree', 'prune'],
+  ['worktree', 'add', WT, 'origin/main'],
+  ['worktree', 'add', '-b', 'other-branch', WT, 'origin/main'],
+  ['worktree', 'add', '-b', '017-pane-probe', '/tmp/elsewhere', 'origin/main'],
+  ['worktree', 'add', '-b', '017-pane-probe', WT, 'origin/017-other'],
+  ['worktree', 'add', '-B', '017-pane-probe', WT, 'origin/main'],
+  ['worktree', 'list'],
+  // checkout: only --detach origin/<default>
+  ['checkout', 'main'],
+  ['checkout', '--detach', 'origin/017-pane-probe'],
+  ['checkout', '-b', '017-pane-probe'],
+  // show, merge-file, diff, log: only their exact shapes
+  ['show', 'HEAD'],
+  [`show`, `${'b'.repeat(40)}:.forgejo/workflows/guardrails.yml`],
+  ['show', 'HEAD:specs/017-pane-probe/spec.md'],
+  ['merge-file', join(MERGE, 'ours'), join(MERGE, 'base'), join(MERGE, 'theirs')],
+  ['merge-file', '-p', '/etc/passwd', join(MERGE, 'base'), join(MERGE, 'theirs')],
+  ['diff', '--stat', 'a'.repeat(40), 'b'.repeat(40)],
+  ['diff', 'a'.repeat(40), 'b'.repeat(40), '--', 'specs/017-pane-probe'],
+  ['diff', '--stat', 'a'.repeat(40), 'b'.repeat(40), '--', 'specs/018-other'],
+  ['log', '-p', `${'a'.repeat(40)}..${'b'.repeat(40)}`],
+  ['log', '--format=%H%x09%an%x09%s', 'main'],
+];
+
+test('016: any extra or altered argument is refused, with a spec, before execFile', async () => {
+  const { x, git } = runner();
+  for (const args of REFUSED_016) {
+    await assert.rejects(git.run(args, { cwd: WT, spec: SPEC }), GitVerbRefused, JSON.stringify(args));
+  }
+  assert.equal(x.calls.length, 0);
+});
+
+test('016: add, commit, push and reset run only in the spec\'s own worktree, never in the copy', async () => {
+  const { x, git } = runner();
+  for (const args of [['add', '--', 'specs/017-pane-probe'], ['commit', '--no-verify', '-m', MSG],
+    ['push', 'origin', 'refs/heads/017-pane-probe:refs/heads/017-pane-probe'], ['reset', '--soft', 'a'.repeat(40)]]) {
+    await assert.rejects(git.run(args, { cwd: SPEC.copyPath, spec: SPEC }), GitVerbRefused, JSON.stringify(args));
+  }
+  assert.equal(x.calls.length, 0);
+});
+
+test('016: the scratch clone must come from the copy and land under .pdlc-scratch/', async () => {
+  const { x, git } = runner();
+  for (const args of [
+    ['clone', '--shared', '--no-checkout', '/somewhere/else', SCRATCH],
+    ['clone', '--shared', '--no-checkout', SPEC.copyPath, join(ROOT, 'BELAY-2')],
+    ['clone', '--shared', '--no-checkout', SPEC.copyPath, join(ROOT, '.pdlc-scratch', '..', 'BELAY')],
+  ]) await assert.rejects(git.run(args, { cwd: ROOT, spec: SPEC }), GitVerbRefused, JSON.stringify(args));
+  // and the scratch-only shapes run only inside the scratch folder
+  await assert.rejects(git.run(['checkout', '--detach', 'origin/main'], { cwd: SPEC.copyPath, spec: SPEC }), GitVerbRefused);
+  await assert.rejects(git.run(['fetch', SPEC.copyPath, '+refs/remotes/origin/*:refs/remotes/origin/*'], { cwd: SPEC.copyPath, spec: SPEC }), GitVerbRefused);
+  assert.equal(x.calls.length, 0);
+});
+
+test('016: the push-target guard refuses push_target_refused for the default branch, even in a valid shape', async () => {
+  const { x, git } = runner();
+  const onMain = { ...SPEC, featureBranch: 'main' };
+  await assert.rejects(git.run(['push', 'origin', 'refs/heads/main:refs/heads/main'], { cwd: WT, spec: onMain }),
+    (e) => e instanceof Refusal && e.code === 'push_target_refused' && /default branch/.test(e.reason));
+  // a valid shape for a branch that is not this spec's recorded feature branch is refused the same way
+  await assert.rejects(git.run(['push', 'origin', 'refs/heads/018-other:refs/heads/018-other'], { cwd: WT, spec: SPEC }),
+    (e) => e instanceof Refusal && e.code === 'push_target_refused');
+  // so are commit, add, reset and worktree add when the spec's feature branch is the default branch
+  for (const [args, cwd] of [[['commit', '--no-verify', '-m', MSG], WT], [['add', '--', 'specs/017-pane-probe'], WT],
+    [['reset', '--soft', 'a'.repeat(40)], WT], [['worktree', 'add', '-b', 'main', WT, 'origin/main'], SPEC.copyPath]]) {
+    await assert.rejects(git.run(args, { cwd, spec: onMain }), (e) => e instanceof Refusal && e.code === 'push_target_refused', JSON.stringify(args));
+  }
+  assert.equal(x.calls.length, 0);
+});
