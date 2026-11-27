@@ -123,10 +123,12 @@ on it. A measurement records what was observed, in research.md, under the R it b
 
   Record in research.md R12 which path (NODE_OPTIONS, or an opt-in `--report <file>` per target) the design uses.
   - **Done when**: R12 names the path with the observed output.
-- [ ] T008 Settle M9 (`pwsh` on the CI runner). Run `command -v pwsh` in a `guardrails`-shaped job on a branch. Then
+- [X] T008 Settle M9 (`pwsh` on the CI runner). Run `command -v pwsh` in a `guardrails`-shaped job on a branch. Then
   ask the maintainer: (a) install a pinned, checksum-verified `pwsh` in `guardrails`, or (b) an operator-run tier for
   the script-executing tests. Record the answer in research.md's decision table and in ADR-0006.
   - **Done when**: M9 has an answer and a date. T022 and T037 follow it.
+  - **Answered 2026-11-27: (a)**, install a pinned `pwsh` in `guardrails` (research M9). The image was measured, not
+    the live runner, by the maintainer's choice. Adds T022a and T022b.
 - [X] T008a **Record the test baseline** (FR-040, the template task this feature adds, applied to itself once T054c
   lands; until then run `node scripts/count-repo-metrics.mjs --json` and record `testDeclarations` here). This spec's
   Input names proposal #91, which is closed under 014's close-on-spec, so nothing is posted: the no-proposal path.
@@ -265,6 +267,24 @@ with BELAY's `.specify/`, and by hand per quickstart §2 step 1.
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/tools.test.mjs` then
     `node --test mcp-servers/pdlc/tests/unit/tool-contract.test.mjs` → expected: failing — `unknown tool start_spec`
     and `tools/list differs from the contract`
+- [ ] T022a [P] [US1] Test: the pinned `pwsh` install (M9). In `scripts/__tests__/install-pwsh.test.mjs`, mirroring
+  `install-trivy.test.mjs` with injected fetch, extract and version:
+  - a matching sha256 installs and checks `pwsh --version`; a mismatch refuses and installs nothing; a download that
+    fails three times refuses; a wrong reported version removes the binary; `--print-pin` prints the pin; bad
+    arguments exit 2.
+  Extend `refresh-pin-checksum.test.mjs` and `check-renovate-config.test.mjs` for a `pwsh` pin (the version and the
+  sha256 move together, under `PowerShell/PowerShell`), and a guard that `guardrails.yml` installs `pwsh` through
+  `install-pwsh.mjs` before the `pdlc:integration` step.
+  - **Scenarios covered**: plan Testing ("`pdlc:integration` needs `pwsh`"), research M9
+  - **Verify RED**: `node --test scripts/__tests__/install-pwsh.test.mjs` → expected: failing —
+    `Cannot find module '../install-pwsh.mjs'`
+- [ ] T022b [US1] Implement `scripts/install-pwsh.mjs` with `PWSH_PIN` 7.7.0 and its sha256 read once from the
+  release's published hashes, the `refresh-pin-checksum.mjs` entry, the Renovate regex manager and post-upgrade task,
+  and the `guardrails` step before `pdlc:integration`; add the pin to `docs/runbooks/ci.md` with T079
+  (prerequisite: T022a RED)
+  - **Verify GREEN**: `node --test scripts/__tests__/install-pwsh.test.mjs`, `node --test scripts/__tests__/refresh-pin-checksum.test.mjs`
+    and `node --test scripts/__tests__/check-renovate-config.test.mjs` → expected: 0 failures; then
+    `pnpm nx run scripts:lint` passes
 - [ ] T022 [US1] Integration test: start a spec for real. In
   `mcp-servers/pdlc/tests/integration/spec-lifecycle.integration.test.mjs`:
   - make a bare repository seeded with a copy of BELAY's `.specify/` and one `specs/001-x/`, plus a remote branch
@@ -835,7 +855,7 @@ FR-036.
 - **Setup (Phase 1)**:
   - T001 (ADR approval) blocks every code task.
   - T003 blocks Phase 10.
-  - T004 and T008 block T022.
+  - T004 and T008 block T022; T022b lands before the first push that contains T022.
   - T005 blocks T068.
   - T006 blocks T053, T054 and T078.
   - T007 blocks T053.

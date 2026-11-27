@@ -4,8 +4,8 @@ title: ADR-0006 — the pdlc server writes one feature's spec branch; a proposal
 description: Feature 016's amendment of four feature 014 decisions — the pdlc server may now create, commit and publish one feature's spec branch from Claude Desktop (never the default branch, never force), running the target repository's own Spec Kit scripts in a credential-free scratch clone; a proposal moves through stage labels and closes on merge in CI; the pdlc token widens to write:repository (M5); the merge workflow's credential (M6); the hand-written MCP App pane (M7); and which parts of ADR-0005 it supersedes.
 tags: [decision, adr, mcp, pdlc, spec-kit, claude-desktop]
 resource: docs/decisions/ADR-0006-pdlc-spec-intake.md
-resource-sha256: d512ed2132f176bf3a076fa54eddb3b329ce36e56feab586fb8c1d21a5cc4a93
-timestamp: 2026-11-27T21:41:01.777Z
+resource-sha256: 1fc34c850ac2ea67b52afb931e33428e0b149cf263e121fb9d66cae695464122
+timestamp: 2026-11-27T21:48:04.809Z
 ---
 
 # ADR-0006 — PDLC spec intake
@@ -35,5 +35,7 @@ The VS Code route still works with the server absent.
   merge minus its parent, read from git. The outcomes are the whole suite's, from the merged commit's
   own `guardrails` run. The tasks template records a baseline and a close-out count on the issue, and
   posts nothing, without failing, when there is no proposal.
+- **CI installs a pinned `pwsh` (M9)** so `pdlc:integration` runs the real Spec Kit scripts; the runner
+  image has none.
 - **Supersedes part of [ADR-0005](adr-0005-operator-tool-mcp-servers.md)**: the `read:repository` scope
   and the read-only-copies premise. The rest of ADR-0005 stands.

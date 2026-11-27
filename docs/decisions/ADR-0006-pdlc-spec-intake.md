@@ -81,7 +81,11 @@ push, which three of 014's decisions above rule out.
   on (R11) (2026-11-27).
 - **M7: the right-hand pane** is one hand-written, self-contained HTML file served as an MCP App
   resource, with no new dependency and no build step (2026-11-27).
-- **M9: `pwsh` on the CI runner**: pending. Recorded here once answered.
+- **M9: `pwsh` on the CI runner** (2026-11-27): the runner image (`node:26-bookworm`) has no `pwsh`
+  (measured from the dev container). **`guardrails` installs a version-pinned, sha256-verified `pwsh`**
+  before `pdlc:integration`, through `scripts/install-pwsh.mjs` on the `install-trivy.mjs` pattern, so the
+  real Spec Kit scripts stay in the gating tier. Renovate tracks it with the dev container's PowerShell
+  pin. Rejected: an operator-run tier for the script tests, which no CI check would then cover.
 - **M10: test counts at merge add no test run to CI** (2026-11-27, at this ADR's review; MCM's suite
   alone takes 30+ minutes). "Created" is `scripts/count-repo-metrics.mjs`'s test declarations at the
   merge commit minus its first parent, read from git objects in `feature-merged`, in seconds. The
@@ -144,6 +148,7 @@ Alternatives considered:
 - **BELAY's tasks template changes** (two required count tasks, a `backlog.mjs record-tests` verb), so the
   override gate and the Spec Kit runbook move with it. The counter recognises JavaScript `node:test`
   declarations only; MCM must name a counting rule for its own test kinds before it adopts the counts.
-- **`pdlc:integration` needs `pwsh`** to run the real Spec Kit scripts. Where that tier runs in CI is M9.
+- **`pdlc:integration` needs `pwsh`** to run the real Spec Kit scripts, so the `belay` runner gains a
+  pinned PowerShell download per `guardrails` run (M9): one more pin for Renovate and the pin-checksum gate.
 - **MCM adopts the stages and close-on-merge** only after BELAY proves them, through the updated hand-off
   guide.
