@@ -94,7 +94,7 @@ on it. A measurement records what was observed, in research.md, under the R it b
   - **Measured 2026-11-27, three passes**: (1) yes, via `ui/request-display-mode fullscreen`; (2) yes, but served by
     a different server process from the model's, so all state is on disk; (3) by polling an app-only read tool. Adds
     `read_pane_document` (app-only) to the contract; Phase 10 tasks implement it with the pane
-- [ ] T004 [P] Measure the Spec Kit scripts on the workstation (R1 unverified 1 and 2):
+- [X] T004 [P] Measure the Spec Kit scripts on the workstation (R1 unverified 1 and 2):
   - `pwsh` present, or Windows PowerShell 5.1 running `create-new-feature-branch.ps1 -DryRun -Json` and
     `resolve-template.ps1 spec-template -Json` in a copy of BELAY;
   - the dry run's `BRANCH_NAME` equal to a real run in the dev container for the same description.

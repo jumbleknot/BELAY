@@ -82,8 +82,25 @@ forge at `9350235`, whose `git ls-remote --heads origin` listed `main`, `015-sel
   `# Feature Specification: [FEATURE NAME]`).
 
 The number is `016` because this feature's own branch had not been published: a branch only on a workstation or in a
-dev-container worktree is invisible to every other session's numbering. The workstation half (interpreter, and the
-dry run's `BRANCH_NAME` against the same forge branch set) is pending.
+dev-container worktree is invisible to every other session's numbering.
+
+**Measured on the workstation, 2026-11-27 (T004, workstation half)**: fresh blobless clone of BELAY from the forge,
+`git ls-remote --heads origin` → `015-self-healing-dependency-bot`, `016-pdlc-spec-intake` (`98d4d81`),
+`chore-92-own-runners`, `main` (`9350235`).
+- **Interpreter**: `pwsh` is **not installed**; only Windows PowerShell (`powershell.exe`, file version
+  10.0.26100.9818, i.e. 5.1). So the server's `ps` path on this workstation is `powershell.exe`, as R1 planned.
+- `powershell.exe -NoProfile -ExecutionPolicy Bypass -File create-new-feature-branch.ps1 -Json -DryRun -ShortName
+  pane-probe "Pane probe for feature 016"` → `{"BRANCH_NAME":"017-pane-probe","FEATURE_NUM":"017","DRY_RUN":true}`.
+- The same without `-ExecutionPolicy Bypass` → the same output: this workstation's default policy allows it. The server
+  still passes `-ExecutionPolicy Bypass` (process scope only), so it does not depend on a machine policy that differs
+  between workstations.
+- `resolve-template.ps1 spec-template -Json` under 5.1 → `TEMPLATE_CONTENT` of **4556** characters, the same as
+  `pwsh` 7.6.5 in the dev container.
+- Afterwards `git status --porcelain` was empty and `git branch` showed only `main`: the dry run created nothing.
+
+**Dry run against real run, same branch set**: a real run in a fresh dev-container clone at 2026-11-27T23:34Z, with the
+same four forge heads, gave `{"BRANCH_NAME":"017-pane-probe","FEATURE_NUM":"017"}`. **Equal** to the workstation's dry
+run. R1 holds on both interpreters.
 
 **Alternatives rejected**:
 - **Run Claude Code headless (`claude -p "/speckit-specify …"`) from the server.** Spec Kit itself would run, but a
@@ -352,9 +369,8 @@ server as `local-agent-mode-<extension display name>` 1.0.0 and advertises
 the model's calls were served by pid **39296** and the page's by pid **33224**, both `win32`, Node **v24.22.3**, both
 reporting the same state file `C:\Users\<user>\.pdlc-pane-probe-state.json`. The page saved `pane edit B` (pid
 33224); the model's next `probe_get_state` (pid 39296) returned `pane edit B`, `lastWriter: pane`. So the two
-processes **share the workstation's disk**, and state kept in files crosses between them. (Whether the open page's
-next poll showed the model's following write was not reported; the same two-process path passed in the dev
-container with the 0.0.2 build.)
+processes **share the workstation's disk**, and state kept in files crosses between them. The model then wrote `model edit C` (pid 39296)
+and the open, polling page showed `model edit C` (pid 33224's next poll): both directions cross.
 
 **What this means for the design (measured, T003)**: the server must keep **no state
 in memory between calls**. Every revision, draft and "what the model last read" snapshot lives in files under the
