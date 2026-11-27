@@ -206,6 +206,24 @@ operator to confirm protection by hand once per target repository.
 `GIT_CONFIG_*` header, and is refused a direct push to BELAY's protected `main`. This is tested against `ci-smoke`
 after the operator protects its `main`.
 
+**Measured from the dev container, 2026-11-27 (T005)**, git 2.39.5, with a dedicated test token scoped `write:issue`
++ `write:repository` (created by the operator for this measurement, to be revoked by them), attached exactly as the
+server does: `http.extraHeader` through `GIT_CONFIG_COUNT/KEY/VALUE`, `credential.helper` emptied, nothing written to
+any git config. `ci-smoke`'s `main` was protected by the operator first.
+
+| Request | Observed |
+| --- | --- |
+| Blobless clone of `ci-smoke` | exit 0 |
+| `push origin refs/heads/pdlc-it-t005:refs/heads/pdlc-it-t005` (a new branch, one empty commit) | **accepted**, exit 0, `* [new branch]` |
+| `push origin refs/heads/pdlc-it-t005:refs/heads/main` | **refused by the forge**, exit 1: `Forgejo: Not allowed to push to protected branch main`, `! [remote rejected] … (pre-receive hook declined)` |
+| `GET /repos/{owner}/ci-smoke/branch_protections` with this token | **HTTP 200**, one rule for `main` with `enable_push: false` and `enable_status_check: true` |
+| `GET /repos/{owner}/ci-smoke/issues?limit=1` | HTTP 200 |
+
+So the token both pushes and is bounded by branch protection, as M5 assumed. Unlike the run token (014: 403), an owner's
+`write:repository` token **can** read branch protection, so `check_setup`'s `default_branch_protected` reports `true`
+or `false` for it, and `unknown` stays for a 403 or 404. The test branch `pdlc-it-t005` is left on `ci-smoke` until the
+operator agrees to its deletion.
+
 ## R7: Stages as labels, and the stage record
 
 **Decision**: the stages are status labels, one per issue, in the shared label contract
@@ -339,6 +357,12 @@ A pull request closed without merging never pushes to `main`, so it never trigge
 concurrency group with no cancellation, and never runs a test. Only the outcomes comment lives in `guardrails`
 (R12), because only that run has the outcomes.
 
+**Measured from the dev container, 2026-11-27 (T006, first half)**, Forgejo `15.0.3+gitea-1.22.0` (`GET /version`):
+`GET /repos/{owner}/BELAY/commits/{sha}/pull` **exists**. For merge commit `9350235` it answers HTTP 200 with pull
+request #90, `merged: true`, `merge_commit_sha` equal to the commit. For `309a9e9` (the branch commit inside that
+merge) it answers HTTP 404 `pull request does not exist`. So `feature-merged.mjs` asks the forge first, and parsing
+the merge commit title is a fallback for a 404 only.
+
 ## R11: The CI credential for the merge workflow (M6)
 
 **Unverified, measured first**: whether the run token (`github.token`) on this Forgejo build can comment on and close
@@ -348,6 +372,11 @@ its issue permissions are not assumed.
 **Decision**: the workflow passes both to the script, as the digest step does. The script uses `GITHUB_TOKEN` first,
 and `CI_DIGEST_TOKEN` (already `write:issue`) only when the run token is refused. The runbook records which one the
 measurement showed. Neither is printed: the existing redactor covers both.
+
+**T006, second half (run token; `always()` on cancel): not measured yet, 2026-11-27.** The throwaway workflow on
+`ci-smoke` branch `pdlc-probe-016` (commit `3f8e05b`) stayed `pending`: `ci-smoke` has **no runner**
+(`GET /repos/{owner}/ci-smoke/actions/runners` → `[]`; its own `smoke` job last succeeded 2026-11-25 and has been
+`pending` since), while BELAY has its repository runner `ci-belay`. Where to run it is back with the maintainer.
 
 ## R12: Counting the feature's tests (FR-038 to FR-040; decision M10)
 

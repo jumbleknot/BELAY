@@ -98,7 +98,7 @@ on it. A measurement records what was observed, in research.md, under the R it b
 
   Record in research.md R1.
   - **Done when**: R1 names the interpreter used and the observed `BRANCH_NAME` pair.
-- [ ] T005 [P] Measure the widened token (R6). The operator creates a test token with `write:issue` +
+- [X] T005 [P] Measure the widened token (R6). The operator creates a test token with `write:issue` +
   `write:repository` and protects `ci-smoke`'s `main`. From the dev container, with R2's `GIT_CONFIG_*` header:
   - push a new branch to `ci-smoke` (accepted);
   - push to its `main` (refused by the forge);
