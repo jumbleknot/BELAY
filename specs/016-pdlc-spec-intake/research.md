@@ -386,6 +386,33 @@ alongside the default reporter. This depends on `node --test` accepting reporter
 - **If it does not**: each test target gains an opt-in `--report <file>` argument, forwarded to `node --test` as
   `--test-reporter`/`--test-reporter-destination`, with the default output unchanged.
 
+**Measured in the dev container, 2026-11-27 (T007)**, Node 26.13.1, with a probe reporter in the session scratchpad
+(one JSON line per `test:pass`/`test:fail`, suites excluded):
+
+| Case | Observed |
+| --- | --- |
+| `node --test <file>` with only `NODE_OPTIONS` reporter flags | Reporter file written (5 lines for `master-copies.test.mjs`), but the **default console output disappeared**: `NODE_OPTIONS` reporter flags replace the default reporter when the command line gives none |
+| `node --test --test-reporter=spec --test-reporter-destination=stdout <file>` plus `NODE_OPTIONS` reporter flags | Both: spec output on stdout and 5 lines in the file. The two sets of flags combine |
+| `pnpm nx run pdlc:test` plus `NODE_OPTIONS` | Exit 0; `ℹ tests 185`, pass 185; 185 JSON lines, all `pass`; default output identical to a run without `NODE_OPTIONS` (timings aside) |
+| `pnpm nx run scripts:test` plus `NODE_OPTIONS` | **Exit 1**: `ℹ tests 1560`, pass 1558, **fail 2** (`check-coverage`'s two `--run` tests), and the report file **corrupted** (1407 lines, some not JSON). The same target without `NODE_OPTIONS`: exit 0, 1560 pass, 0 fail, 0 skipped |
+
+**Why it fails**: `NODE_OPTIONS` is inherited by every `node` child a test spawns. `check-coverage`'s own tests run
+`check-coverage.mjs --run` on fixture projects, whose nested `node --test` then also loads the probe and writes to
+the same destination. That changes those tests' output and interleaves the file.
+
+**Decision (T007)**: the **opt-in argument path, never the environment**. Each test target gains an explicit,
+optional results-file argument that adds `--test-reporter=<collector> --test-reporter-destination=<file>` to its own
+`node --test` command line only, keeping its existing reporters (`pdlc:integration`, which passes none today, also
+gains an explicit `--test-reporter=spec --test-reporter-destination=stdout` so its console output stays the same).
+`check-coverage.mjs` already uses `--report` for the lcov path, so its new flag is named `--results <file>`. Nothing
+is read from an environment variable, so a test's own child processes never inherit it. With no argument, every
+target's output and behaviour are unchanged.
+
+**Seen in passing (pre-existing, not caused by this feature)**: in a fresh checkout, `pnpm nx run pdlc:test` fails
+with `ENOENT: … open 'coverage/pdlc.lcov'` because `coverage/` does not exist and `node --test` does not create a
+reporter destination's folder. In `guardrails` it passes only because `scripts:test` runs first and
+`check-coverage.mjs --run` creates `coverage/`.
+
 **When a count cannot be read**, the comment says which count is unknown and why, and never reports 0 (FR-039,
 AGENTS.md: "a tool's no is about the tool"):
 - the parent commit is not readable by the counter → created `unknown`;

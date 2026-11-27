@@ -115,7 +115,7 @@ on it. A measurement records what was observed, in research.md, under the R it b
 
   Record in research.md R10, R11 and R12. Remove the throwaway workflow branch.
   - **Done when**: all three are recorded. If the run token is refused, T078 gains the `CI_DIGEST_TOKEN` usage change.
-- [ ] T007 [P] Measure attaching a reporter (R12) in the dev container:
+- [X] T007 [P] Measure attaching a reporter (R12) in the dev container:
   - does `NODE_OPTIONS="--test-reporter=… --test-reporter-destination=…"` reach `node --test` under
     `pnpm nx run pdlc:test` (which already passes its own `--test-reporter` flags) and under `scripts:test`
     (`check-coverage.mjs --run`)?
@@ -127,10 +127,12 @@ on it. A measurement records what was observed, in research.md, under the R it b
   ask the maintainer: (a) install a pinned, checksum-verified `pwsh` in `guardrails`, or (b) an operator-run tier for
   the script-executing tests. Record the answer in research.md's decision table and in ADR-0006.
   - **Done when**: M9 has an answer and a date. T022 and T037 follow it.
-- [ ] T008a **Record the test baseline** (FR-040, the template task this feature adds, applied to itself once T054c
+- [X] T008a **Record the test baseline** (FR-040, the template task this feature adds, applied to itself once T054c
   lands; until then run `node scripts/count-repo-metrics.mjs --json` and record `testDeclarations` here). This spec's
   Input names proposal #91, which is closed under 014's close-on-spec, so nothing is posted: the no-proposal path.
   - **Done when**: the count and the commit are recorded in this task
+  - **Recorded 2026-11-27**: `node scripts/count-repo-metrics.mjs --json` at `50a624d` → `testDeclarations: 1723`.
+    Nothing posted (#91 is closed; `record-tests` does not exist yet)
 
 ---
 
@@ -581,9 +583,11 @@ inserted, not renumbered, so references to T055 onwards stay valid.
 - [ ] T053 [US4] Implement `scripts/feature-merged.mjs` (both forms) and `scripts/feature-merged.config.json`. Count
   with `measureCommit` from `scripts/count-repo-metrics.mjs`, imported, never re-implemented. Cite data-model.md
   `Merge record.proposal` (exactly one marker, or none) and `Proposal issue.state` (the close happens only here, at
-  merged). Attach the reporter to the three test targets by the path T007 chose; if that is the opt-in `--report`,
-  add it to `scripts/project.json` `test` and `mcp-servers/pdlc/project.json` `test` and `integration`, keeping
-  default output unchanged. Add the `scripts:feature-merged` Nx target (prerequisite: T050 RED; T052 GREEN)
+  merged). Attach the reporter to the three test targets by the path T007 chose (research R12, measured 2026-11-27: the
+  opt-in argument, never `NODE_OPTIONS`): `check-coverage.mjs --run --results <file>` for `scripts:test`, and an
+  optional results argument for `mcp-servers/pdlc/project.json` `test` and `integration`, keeping default output
+  unchanged. Cover `--results` in `scripts/__tests__/check-coverage.test.mjs` first (RED: unknown flag), and assert
+  a child `node` a test spawns does not inherit the collector. Add the `scripts:feature-merged` Nx target (prerequisite: T050 RED; T052 GREEN)
   - **Verify GREEN**: `node --test scripts/__tests__/feature-merged.test.mjs` → expected: 0 failures; then
     `pnpm nx run scripts:test` passes
 - [ ] T054 [US4] Add `.forgejo/workflows/feature-merged.yml`, add the reporter attachment and the final outcomes step
