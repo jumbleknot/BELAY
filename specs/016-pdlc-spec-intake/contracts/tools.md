@@ -5,7 +5,7 @@ keep their names and parameters. `mcp-servers/pdlc/src/tool-contract.mjs` is the
 reads `tools/list` over the protocol and compares it with this file's names, parameters and enums. The master skill
 and `manifest.json` `tools` move in the same change (FR-030). The server version becomes **0.2.0**.
 
-Every tool keeps 014's rules: an owner and repository allowlist first, one `audit` line per call, a refusal that
+Every tool keeps no state in memory between calls: the model's calls and the page's calls are served by different server processes (research R9, measured), so all state is in files. Every tool keeps 014's rules: an owner and repository allowlist first, one `audit` line per call, a refusal that
 changes nothing, no token in a result, and `repo` matched case-insensitively.
 
 ## Spec Kit check
@@ -20,7 +20,7 @@ changes nothing, no token in a result, and `repo` matched case-insensitively.
 | --- | --- | --- | --- |
 | `start_spec` | `repo`, `number`, `short_name` (2 to 4 kebab words, `[a-z0-9-]`, at most 40 characters) | Requires stage `ready`. Fetches every head, runs the repository's branch script as a dry run, creates the worktree and branch, writes the resolved template to `spec.md` with the **Input** line already filled (`Proposal #<n>: <title>` plus the body), records state, and moves the stage to `spec-in-progress` with its trailer. Returns `{branch, feature_num, spec_dir, worktree_path, template_resolved: true, revision, hooks}` | `not_ready_proposal`, `spec_already_in_progress` (with the existing branch, so the skill offers resume), `spec_kit_unavailable`, `spec_hook_unsupported`, `branch_exists` |
 | `get_spec` | `repo`, `number` | Reads the spec in progress: `{stage, locked, branch, spec_dir, files: [{path, content}], revision, remote: {changed: bool, commits?, diffstat?}, markers: [..], clarified: bool, proposal_updated_since_start: bool, pane_changes?: diff since the model's last read}` | `no_spec_for_proposal`, `spec_state_inconsistent` |
-| `write_spec_file` | `repo`, `number`, `path` (relative to `spec_dir`), `content` (at most 256 KiB), `base_revision` | Writes one file in the worktree. Returns the new `revision`, and notifies an open pane | `path_outside_feature`, `document_locked`, `pane_edit_pending` (the revision moved), `stage_transition_refused` (the stage is not `spec-in-progress`) |
+| `write_spec_file` | `repo`, `number`, `path` (relative to `spec_dir`), `content` (at most 256 KiB), `base_revision` | Writes one file in the worktree. Returns the new `revision`; an open pane shows it at its next poll (research R9) | `path_outside_feature`, `document_locked`, `pane_edit_pending` (the revision moved), `stage_transition_refused` (the stage is not `spec-in-progress`) |
 | `approve_spec` | `repo`, `number`, `base_revision` | Checks (R15), checks the remote (R8), commits the feature folder, publishes the feature branch, then moves the stage to `ready-to-plan` with its trailer. Returns `{commit, branch, spec_url, stage}` | `spec_has_markers`, `spec_not_clarified`, `branch_changed`, `git_identity_missing`, `publish_failed` (commit kept local; stage unchanged), `pane_edit_pending` |
 | `reopen_spec` | `repo`, `number` | `ready-to-plan` → `spec-in-progress`, with its trailer; records the reopen date | `document_locked`, `stage_transition_refused` |
 | `withdraw_spec` | `repo`, `number`, `to`: `ready`\|`draft` | → `to`, with a `withdrawn` trailer. Deletes nothing: the worktree, the branch (local and published) and the state file stay; the state file is marked withdrawn | `document_locked`, `stage_transition_refused` |
@@ -30,9 +30,10 @@ changes nothing, no token in a result, and `repo` matched case-insensitively.
 
 | Tool | Visibility | Parameters | Does |
 | --- | --- | --- | --- |
-| `show_document` | model | `repo`, `kind`: `proposal`\|`spec`, `number?`, `draft_id?` | Opens `ui://pdlc/document-pane.html` on the document (`_meta.ui.resourceUri`). For a proposal not yet filed, it creates a draft and returns its `draft_id`. Returns `{revision, read_only}` |
+| `show_document` | model | `repo`, `kind`: `proposal`\|`spec`, `number?`, `draft_id?` | Opens `ui://pdlc/document-pane.html` on the document (`_meta.ui.resourceUri`); the page then asks the host for the `fullscreen` display mode, the right-hand pane (research R9). For a proposal not yet filed, it creates a draft and returns its `draft_id`. Returns `{revision, read_only}` |
 | `get_proposal_draft` | model | `repo`, `draft_id` or `number` | Reads a proposal draft: sections, priority, `revision`, and `pane_changes` since the model's last read |
 | `save_pane_edit` | **app only** (`_meta.ui.visibility: ["app"]`) | `repo`, `kind`, `ref`, `base_revision`, then `path` + `content` (spec) or `sections` + `priority?` (proposal) | Writes the edit (R9), returns the new `revision`. Refuses `document_locked` and `pane_edit_pending` |
+| `read_pane_document` | **app only** | `repo`, `kind`, `ref` | Returns the document's current content, `revision` and `read_only`, read from disk. The page polls it every 2 s; it changes nothing |
 
 ## Changed 014 tools
 

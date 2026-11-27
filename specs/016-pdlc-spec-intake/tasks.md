@@ -83,7 +83,7 @@ on it. A measurement records what was observed, in research.md, under the R it b
   - [x] `openwiki/decisions/adr-0005-operator-tool-mcp-servers.md:31` (pdlc token scope) → no change: an ADR summary records the decision as made; T001 adds the "superseded in part" note
   - [x] `openwiki/invariants/secrets-management.md:20-21,24`, `docs/runbooks/ci.md:209,220`, `docs/repo-foundation-setup.md:278,318-321` (other tokens' `read:repository`) → no change: those tokens are unchanged. `ci.md` gains the workflow in T079, and `CI_DIGEST_TOKEN`'s use changes only if T006 shows the fallback is needed (then → T078)
   - [x] `.claude/skills/speckit-git-commit/SKILL.md`, `.claude/skills/speckit-specify/SKILL.md`, `.specify/extensions/**` (`after_specify` as a generic hook name) → no change: Spec Kit core text about hook points, not BELAY's hook
-- [ ] T003 Measure MCP Apps in Claude Desktop on the workstation (research R9, items 1 to 3), with a throwaway
+- [X] T003 Measure MCP Apps in Claude Desktop on the workstation (research R9, items 1 to 3), with a throwaway
   extension `pdlc-pane-probe` built in the scratchpad. Never commit it. Record in `specs/016-pdlc-spec-intake/research.md`
   R9:
   - whether an app renders **beside** the chat, and how it asks for that;
@@ -91,6 +91,9 @@ on it. A measurement records what was observed, in research.md, under the R it b
   - whether the page can be told to re-render.
   - **Done when**: R9 says "Measured on the host (date)" for all three. If (1) fails, the maintainer is asked about
     FR-035 and FR-036 (spec Assumptions), and the answer is recorded before Phase 10 starts.
+  - **Measured 2026-11-27, three passes**: (1) yes, via `ui/request-display-mode fullscreen`; (2) yes, but served by
+    a different server process from the model's, so all state is on disk; (3) by polling an app-only read tool. Adds
+    `read_pane_document` (app-only) to the contract; Phase 10 tasks implement it with the pane
 - [ ] T004 [P] Measure the Spec Kit scripts on the workstation (R1 unverified 1 and 2):
   - `pwsh` present, or Windows PowerShell 5.1 running `create-new-feature-branch.ps1 -DryRun -Json` and
     `resolve-template.ps1 spec-template -Json` in a copy of BELAY;
@@ -686,7 +689,10 @@ FR-036.
 - [ ] T059 [P] [US9] Test: the pane module (R9). In `mcp-servers/pdlc/tests/unit/document-pane.test.mjs`:
   - `show_document` attaches `_meta.ui.resourceUri` `ui://pdlc/document-pane.html` and returns `revision` and
     `read_only` (data-model.md `Pane document.read_only`);
-  - `save_pane_edit` is announced with `_meta.ui.visibility: ["app"]`;
+  - `save_pane_edit` and `read_pane_document` are announced with `_meta.ui.visibility: ["app"]`;
+  - **two module instances over one clone root** (standing in for the two server processes T003 measured): a save
+    through one is seen by `read_pane_document` and `get_spec` through the other, and the module holds no state
+    between calls (revision and `model_read_snapshot` come from disk);
   - it writes through the R5 path guard, or to the draft store only;
   - it refuses `document_locked` and `pane_edit_pending` (data-model.md `Pane document.revision`);
   - drafts are deleted after a successful create or update.
@@ -706,14 +712,18 @@ FR-036.
   - one file;
   - no external `src` or `href`;
   - an inline script with no `eval` or `new Function`;
-  - the JSON-RPC message names it uses match the measured protocol subset from T003;
+  - the JSON-RPC message names it uses match the measured protocol subset from T003 (`ui/initialize`,
+    `ui/notifications/initialized`, `ui/notifications/tool-result`, `ui/notifications/host-context-changed`,
+    `ui/request-display-mode`, `tools/call`), and it never uses `ui/update-model-context`;
+  - it requests `fullscreen` on load, and states it is inline when `fullscreen` is not offered;
+  - it polls `read_pane_document` every 2 s and never overwrites text the author is typing;
   - a read-only mode disables every editor.
   - **Scenarios covered**: US9-AC4, M7
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/document-pane-page.test.mjs` → expected: failing —
     `ENOENT ui/document-pane.html`
 - [ ] T062 [US9] Implement `mcp-servers/pdlc/src/document-pane.mjs` (data-model.md `Pane document.kind`: `proposal` or
   `spec` only; any other value is refused by the zod schema), the resource registration in `src/server.mjs`,
-  `show_document`, `get_proposal_draft` and `save_pane_edit` in the contract and manifest, and `draft_revision` on
+  `show_document`, `get_proposal_draft`, `save_pane_edit` and `read_pane_document` in the contract and manifest, and `draft_revision` on
   `create_proposal` and `update_proposal` (prerequisite: T059, T060 RED)
   - **Verify GREEN**: same commands as T059 and T060 → expected: 0 failures
 - [ ] T063 [US9] Write `mcp-servers/pdlc/ui/document-pane.html` (M7), and include `ui/` in `scripts/pack.mjs`'s stage

@@ -51,6 +51,7 @@ match `git worktree list`, the server reports `spec_state_inconsistent` and writ
 | `ref` | for a proposal, its number or a `draft_id` before creation; for a spec, the proposal number |
 | `revision` | as above. For a proposal draft, a hash of the draft file |
 | `read_only` | true for a spec at **in engineering** or later, or a closed proposal (FR-037) |
+| `model_read_snapshot` | the document as the model last read it, a file under `<clone_root>/.pdlc-drafts/<Repo>/` written by `get_spec` and `get_proposal_draft`; `pane_changes` is the diff from it. On disk, never in memory: two server processes serve one session (research R9) |
 
 Proposal drafts live at `<clone_root>/.pdlc-drafts/<Repo>/<draft_id or number>.json`. They hold the nine sections and
 the priority, and are deleted by the server after a successful `create_proposal` or `update_proposal` that included

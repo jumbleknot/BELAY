@@ -311,8 +311,15 @@ the model's context.
   takes `base_revision`, and the server refuses `pane_edit_pending` when the document has moved past it. The model then
   re-reads with `get_spec` or `get_proposal_draft`, which returns the diff of what the pane changed. The skill tells the
   author what it took in, and retries. This is the same stale-write pattern as 014 R9.
-- After every model-side write, the server notifies the pane through the host so it re-renders (FR-035: the pane
-  reflects chat edits).
+- **The pane polls; nothing is pushed** (T003). The page calls a second app-only tool, `read_pane_document`, every
+  2 s and re-renders when the revision moved, so a chat edit appears within one poll (FR-035). The server cannot
+  notify the page: the model's calls and the page's calls are served by **different server processes** (measured).
+- **No state in memory between calls** (T003). Revisions are hashes of the files on disk; the "what the model last
+  read" snapshot behind `pane_changes` is a file under `.pdlc-drafts/` (R5). Either process may serve any call.
+- **Beside the chat**: on load the page asks `ui/request-display-mode {mode: "fullscreen"}`, which moves it to the
+  right-hand pane (measured). If `availableDisplayModes` lacks `fullscreen` or the request fails, it stays inline and
+  says so, and the skill tells the author edits go through the chat (FR-037 fallback).
+- `ui/update-model-context` is not used: the model did not see it (measured).
 - **Read-only (FR-037)**: `show_document` opens the pane read-only for a spec at **in engineering** or later and for a
   closed proposal. `save_pane_edit` refuses `document_locked` regardless of what the page sends.
 
@@ -341,7 +348,15 @@ server as `local-agent-mode-<extension display name>` 1.0.0 and advertises
 | `ui/update-model-context` | Answered `ok`, but the model's next turn did not see the text |
 | `ui/message` | **Works**: the page's message appeared in the chat as a user message, and the model acted on it |
 
-**What this means for the design (pending the disk-sharing check, T003 third pass)**: the server must keep **no state
+**Third pass, measured on the host 2026-11-27** (probe 0.0.2, state in one file under the user's home folder):
+the model's calls were served by pid **39296** and the page's by pid **33224**, both `win32`, Node **v24.22.3**, both
+reporting the same state file `C:\Users\<user>\.pdlc-pane-probe-state.json`. The page saved `pane edit B` (pid
+33224); the model's next `probe_get_state` (pid 39296) returned `pane edit B`, `lastWriter: pane`. So the two
+processes **share the workstation's disk**, and state kept in files crosses between them. (Whether the open page's
+next poll showed the model's following write was not reported; the same two-process path passed in the dev
+container with the 0.0.2 build.)
+
+**What this means for the design (measured, T003)**: the server must keep **no state
 in memory between calls**. Every revision, draft and "what the model last read" snapshot lives in files under the
 clone root, which both processes can read, if they share the workstation's disk. "The server notifies the pane"
 is not possible: the page **polls** an app-only read tool instead, and moves itself beside the chat with
