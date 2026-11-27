@@ -209,11 +209,18 @@ with BELAY's `.specify/`, and by hand per quickstart §2 step 1.
   - **Scenarios covered**: FR-005, US7-AC1 (inspection half)
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/spec-kit-runner.test.mjs` → expected: failing —
     `Cannot find module '../../src/spec-kit-runner.mjs'`
-- [ ] T018 [P] [US1] Test: running the scripts (R1). In the same file, with an injected `execFile` double, assert:
-  - the dry-run argv: interpreter chosen by `script`, a fixed script path inside the copy, `-DryRun -Json -ShortName`;
+- [ ] T018 [P] [US1] Test: running the scripts (R1). In the same file, with injected `execFile` and git doubles,
+  assert:
+  - the call order: clone a scratch clone at `<clone_root>/.pdlc-scratch/<Repo>-<random>` with
+    `clone --shared --no-checkout <copy path>`, then copy the remote refs into it, then `checkout --detach`;
+  - the script's `cwd` is **inside the scratch clone**, never the copy or a worktree;
+  - the dry-run argv: interpreter chosen by `script`, a fixed script path inside the scratch clone,
+    `-DryRun -Json -ShortName`;
   - the child environment has **no** `GIT_CONFIG_*`, `PDLC_FORGE_TOKEN` or `Authorization` value;
   - `BRANCH_NAME` and `FEATURE_NUM` parsed;
-  - a script that changed `git status` or `git worktree list` is refused, and its result discarded.
+  - the scratch folder is deleted on success **and** on failure;
+  - a leftover scratch folder from an earlier crash is removed at the next `start_spec` for that repository;
+  - a scratch path outside `.pdlc-scratch/` is refused `path_outside_feature`.
   - **Scenarios covered**: US1-AC1, US8-AC6 (token never in a child that runs repository code)
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/spec-kit-runner.test.mjs` → expected: failing — as T017
 - [ ] T019 [P] [US1] Test: spec files and the path guard (R5). In `mcp-servers/pdlc/tests/unit/spec-files.test.mjs`:
@@ -243,7 +250,9 @@ with BELAY's `.specify/`, and by hand per quickstart §2 step 1.
   - `start_spec` writes `spec.md` from `TEMPLATE_CONTENT` with the Input line
     `Proposal #<n>: <title>` plus the body (FR-003);
   - the stage moves to `spec-in-progress` with a trailer `via Claude Desktop`;
-  - `write_spec_file` refuses outside `spec-in-progress`.
+  - `write_spec_file` refuses outside `spec-in-progress`;
+  - `get_spec` reports `proposal_updated_since_start: true` after the proposal's `updated_at` moves past the
+    value saved at start (data-model.md `Spec in progress.proposal_updated_at_start`; spec Edge Cases).
   - **Scenarios covered**: US1-AC1, US1-AC2, US1-AC3, US1-AC4, US1-AC5
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/tools.test.mjs` then
     `node --test mcp-servers/pdlc/tests/unit/tool-contract.test.mjs` → expected: failing — `unknown tool start_spec`
@@ -307,14 +316,16 @@ plan.
 
 - [ ] T030 [P] [US2] Test: approval checks and order (R15). In `mcp-servers/pdlc/tests/unit/spec-approval.test.mjs`:
   - `spec_has_markers` lists each marker;
-  - `spec_not_clarified` when there is no `## Clarifications` / `### Session` dated on or after
-    `last_start_or_reopen` (data-model.md `Spec in progress.last_start_or_reopen`);
-  - the "No questions" session line counts as clarified;
+  - `spec_not_clarified` unless `spec.md` has more `### Session` headings under `## Clarifications` than
+    data-model.md `Spec in progress.sessions_at_start_or_reopen`, including on a same-day reopen;
+  - the "No questions" session line counts as a session;
+  - the exact heading shape the repository's clarify step writes (`## Clarifications`, then
+    `### Session YYYY-MM-DD`) is accepted, and a near-miss (`## Clarification`, `#### Session`) is not (US2-AC1);
   - `git_identity_missing`;
   - the order is commit → push → stage, and the stage does not move when the push fails (`publish_failed`, commit
     kept);
   - the commit message shape is as in R4.
-  - **Scenarios covered**: US2-AC4, US2-AC5, US2-AC6, FR-008, FR-009
+  - **Scenarios covered**: US2-AC1, US2-AC4, US2-AC5, US2-AC6, FR-008, FR-009
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/spec-approval.test.mjs` → expected: failing —
     `Cannot find module '../../src/spec-approval.mjs'`
 - [ ] T031 [US2] Test: the `approve_spec` tool in `tools.test.mjs`, and the contract in `tool-contract.test.mjs`:
@@ -345,7 +356,10 @@ plan.
     buttons, recording the session (or the "No questions" line);
   - review section by section, showing each edit before keeping it;
   - **Approve** relays refusals in plain words (US2-AC2, US2-AC4, US2-AC6);
-  - extend `skill-master.test.mjs` for `approve_spec`. RED first: the test names `approve_spec` before the skill does.
+  - extend `skill-master.test.mjs`: the skill names `approve_spec`, and its clarify step names `## Clarifications`,
+    `### Session` and the "No questions" line (US2-AC1, finding U6).
+  - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/skill-master.test.mjs` → expected: failing —
+    `skill does not name approve_spec`
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/skill-master.test.mjs` → expected: 0 failures
 
 **Checkpoint**: proposal to approved, published spec, entirely in Claude Desktop (SC-001 machine side).
@@ -392,7 +406,8 @@ the spec.
 ### Implementation for User Story 3
 
 - [ ] T039 [US3] Implement the `stage` verb and the `ready` changes in `scripts/backlog.mjs`, using
-  `scripts/lib/stage-trailer.mjs`. Remove the `close-proposal` verb and its `--help` text (prerequisite: T036 RED)
+  `scripts/lib/stage-trailer.mjs`. `stage` never closes an issue (data-model.md `Proposal issue.state`: closed only at
+  merged). Remove the `close-proposal` verb and its `--help` text (prerequisite: T036 RED)
   - **Verify GREEN**: `node --test scripts/__tests__/backlog.test.mjs` → expected: 0 failures
 - [ ] T040 [US3] Replace `.claude/skills/speckit-belay-close-proposal/` with
   `.claude/skills/speckit-belay-spec-stage/SKILL.md`, per contracts/backlog-stage-cli.md "Hook". The `plan.md`
@@ -405,8 +420,11 @@ the spec.
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/tools.test.mjs` → expected: 0 failures
 - [ ] T042 [US3] Integration: in `spec-lifecycle.integration.test.mjs`, check out the published branch in a second
   clone and run `.specify/scripts/powershell/setup-plan.ps1 -Json` there. It resolves `specs/003-<slug>/` with no
-  `feature.json` and no fix-up (R5, SC-002 machine half). RED first by asserting before T027's fixture writes the
-  folder.
+  `feature.json` and no fix-up (R5, SC-002 machine half).
+  - **Scenarios covered**: US3-AC2, SC-002, FR-028
+  - **Verify RED**: write the test before the approve step it depends on publishes in the fixture. Run
+    `node --test mcp-servers/pdlc/tests/integration/spec-lifecycle.integration.test.mjs` → expected: failing —
+    `setup-plan.ps1: FEATURE_SPEC not found` (the branch has no `specs/003-<slug>/spec.md` yet)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/integration/spec-lifecycle.integration.test.mjs` → expected:
     0 failures
 
@@ -437,7 +455,14 @@ codes" is observed.
   - In `secret-sinks.test.mjs`, the token is absent from every new tool's result, the audit lines, the
     `execFile` argv, the Spec Kit child's environment, the worktree's `.git/config` and the state file; spec text is
     absent from argv (commit messages carry no spec text).
-  - **Scenarios covered**: US8-AC5, US8-AC6, FR-024
+  - **Refusal changes nothing** (FR-025, finding U1): add `mcp-servers/pdlc/tests/helpers/assert-unchanged.mjs`. It
+    snapshots the fake forge's write log and, for git, the refs, `git status --porcelain` and the hashes of the
+    feature folder's files. Every refusal test added in Phases 3 to 11 wraps its call in it, and it fails on any
+    difference.
+  - **One audit line per call** (constitution Logging, finding U7): extend 014's audit test, which loops over the
+    contract, to every new tool, including the app-only `save_pane_edit`. Each call, allowed or refused, emits
+    exactly one `audit` line before its result.
+  - **Scenarios covered**: US8-AC5, US8-AC6, FR-024, FR-025
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/write-guards.test.mjs` and
     `node --test mcp-servers/pdlc/tests/unit/secret-sinks.test.mjs` → expected: failing — `unknown tool
     take_latest_spec` (the sink sweep iterates the contract)
@@ -446,8 +471,10 @@ codes" is observed.
   - `take_latest_spec`, with one conflicting and one clean edit: the conflict is reported and the clean edit is
     merged;
   - approve again: published;
-  - a direct push to the bare remote's `main` through the server's git runner is refused `push_target_refused`.
-  - **Scenarios covered**: US8-AC2, US8-AC4, SC-011
+  - a direct push to the bare remote's `main` through the server's git runner is refused `push_target_refused`;
+  - each refusal above leaves the bare remote's refs, the copy and the worktree byte-identical, checked with the
+    T044 helper against real git (FR-025).
+  - **Scenarios covered**: US8-AC2, US8-AC4, SC-011, FR-025
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/integration/spec-lifecycle.integration.test.mjs` → expected:
     failing — `unknown tool take_latest_spec`
 
@@ -461,7 +488,9 @@ codes" is observed.
   - **Verify GREEN**: same commands as T044 → expected: 0 failures; then `pnpm nx run pdlc:test` passes
 - [ ] T048 [US8] Skill: on `branch_changed`, show what changed and offer **Take latest** or **Stop**. Show conflicts
   for the author to resolve, and never publish until they approve again. Extend `skill-master.test.mjs` for
-  `take_latest_spec` (RED first).
+  `take_latest_spec`.
+  - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/skill-master.test.mjs` → expected: failing —
+    `skill does not name take_latest_spec`
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/skill-master.test.mjs` → expected: 0 failures
 
 **Checkpoint**: every guard in FR-020 to FR-024 has an observed refusal (SC-006).
@@ -514,7 +543,9 @@ codes" is observed.
 
 - [ ] T052 [P] [US4] Implement `scripts/lib/collect-test-results.mjs` (prerequisite: T049 RED)
   - **Verify GREEN**: `node --test scripts/__tests__/collect-test-results.test.mjs` → expected: 0 failures
-- [ ] T053 [US4] Implement `scripts/feature-merged.mjs` and `scripts/feature-merged.config.json`. Attach the reporter
+- [ ] T053 [US4] Implement `scripts/feature-merged.mjs` and `scripts/feature-merged.config.json`. Cite
+  data-model.md `Merge record.proposal` (exactly one marker, or none) and `Proposal issue.state` (the close happens
+  only here, at merged). Attach the reporter
   by the path T007 chose; if that is the opt-in `--report`, add it to `scripts/project.json` `test` and
   `mcp-servers/pdlc/project.json` `test` and `integration`, keeping default output unchanged. Add the
   `scripts:feature-merged` Nx target (prerequisite: T050 RED; T052 GREEN)
@@ -538,8 +569,9 @@ codes" is observed.
 
 - [ ] T055 [P] [US5] Test: `reopen_spec`. In `tools.test.mjs` and `tool-contract.test.mjs`:
   - `ready-to-plan` → `spec-in-progress` with the reopen text;
-  - `last_start_or_reopen` updated, so the clarification check re-applies (data-model.md
-    `Spec in progress.last_start_or_reopen`);
+  - `last_start_or_reopen` and `sessions_at_start_or_reopen` are reset to the current date and session count, so
+    approving again needs a new clarification session (data-model.md `Spec in progress.last_start_or_reopen`,
+    `Spec in progress.sessions_at_start_or_reopen`);
   - re-approval comment says "re-approved";
   - `document_locked` at `in-engineering`.
   - **Scenarios covered**: US5-AC1, US5-AC2, US5-AC3, FR-017
@@ -610,7 +642,8 @@ FR-036.
   - **Scenarios covered**: US9-AC4, M7
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/document-pane-page.test.mjs` → expected: failing —
     `ENOENT ui/document-pane.html`
-- [ ] T062 [US9] Implement `mcp-servers/pdlc/src/document-pane.mjs`, the resource registration in `src/server.mjs`,
+- [ ] T062 [US9] Implement `mcp-servers/pdlc/src/document-pane.mjs` (data-model.md `Pane document.kind`: `proposal` or
+  `spec` only; any other value is refused by the zod schema), the resource registration in `src/server.mjs`,
   `show_document`, `get_proposal_draft` and `save_pane_edit` in the contract and manifest, and `draft_revision` on
   `create_proposal` and `update_proposal` (prerequisite: T059, T060 RED)
   - **Verify GREEN**: same commands as T059 and T060 → expected: 0 failures
@@ -619,8 +652,9 @@ FR-036.
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/document-pane-page.test.mjs` → expected: 0 failures;
     then `pnpm nx run pdlc:pack` produces a bundle containing `ui/document-pane.html`
 - [ ] T064 [US9] Skill: open the pane with `show_document` when reviewing or editing; take in `pane_changes` and say
-  what was taken in; fall back to the chat when the pane is unavailable (FR-037). Extend `skill-master.test.mjs` (RED
-  first).
+  what was taken in; fall back to the chat when the pane is unavailable (FR-037). Extend `skill-master.test.mjs`.
+  - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/skill-master.test.mjs` → expected: failing —
+    `skill does not name show_document`
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/skill-master.test.mjs` → expected: 0 failures
 
 ---
@@ -651,13 +685,18 @@ FR-036.
 - [ ] T067 Bump `mcp-servers/pdlc/manifest.json` and `package.json` to **0.2.0**. Update `long_description` and the
   `forge_token` description (`write:issue` + `write:repository`, R6). Extend `check_setup` with the stage labels and
   `default_branch_protected`, test first in `setup-check.test.mjs` (RED: `expected missing_labels to include
-  status/ready-to-plan`).
-  - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/setup-check.test.mjs` and
+  status/ready-to-plan`). Also, test first in `proposals.test.mjs`, `list_proposals` and `get_proposal` take the
+  four stage ids in their `status` filter and result (contracts/tools.md "Changed 014 tools"; finding U5). RED:
+  `status: Invalid enum value 'ready-to-plan'`.
+  - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/setup-check.test.mjs`,
+    `node --test mcp-servers/pdlc/tests/unit/proposals.test.mjs` and
     `node --test mcp-servers/pdlc/tests/unit/manifest.test.mjs` → expected: 0 failures; then `pnpm nx run pdlc:lint`
 - [ ] T068 [P] Extend `pdlc:integration-forge` (`mcp-servers/pdlc/tests/integration-forge/`) with the full lifecycle
   against `ci-smoke`, including a push to its protected `main` refused by the forge (quickstart §1). Test branches are
-  named `pdlc-it-<run id>-…`, and the helper removes them after the operator agrees in the runbook.
-  - **Done when**: `pnpm nx run pdlc:integration-forge` passes with 0 skipped, run by the operator
+  named `pdlc-it-<run id>-…`, and the helper removes them after the operator agrees in the runbook. The test prints
+  how long `start_spec` took, against the plan's 30 s target (finding P1).
+  - **Done when**: `pnpm nx run pdlc:integration-forge` passes with 0 skipped, run by the operator, and the
+    `start_spec` time is recorded in `docs/runbooks/pdlc.md`
 - [ ] T069 [P] Guard test: nothing in BELAY's tooling references the server (014's independence guard). Extend `scripts/__tests__/pdlc-independence.guard.test.mjs` to
   `scripts/feature-merged.mjs`, `scripts/lib/*`, `.forgejo/workflows/feature-merged.yml` and
   `.claude/skills/speckit-belay-spec-stage/` (FR-031). RED by naming a new file before it exists, then GREEN.
@@ -718,7 +757,9 @@ FR-036.
 - [ ] T082 Run [quickstart.md](quickstart.md) §2 to §7 on the workstation and BELAY after the bundle is rebuilt and
   re-uploaded. §4 (merge) and §7 (server absent) complete only after this PR merges and with the next proposal; record
   them on the backlog item that tracks this feature's acceptance.
-  - **Done when**: each section's expected outcome is observed and noted with its date
+  - **Done when**: each section's expected outcome is observed and noted with its date. Note the observed
+    `start_spec` time (§2 step 1) and the `feature-merged` run time (§4) against the plan's performance goals
+    (finding P1)
 - [ ] T083 **Open the PR** from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
   1. `git push origin HEAD:016-pdlc-spec-intake`
   2. `node scripts/forge-pr.mjs open --head 016-pdlc-spec-intake --title "Feature 016: PDLC spec intake (proposal item #91)" --body-file <file>`

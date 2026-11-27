@@ -39,12 +39,26 @@ the local copy, as Claude Code does. Each step that has to be right every time i
 So the repository's numbering, naming template, template overrides, presets and prompt wording all apply, and a Spec
 Kit upgrade in the target repository changes the Claude Desktop route with no change to BELAY.
 
-**The token never reaches repository code.** The dry run calls `git ls-remote --heads <remote>` (read: line 136),
-which would need the credential. Instead the server first fetches every remote head into `refs/remotes/origin/*`
-(a blobless fetch, so it is cheap), and runs the script with **no** `GIT_CONFIG_*` authentication in its environment.
-Its `ls-remote` then fails quietly (it is wrapped in `try` and `2>$null`), and its `git branch -a` scan sees every
-remote branch from the fresh fetch. This prevents the number clash this feature itself hit: number 015 was taken on
-the forge by another session's branch.
+**Scripts run only in a disposable scratch clone** (constitution, Operator-Tool MCP Servers: every write is checked
+by an allowlist *before* it is attempted). A dry run is designed not to write, but that is the script's promise, not
+a check. So the server never runs repository code in the local copy or a worktree. For each script call it:
+
+1. fetches every remote head into the copy's `refs/remotes/origin/*` (blobless, so it is cheap), with the credential,
+   through its own git runner;
+2. makes a scratch clone at `<clone_root>/.pdlc-scratch/<Repo>-<random>/` with
+   `clone --shared --no-checkout <copy path> <scratch>`. Its `origin` is the **local path**, so nothing in it can
+   reach the forge, and it holds no credential;
+3. copies the remote-tracking refs into it with `fetch <copy path> +refs/remotes/origin/*:refs/remotes/origin/*`,
+   so the script's `git branch -a` scan sees every forge branch;
+4. runs `checkout --detach origin/<default>` in the scratch clone;
+5. runs the script there, with **no** `GIT_CONFIG_*` authentication in its environment. Its
+   `git ls-remote --heads origin` reaches only the local copy and answers harmlessly;
+6. reads the JSON output, then deletes the scratch folder.
+
+The only place the script can write is the scratch folder, and the scratch folder is an allowlisted write target
+(R5). Nothing it does can reach the copy, a worktree or the forge. The copy's objects are shared read-only through
+`alternates`: git writes new objects into the scratch clone's own store, never into the copy's. This prevents the
+number clash this feature itself hit: number 015 was taken on the forge by another session's branch.
 
 **Script flavour**: `.specify/init-options.json` `script` chooses the interpreter. For `ps`, the server runs `pwsh` if
 it is on `PATH`, otherwise Windows PowerShell (`powershell.exe`). For `sh`, it runs Git for Windows' `bash.exe`. Every
@@ -65,6 +79,8 @@ call is `execFile` with an argument array and a fixed script path inside the cop
 - **Run the branch script for real.** Its `git checkout -b` and `git fetch --all --prune` would be writes that the
   server's allowlist cannot see before they happen, which breaks the constitution's operator-tool write-allowlist
   rule. It would also need the token in the script's environment.
+- **Run the dry run in the local copy and check `git status` afterwards.** That checks after the write, not before.
+  Rejected at `/speckit-analyze` (finding C1).
 
 ## R2: Where a spec in progress lives: one worktree per feature
 
@@ -109,6 +125,9 @@ result.
 | Call | Shape | Why |
 | --- | --- | --- |
 | Fetch every head | `fetch origin +refs/heads/*:refs/remotes/origin/*` | Numbering sees every remote branch (R1) |
+| Make the scratch clone | `clone --shared --no-checkout <copy path> <clone_root>/.pdlc-scratch/<Repo>-<random>` | R1. The source must be the copy's own path, and the destination must be under `.pdlc-scratch/` |
+| Copy remote refs into scratch | `fetch <copy path> +refs/remotes/origin/*:refs/remotes/origin/*`, run in the scratch clone | R1 |
+| Check out scratch | `checkout --detach origin/<default>`, run in the scratch clone only | R1 |
 | Create the worktree | `worktree add -b <feature-branch> <path> origin/<default>` | R2 |
 | List worktrees | `worktree list --porcelain` | Resume, and a foreign-folder check |
 | Read a file at a commit | `show <sha>:<path>` | Three-way re-apply (R8) |
@@ -142,8 +161,18 @@ prompts mention are not written: `.specify/feature.json` is gitignored, and setu
 branch name when it is missing. Task "measure SC-002" confirms this on a fresh checkout. If a target repository's
 prompt needs another file, adding it is a change to this list and its test, as FR-020 requires.
 
-The pane's draft store (R9) writes only under `<clone_root>/.pdlc-drafts/<Repo>/`. Backups before a take-latest (R8)
-go only to `<clone_root>/.pdlc-backups/<Repo>/<NNN-slug>/<timestamp>/`.
+Other server writes go only to these places:
+
+| Write | Path |
+| --- | --- |
+| The pane's draft store (R9) | `<clone_root>/.pdlc-drafts/<Repo>/` |
+| Backups before a take-latest (R8) | `<clone_root>/.pdlc-backups/<Repo>/<NNN-slug>/<timestamp>/` |
+| The three-way merge's temporary `base`, `ours` and `theirs` files (R8) | `<clone_root>/.pdlc-backups/<Repo>/<NNN-slug>/<timestamp>/merge/`, kept with the backup |
+| The scratch clones the Spec Kit scripts run in (R1) | `<clone_root>/.pdlc-scratch/<Repo>-<random>/`. Created and deleted by the server; the one folder repository code may write to |
+| The state file (data-model.md) | `<clone_root>/.pdlc-specs/<Repo>/<NNN-slug>.state.json` |
+
+Every path is resolved and checked against this table before the write. A scratch folder left behind by a crash is
+deleted on the next `start_spec` for that repository.
 
 ## R6: The widened credential (M5)
 
@@ -383,9 +412,13 @@ only, and says why in plain words.
 
 **Decision**: `approve_spec` refuses:
 - `spec_has_markers`: any `[NEEDS CLARIFICATION` in `spec.md`, with the list of markers;
-- `spec_not_clarified`: `spec.md` has no `## Clarifications` section with at least one `### Session` heading dated on or
-  after the spec's last start or reopen. The clarify prompt writes exactly that section. When clarify finds nothing to
-  ask, the skill records a session with the line `- No questions: no critical ambiguity found.`
+- `spec_not_clarified`: `spec.md`'s `## Clarifications` section does not have **more** `### Session` headings than it
+  had at the last start or reopen. The count is kept in the state file as `sessions_at_start_or_reopen` (data-model.md).
+  The clarify prompt writes exactly that section. When clarify finds nothing to ask, the skill still adds a session,
+  with the line `- No questions: no critical ambiguity found.`
+
+  A count, not a date, so a same-day reopen still needs a new session. Rejected: comparing session dates with the
+  reopen date, because session headings carry only a date (`/speckit-analyze` finding A1).
 
 Approval then runs: commit (R4) → push → stage **ready to plan** with trailer (R7). The stage moves only after the push
 succeeds. A failed push leaves the commit local and the stage unchanged, and the next approve goes through R8.

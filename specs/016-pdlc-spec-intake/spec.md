@@ -311,8 +311,10 @@ changes in the saved proposal or the committed spec.
 - **Test counts cannot be determined at merge** (the test run did not report, or the feature's tests cannot be told
   apart): the closing comment says which count is unknown and why. It never reports zero for a count it could not
   read.
-- **The local copy has uncommitted work on the feature branch from an interrupted session**: resume shows it to the
-  author and offers to keep or discard it; discarding never touches a published commit.
+- **A session ends part-way through an edit**: edits are kept between sessions as unpublished changes. Resume shows
+  the author what changed since the last approval, or since the start if the spec was never approved, and continues
+  from there. (Reworded at `/speckit-analyze`, finding U4: unpublished edits are the normal state between sessions,
+  so there is nothing separate to keep or discard.)
 - **The feature number the specify step would take is already used on the forge** by another branch (another person's
   feature): the next free number is used, as the repository's own specify step would choose with the forge's branches
   in view.

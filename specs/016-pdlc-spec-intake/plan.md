@@ -57,7 +57,8 @@ ADR-0006 records the amendments to 014's decisions and is ordered first (FR-034,
 - the forge (issues, labels, comments, branches);
 - per-spec worktrees under `<clone_root>/.pdlc-specs/`;
 - pane drafts under `<clone_root>/.pdlc-drafts/`;
-- backups under `<clone_root>/.pdlc-backups/`.
+- backups under `<clone_root>/.pdlc-backups/`;
+- short-lived scratch clones for the Spec Kit scripts under `<clone_root>/.pdlc-scratch/` (R1).
 
 The server writes JSON state files next to the worktrees (data-model.md).
 
@@ -101,7 +102,7 @@ file, one workflow, one CLI verb and two hooks.
 | AI Assistant Constraints: doc-impact sweep | ✅ planned | Candidate terms below. `/speckit-tasks` runs the sweep |
 | Behaviour-descriptive identifiers | ✅ | Modules are named for behaviour (`spec-worktree.mjs`, `stage-trailer.mjs`, `spec-kit-runner.mjs`, `count-feature-tests`…). Requirement IDs appear only in provenance comments. Tool names, labels and the trailer are external contracts, annotated as such |
 | Security: narrowest-scope credential | ✅ with M5 | `write:repository` is the narrowest forge scope that can push. It is bounded by the push guard and branch protection. The CI job uses the run token first (M6). The token is never in a child that runs repository code (R1) |
-| Security: write allowlist (Operator-Tool MCP Servers) | ✅ | Every git shape (R4) and file path (R5) is enumerated and checked before the write. The Spec Kit scripts run only as a dry run and a read-only resolver. Their effect is verified afterwards: `git status` and `git worktree list` unchanged, and the run refused if not |
+| Security: write allowlist (Operator-Tool MCP Servers) | ✅ | Every git shape (R4) and file path (R5) is enumerated and checked before the write. The Spec Kit scripts run only in a disposable scratch clone under `<clone_root>/.pdlc-scratch/`: its origin is the local copy, it holds no credential, and it is deleted afterwards. The scratch folder is the one allowlisted write target for repository code, so nothing a script does can reach the copy, a worktree or the forge (R1; `/speckit-analyze` C1) |
 | Security: input validation, safe errors | ✅ | zod on every tool, including the app-only one. Size caps. Refusals carry no stack, path outside the clone root, or payload |
 | Security: execution of repository code | ✅ justified | The two Spec Kit scripts come from the operator's own repository, at a commit on its protected default branch. They run with `execFile`, a fixed path, no shell and no credential in the environment. This is recorded in ADR-0006 and in Complexity Tracking |
 | Security: dependency security | ✅ | No new package |
