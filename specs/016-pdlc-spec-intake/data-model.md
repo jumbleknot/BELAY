@@ -65,7 +65,8 @@ Built by `scripts/feature-merged.mjs` for one push to the default branch:
 | `merge_sha`, `parent_sha` | the pushed commit and its first parent |
 | `pr` | number, from the forge or the merge commit title |
 | `proposal` | the one `Proposal #<n>` in the spec added by the pull request, or none |
-| `tests` | per target: `created`, `passed`, `failed`, `skipped`, `todo`, or `unknown` with a reason (R12) |
+| `created` | test declarations at `merge_sha` minus at `parent_sha` (`count-repo-metrics.mjs`), or `unknown` with a reason (R12, M10) |
+| `outcomes` | from the `guardrails` run of `merge_sha`, per target: `passed`, `failed`, `skipped`, `todo` over the whole suite, or `unknown` with a reason. Not computed by the close |
 
 ## Label contract (changed)
 

@@ -15,7 +15,8 @@ was observed, not what was assumed.
 | M6 | Which credential moves the issue to merged in CI? | **The run token if it can comment on and close an issue in its own repository, otherwise `CI_DIGEST_TOKEN`** (already `write:issue`). Measured first (R11) (2026-11-27) |
 | M7 | How is the pane editor built? | **One hand-written, self-contained HTML file, no new dependency and no build step** (R9) (2026-11-27) |
 | M9 (pending, before the integration tasks) | `pdlc:integration` runs the real Spec Kit PowerShell scripts. The CI runner image (`node:26-bookworm`) is not known to have `pwsh`, and adding it is a new toolchain on the runner | **Open.** Options: (a) install a pinned, checksum-verified `pwsh` in the `guardrails` job (needs the maintainer's yes, per AGENTS.md); (b) run the script-executing integration tests only in a new operator-run tier, keeping the CI tier to real git without scripts. The plan assumes (a) until answered, and the first measuring task checks whether the runner already has it |
-| M8 (pending, task 1) | Approve the amendments to feature 014's decisions (spec Context table) | Recorded in **ADR-0006**, which supersedes the affected parts of ADR-0005. FR-034 orders it before any server code |
+| M10 | How are the feature's tests counted at merge without lengthening CI? (Raised at ADR-0006 review: MCM's suite alone takes 30+ minutes, so R12's second test run per merge is too expensive) | **No second test run** (2026-11-27). "Created" = `count-repo-metrics.mjs` test declarations at the merge commit minus its first parent, read from git objects in CI. Outcomes = the merged commit's own `guardrails` run, **whole suite** per target, posted by that run. The tasks template gains a baseline task (Phase 1) and a count task (just before the PR), each commenting on the proposal issue when there is one. With no proposal, nothing is posted and nothing fails. A failed issue update in a template task **warns and implementation continues** (R12) |
+| M8 | Approve the amendments to feature 014's decisions (spec Context table) | **Approved** (2026-11-27): "ADR-0006 approved, proceed", with M10 included. Recorded in **ADR-0006**, which supersedes the affected parts of ADR-0005. FR-034 orders it before any server code |
 
 ## R1: How a Claude Desktop session runs the repository's own specify and clarify steps (spec FR-002, FR-006, FR-028)
 
@@ -311,15 +312,18 @@ commit titled `Merge pull request '<title>' (#<pr>) from <branch> into main` (re
    `Proposal #<n>` in an **Input** line. None means "not from a proposal": the script says so and exits 0. Two or more
    means it refuses and comments nothing, exiting 0 with a warning, because a merge is never blocked;
 3. checks the issue is open, carries `type/proposal` and is not `status/bot-managed`;
-4. counts tests (R12);
+4. counts the created test declarations from git, with no test run (R12, M10);
 5. posts the closing comment, whose format is in [contracts/feature-merged.md](contracts/feature-merged.md), swaps
    the stage label to `status/merged`, and closes the issue. The comment is posted before the close, so a re-run that
    finds the comment only completes the close. It is idempotent, like 014's `close-proposal`.
 
 A pull request closed without merging never pushes to `main`, so it never triggers the workflow (FR-014).
 
-**Why a separate workflow and not a `guardrails` step**: the merge must not depend on, or be delayed by, counting.
-`guardrails` gates merges and has a 10-minute budget. A counting failure must never mark `main` red.
+**Why the close is a separate workflow and not a `guardrails` step**: `guardrails` has
+`concurrency: cancel-in-progress` keyed on the ref, so two merges close together cancel the first push run (read:
+`guardrails.yml`, 2026-11-27). A close inside it would then never happen. `feature-merged` takes seconds, has its own
+concurrency group with no cancellation, and never runs a test. Only the outcomes comment lives in `guardrails`
+(R12), because only that run has the outcomes.
 
 ## R11: The CI credential for the merge workflow (M6)
 
@@ -331,24 +335,49 @@ its issue permissions are not assumed.
 and `CI_DIGEST_TOKEN` (already `write:issue`) only when the run token is refused. The runbook records which one the
 measurement showed. Neither is printed: the existing redactor covers both.
 
-## R12: Counting the feature's tests at merge (FR-038, FR-039)
+## R12: Counting the feature's tests (FR-038 to FR-040; decision M10)
+
+**Revised 2026-11-27 at ADR-0006 review (M10).** The first design ran every CI test target twice per proposal merge
+(merge and parent) to tell the feature's test cases apart. It was rejected: MCM's suite alone takes 30+ minutes,
+and no merge should pay for a second run.
 
 **Definitions**:
-- A **test** is one `node:test` test case (a `test()` or `it()`), identified by `(file path from the repository root,
-  full name path)`.
-- **Created** = identities present at the merge commit and absent at its first parent.
-- **Passed** = created tests whose outcome in the merge commit's run is pass. **Skipped** and **todo** are reported
-  separately and never counted as passed. **Failed** is reported too.
+- **Created** = test declarations at the merge commit minus test declarations at its first parent, as counted by
+  `scripts/count-repo-metrics.mjs` (`measureCommit(...).testDeclarations`). Read: it counts `test(`, `it(` and
+  `t.test(` calls, with `.skip`/`.todo`/`.only`, in test files (a `__tests__` segment or a `*.test.*` basename), from
+  git objects only. So the same commit always gives the same number, no test runs, and the parent's count needs only
+  the parent's objects (`fetch-depth: 2`).
+- **Outcomes** = the whole suite's executed test cases in the merged commit's own `guardrails` run, per target:
+  passed, failed, skipped, todo. **Skipped** and **todo** are never counted as passed.
+- The two are different units: a table-driven declaration runs many cases. The comments never say "N created, M of
+  those passed".
 
-**Decision**: `scripts/feature-merged.mjs` runs each CI test target twice through Nx:
-- once at the merge commit;
-- once at the first parent, in a temporary `git worktree`.
+**Decision**, in three places:
+1. **`feature-merged.yml`** (R10) computes **created** from git and puts it in the closing comment. Seconds, no test
+   run, never cancelled.
+2. **`guardrails` on push to `main`** attaches a collecting reporter
+   (`scripts/lib/collect-test-results.mjs`: one JSON line per test case with file, name path and outcome) to its
+   existing `scripts:test`, `pdlc:test` and `pdlc:integration` steps. A final step,
+   `if: always() && github.event_name == 'push'` with `continue-on-error: true` and an unconditional exit 0 (the
+   failure-digest pattern), runs `node scripts/feature-merged.mjs --outcomes <dir> --job-status <status>`. For a merge
+   that came from a proposal, it posts the **outcomes comment**; otherwise it logs "not from a proposal" and exits 0.
+   It adds seconds to the run, never a test.
+3. **The tasks-template override** gains two REQUIRED tasks (FR-040): **Record the test baseline** in Phase 1 and
+   **Record the test count** immediately before **Open the PR**. Each runs
+   `node scripts/backlog.mjs record-tests --spec <specs/NNN-slug> --point baseline|close-out`, which counts the
+   committed `HEAD` (and, at close-out, the merge base with `origin/<default>` too, so the delta excludes tests other
+   merges added to the default branch), prints the counts, and comments them on the proposal issue. It is a progress
+   record, not an input to the closing comment, which CI computes exactly.
 
-Each run carries a collecting reporter that writes one JSON line per test (file, name path, outcome). The targets
-are listed in `scripts/feature-merged.config.json`: today `scripts:test`, `pdlc:test` and `pdlc:integration`, the same
-targets `guardrails` runs. A guard test fails when that list and `guardrails.yml`'s test steps disagree.
+**No proposal, or not an open proposal**: `record-tests` prints the counts, says "not from a proposal; nothing
+posted" (or names why the issue is not eligible) and exits 0. The task records the counts in `tasks.md`. CI's two
+steps log the same and exit 0.
 
-**How the reporter is attached (unverified, measured first)**: through
+**A failed issue update in a template task** (exit 3 credential, 4 authorisation, 5 transport, unchanged meanings):
+the verb keeps its honest non-zero exit. The task text tells the agent to record the counts and the exit code in the
+task, report it, and **continue** implementation (M10).
+
+**How the reporter is attached (unverified, measured first, T007)**: through
 `NODE_OPTIONS=--test-reporter=<abs>/scripts/lib/collect-test-results.mjs --test-reporter-destination=<file>`
 alongside the default reporter. This depends on `node --test` accepting reporter flags from `NODE_OPTIONS`, and on
 `check-coverage.mjs --run` passing the environment through.
@@ -357,18 +386,30 @@ alongside the default reporter. This depends on `node --test` accepting reporter
 - **If it does not**: each test target gains an opt-in `--report <file>` argument, forwarded to `node --test` as
   `--test-reporter`/`--test-reporter-destination`, with the default output unchanged.
 
-**When a count cannot be read** (a target fails to run, a reporter file is missing or unparsable, or the parent
-worktree cannot be built), the comment says which count is unknown and why. It never reports 0 (FR-039, AGENTS.md:
-"a tool's no is about the tool"). The close still happens.
+**When a count cannot be read**, the comment says which count is unknown and why, and never reports 0 (FR-039,
+AGENTS.md: "a tool's no is about the tool"):
+- the parent commit is not readable by the counter → created `unknown`;
+- a target's reporter file is missing or unparsable → that target `unknown`;
+- the run was cancelled (a later push to `main`) → outcomes `unknown (run cancelled by a later push)`, if the final
+  step runs on cancellation. Whether a Forgejo `always()` step runs in a cancelled job is **unverified**, measured in
+  T006's throwaway workflow. If it does not, the closing comment's last line ("Suite outcomes follow from this
+  commit's guardrails run; if none follows, that run was cancelled or did not report") keeps the absence from
+  reading as a pass.
 
-**Cost**: a second full test run on the parent, only for merges that came from a proposal, about the length of one
-`guardrails` run. The job's timeout is 30 minutes.
+The close never waits for, or depends on, the outcomes.
+
+**MCM**: the counter recognises JavaScript `node:test` declarations only. MCM adopting the counts needs a counting
+rule for its own test kinds, named in the hand-off guide (FR-033).
 
 **Alternatives rejected**:
-- **Counting `test(` calls in the diff.** It misses generated and table-driven tests, and it cannot report outcomes.
+- **Run every test target twice (merge and parent) and diff test identities.** The original R12. Exact per-feature
+  pass counts, but a second full suite run per proposal merge: 30+ minutes on MCM (M10).
+- **Outcomes of the test files the merge added or changed only.** Offered at review; the maintainer chose whole-suite
+  totals (M10). It would include older tests in changed files and still not be "the feature's" tests.
+- **Take "created" from the tasks-template counts.** The baseline is taken when the branch starts; tests other merges
+  add to the default branch in the meantime would be counted. The template counts stay as a progress record.
 - **Reusing the `pull_request` run's output.** The forge exposes no artifact or log API (014 and `ci.md`), and the
   pull request run is of the head, not the merge.
-- **Whole-suite totals.** The spec defines created and passed over the feature's own tests (spec Assumptions).
 
 ## R13: In engineering: the `after_plan` hook (FR-013)
 

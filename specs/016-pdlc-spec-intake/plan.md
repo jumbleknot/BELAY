@@ -31,8 +31,11 @@ model-side write means a pane edit is never lost (R9). Whether Claude Desktop re
   **in engineering** (R13).
 - `backlog.mjs` gains a `stage` verb (replacing `close-proposal`), and `ready` lists ready-to-plan specs with their
   branches.
-- A new `feature-merged` workflow on `main` moves the issue to **merged** and closes it, with a comment counting the
-  feature's tests: created, passed, failed, skipped and todo (R10, R12).
+- A new `feature-merged` workflow on `main` moves the issue to **merged** and closes it, with the feature's created
+  test declarations counted from git. The merged commit's own `guardrails` run adds the suite's passed, failed,
+  skipped and todo counts. No test runs twice (R10, R12, M10).
+- The tasks-template override gains two required tasks that record a test baseline and a close-out count on the
+  proposal issue, posting nothing when there is no proposal (FR-040).
 
 None of this calls the server (FR-031).
 
@@ -69,7 +72,7 @@ The server writes JSON state files next to the worktrees (data-model.md).
 | `pdlc:test` (gating) | Contract test for the new tool list; the allowlist shapes (R4) and path guard (R5), positive and negative; the transition table; trailer render and parse; the revision and pane-pending logic; the hook classification; `approve_spec` checks |
 | `pdlc:integration` (gating) | Real git and real Spec Kit scripts against local bare repositories: the full lifecycle, take-latest with a conflict, push-to-default refused, and the dry run's number matching a real run. Needs `pwsh`: measured 7.6.5 in the dev container. On the CI runner (`node:26-bookworm`) it is not assumed; see research M9 |
 | `pdlc:integration-forge` (operator) | The same against `ci-smoke`, plus a push to its protected `main` refused by the forge |
-| `scripts:test` (gating) | `backlog.mjs stage` and `ready`; `feature-merged.mjs` with a fake forge and fixture reporter output, including every `unknown` path; the config-to-guardrails guard; the hooks and override gate |
+| `scripts:test` (gating) | `backlog.mjs stage`, `ready` and `record-tests`; `feature-merged.mjs` (close and outcomes forms) with a fake forge, git fixtures and fixture reporter output, including every `unknown` path and every no-proposal path; the tasks-template override's two count tasks; the config-to-guardrails guard; the hooks and override gate |
 
 **Target Platform**: Claude Desktop on Windows, as in 014. The new CI workflow runs on the `belay` runner.
 
@@ -80,13 +83,13 @@ Kit hooks, a CI workflow, docs).
 - each tool answers in a few seconds;
 - `start_spec` (fetch of every head plus the dry run plus `worktree add`) in under 30 s on BELAY;
 - the pane reflects a chat edit within one turn;
-- `feature-merged` finishes in under 30 minutes (two test runs).
+- `feature-merged` finishes in under a minute (no test run); the `guardrails` outcomes step adds seconds.
 
 **Constraints**:
 - No push except the feature branch onto itself, and no force.
 - No write outside the feature folder, drafts and backups.
 - The token is never in a child process that runs repository code.
-- A merge is never blocked or marked red by counting.
+- A merge is never blocked or marked red by counting, and no test target runs a second time (M10).
 - Stdout stays the protocol.
 
 **Scale/Scope**: one operator, three repositories. About 11 new tools, about 8 new or changed server modules, one UI
@@ -100,7 +103,7 @@ file, one workflow, one CLI verb and two hooks.
 | --- | --- | --- |
 | AI Assistant Constraints: technology-agnostic spec | ✅ | The spec names workflow terms (labels, stages, branches) as 014's did. HOW is here and in research |
 | AI Assistant Constraints: doc-impact sweep | ✅ planned | Candidate terms below. `/speckit-tasks` runs the sweep |
-| Behaviour-descriptive identifiers | ✅ | Modules are named for behaviour (`spec-worktree.mjs`, `stage-trailer.mjs`, `spec-kit-runner.mjs`, `count-feature-tests`…). Requirement IDs appear only in provenance comments. Tool names, labels and the trailer are external contracts, annotated as such |
+| Behaviour-descriptive identifiers | ✅ | Modules are named for behaviour (`spec-worktree.mjs`, `stage-trailer.mjs`, `spec-kit-runner.mjs`, `collect-test-results.mjs`…). Requirement IDs appear only in provenance comments. Tool names, labels and the trailer are external contracts, annotated as such |
 | Security: narrowest-scope credential | ✅ with M5 | `write:repository` is the narrowest forge scope that can push. It is bounded by the push guard and branch protection. The CI job uses the run token first (M6). The token is never in a child that runs repository code (R1) |
 | Security: write allowlist (Operator-Tool MCP Servers) | ✅ | Every git shape (R4) and file path (R5) is enumerated and checked before the write. The Spec Kit scripts run only in a disposable scratch clone under `<clone_root>/.pdlc-scratch/`: its origin is the local copy, it holds no credential, and it is deleted afterwards. The scratch folder is the one allowlisted write target for repository code, so nothing a script does can reach the copy, a worktree or the forge (R1; `/speckit-analyze` C1) |
 | Security: input validation, safe errors | ✅ | zod on every tool, including the app-only one. Size caps. Refusals carry no stack, path outside the clone root, or payload |
@@ -159,16 +162,18 @@ mcp-servers/pdlc/
 └── tests/{unit,integration,integration-forge}/   # per Testing above
 
 scripts/
-├── backlog.mjs                           # TAXONOMY + 4 labels; stage verb (replaces close-proposal); ready
+├── backlog.mjs                           # TAXONOMY + 4 labels; stage verb (replaces close-proposal); ready; record-tests verb
 ├── feature-merged.mjs                    # NEW (R10)
-├── feature-merged.config.json            # NEW: the test targets counted (R12)
+├── feature-merged.config.json            # NEW: the test targets whose outcomes are reported (R12)
 ├── lib/collect-test-results.mjs          # NEW: node:test reporter → JSON lines (R12)
 ├── lib/stage-trailer.mjs                 # NEW: shared trailer grammar (also imported by the server's tests as the cross-check)
 ├── check-speckit-overrides.mjs           # hooks: spec-stage ×2 replace close-proposal; PROJECT_OWNED skill rename
 ├── project.json                          # + feature-merged target
 └── __tests__/…                           # backlog stage/ready, feature-merged, collector, config guard, hooks
 
-.forgejo/workflows/feature-merged.yml     # NEW (R10, R11)
+.forgejo/workflows/feature-merged.yml     # NEW (R10, R11): the close, no test run
+.forgejo/workflows/guardrails.yml         # + collector reports and a final outcomes step on push (R12)
+.specify/templates/overrides/tasks-template.md  # + Record the test baseline / Record the test count (FR-040)
 .specify/extensions.yml                   # after_specify: spec-stage (replaces close-proposal); after_plan: spec-stage
 .claude/skills/speckit-belay-spec-stage/SKILL.md      # NEW, replaces speckit-belay-close-proposal/
 .claude/skills/forgejo-issues/SKILL.md    # stages, ready-to-plan pick-up, close-on-merge
@@ -212,4 +217,4 @@ Identifiers this feature renames, removes or changes the meaning of:
 | --- | --- | --- |
 | The server executes the target repository's Spec Kit scripts | FR-002: the repository's own numbering, naming and template must apply | Reimplementing drifts on upgrade (FR-002). Headless Claude Code adds a second model, a login on the workstation, and unbounded edit rights (R1) |
 | Repository write scope on the `pdlc` token | Publishing the approved branch (FR-009) | A second token sits in the same process and the same settings file (M5) |
-| A second full test run per proposal merge | "Created" needs the parent's test identities (FR-038) | Diff-counting `test(` misses table-driven tests and cannot report outcomes (R12) |
+| Two comments at merge (close, then outcomes) instead of one | The close must not sit in `guardrails`, whose runs on `main` cancel each other; only `guardrails` has the outcomes (R10, R12) | One comment would need a second test run (rejected, M10) or would make the close wait for, and be cancelled with, `guardrails` |

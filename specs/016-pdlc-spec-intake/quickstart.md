@@ -82,8 +82,10 @@ Open and merge the feature's pull request with `forge-pr.mjs`.
 
 Expected:
 - `feature-merged` runs on `main`;
-- the issue gets the closing comment with the test table, swaps to `status/merged`, and closes;
-- hand-count one target's new tests from the run log; the numbers match.
+- the issue gets the closing comment with the created count, swaps to `status/merged`, and closes;
+- `node scripts/count-repo-metrics.mjs --rev <merge sha> --json` and `--rev <merge sha>^1` differ by the created count;
+- the `guardrails` run for the merge commit adds the outcomes comment; its numbers match that run's log;
+- the run took no longer than an ordinary `guardrails` run on `main` (no second test run).
 
 To check the comment before any write:
 
@@ -118,3 +120,12 @@ then merge.
 Expected:
 - the issue moves through `spec-in-progress`, `in-engineering` and `merged`;
 - `scripts:lint` and `scripts:test` pass with no skip.
+
+## 8. FR-040: the tasks template's count tasks
+
+- In a feature from a proposal, `node scripts/backlog.mjs record-tests --spec specs/<NNN-slug> --point baseline`
+  comments the baseline on the issue.
+- In a feature with no `Proposal #<n>` in its Input line, the same command prints the count, says "not from a
+  proposal; nothing posted", and exits 0.
+- With the backlog credential unset, it exits 3; the task records the count and the exit code, and implementation
+  continues.

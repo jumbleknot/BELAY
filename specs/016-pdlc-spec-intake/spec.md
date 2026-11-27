@@ -53,6 +53,12 @@ record, per FR-034):
   FR-037).
 - Q: What does the issue record on merge? → A: The closing comment states the number of tests the feature created and
   the number that passed, filled in automatically (User Story 4 scenario 2, FR-038, FR-039).
+- Q (maintainer, at ADR-0006 review): counting must not add a test run to CI, because MCM's suite alone takes 30+
+  minutes. How are tests counted? → A (decision M10): "created" is the repository's metrics counter's test
+  declarations at the merge commit minus its first parent, read from git with no test run. The outcomes are the merged
+  commit's own CI test run, whole suite, posted by that run. The tasks template records a test baseline at the start
+  and a count before the pull request, on the issue when there is one. Where the feature did not come from a proposal,
+  nothing is posted and nothing fails (FR-038 to FR-040).
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -165,7 +171,8 @@ timeline records the change, and it closes only when the feature branch's pull r
 1. **Given** an issue at any stage, **When** it is read, **Then** it shows exactly one stage.
 2. **Given** the feature branch's pull request merges into the default branch, **When** the merge completes, **Then**
    the issue moves to **merged** and is closed, with a comment naming the merge and stating the number of tests the
-   feature created and the number of those that passed, and nobody edits it by hand.
+   feature created; the merged commit's test run adds a comment with the suite's passed, failed, skipped and todo
+   counts; nobody edits it by hand.
 3. **Given** a feature branch's pull request is closed without merging, **When** that happens, **Then** the issue stays
    open at its current stage.
 4. **Given** a spec created from a proposal, **When** the spec folder first exists, **Then** the proposal is **not**
@@ -308,9 +315,12 @@ changes in the saved proposal or the committed spec.
   the document in the chat as today, says the pane is unavailable, and every edit still goes through the chat.
 - **The author edits in the pane and asks for a chat edit before the pane edit is taken in**: the pane edit is taken
   in first, so the chat edit applies to what the author sees; neither is lost.
-- **Test counts cannot be determined at merge** (the test run did not report, or the feature's tests cannot be told
-  apart): the closing comment says which count is unknown and why. It never reports zero for a count it could not
-  read.
+- **Test counts cannot be determined at merge** (the counter cannot read the parent commit, or the merged commit's test
+  run was cancelled by a later push or did not report): the comment says which count is unknown and why. It never
+  reports zero for a count it could not read.
+- **A feature that did not come from a proposal** (no `Proposal #<n>` in its spec's **Input** line), or whose issue
+  is not an open proposal: the tasks template's count tasks still record the counts in `tasks.md`, and they and the
+  CI steps post nothing and exit successfully.
 - **A session ends part-way through an edit**: edits are kept between sessions as unpublished changes. Resume shows
   the author what changed since the last approval, or since the start if the spec was never approved, and continues
   from there. (Reworded at `/speckit-analyze`, finding U4: unpublished edits are the normal state between sessions,
@@ -385,11 +395,19 @@ changes in the saved proposal or the committed spec.
 - **FR-014**: The issue MUST move to **merged** and close when the feature branch's pull request merges into the
   default branch, with no manual issue edit. A pull request closed without merging MUST NOT move or close the issue.
 - **FR-038**: As part of closing the issue on merge, the closing comment MUST state, with no manual step, the number of
-  tests the feature branch created (tests present after the merge that were not on the default branch before it) and
-  the number of those that passed in the test run for the merged change. Skipped tests MUST be reported separately
-  and MUST NOT be counted as passed.
-- **FR-039**: When a test count cannot be determined, the closing comment MUST say which count is unknown and why; it
-  MUST NOT report zero for a count it could not read. A missing count MUST NOT block the close.
+  tests the feature branch created: the repository's metrics counter's test declarations at the merge commit minus
+  those at its first parent. The merged commit's own CI test run MUST then add, with no manual step, a comment with
+  that run's whole-suite outcomes per test target: passed, failed, skipped and todo. Skipped and todo tests MUST be
+  reported separately and MUST NOT be counted as passed. Counting MUST NOT run any test target a second time
+  (decision M10).
+- **FR-039**: When a test count cannot be determined, the comment MUST say which count is unknown and why; it MUST
+  NOT report zero for a count it could not read. A missing count MUST NOT block the close, and counting MUST NOT
+  fail or delay a merge or the default branch's checks.
+- **FR-040**: BELAY's tasks template MUST include two required tasks: one in the first phase recording the test
+  baseline, and one immediately before the pull request is opened recording the test count. Each records the count in
+  `tasks.md` and, when the spec came from a proposal, comments it on that issue. When the spec did not come from a
+  proposal, or its issue is not an open proposal, the task MUST post nothing and MUST NOT fail. When the issue update
+  itself fails, the task MUST report the failure and implementation MUST continue.
 - **FR-015**: Every stage change MUST add a comment or timeline entry on the issue saying what moved it.
 - **FR-016**: The ready-work listing MUST show each issue at **ready to plan** with its feature branch and spec folder,
   MUST hide issues at **spec in progress** and **in engineering** (reporting how many it hid), and MUST keep its
@@ -491,8 +509,9 @@ changes in the saved proposal or the committed spec.
   right-hand pane, and at least one chat edit and one direct pane edit of each reach the saved proposal and the
   committed spec, with zero edits lost.
 - **SC-010**: When the end-to-end feature merges, its issue's closing comment states the number of tests the feature
-  created and the number that passed (skips listed separately), and both numbers match a hand count from the merged
-  change's test run.
+  created, matching `count-repo-metrics.mjs` run by hand at the merge commit and its parent. The outcomes comment
+  states passed, failed, skipped and todo per target, matching the merged commit's CI test log. The merge adds no
+  second test run to CI.
 - **SC-011**: When the feature branch changes on the forge during a session, the author takes the latest into their
   local copy and continues, with 100% of their unpublished edits kept or shown to them as conflicts.
 
@@ -519,9 +538,11 @@ changes in the saved proposal or the committed spec.
 - The right-hand pane is the side pane Claude Desktop shows next to the chat. Planning measures whether direct edits in
   it reach the session, and how, before the design is fixed. If they cannot, FR-036 is raised with the maintainer
   rather than quietly dropped.
-- "Tests created" counts the feature's new tests, not the whole suite; "passed" counts how many of those passed. How
-  tests are counted (by test case or by test file) follows how the target repository's test runner reports them, and
-  is a planning decision applied the same way to both numbers.
+- "Tests created" counts the feature's new test declarations, not the whole suite. The outcomes are whole-suite
+  counts of executed test cases, because telling the feature's cases apart would need a second test run (decision
+  M10). The two numbers are different units and are never presented as "N created, M of those passed".
+- MCM's tests may not all be JavaScript `node:test` declarations, which is all BELAY's counter recognises. MCM
+  adopting the counts needs a counting rule for its own test kinds, named in the hand-off guide (FR-033).
 - The forge's existing protection of the default branch (no direct push, required checks) stays in place and is a
   second bound on FR-021.
 - Spec Kit's `before_specify` branch hook and BELAY's numbering rules apply unchanged; the session sees the forge's

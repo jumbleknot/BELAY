@@ -38,7 +38,7 @@ Every test task and its paired implementation task use the TDD checkpoint format
 **Purpose**: settle the maintainer decisions and measure every **unverified** item in research.md before code depends
 on it. A measurement records what was observed, in research.md, under the R it belongs to.
 
-- [ ] T001 Write `docs/decisions/ADR-0006-pdlc-spec-intake.md`. It records:
+- [X] T001 Write `docs/decisions/ADR-0006-pdlc-spec-intake.md`. It records:
   - the four amendments to 014's decisions (spec Context table);
   - M5 to M7, and M9 once answered;
   - running the target repository's Spec Kit scripts (plan Complexity Tracking);
@@ -48,7 +48,7 @@ on it. A measurement records what was observed, in research.md, under the R it b
   "superseded in part by" note.
   - **Done when**: the maintainer has approved the ADR (M8, FR-034), quoted in the ADR's status line, and
     `node scripts/check-openwiki-okf.mjs` passes. No server code is merged before this task.
-- [ ] T002 **Doc-impact sweep** (REQUIRED; constitution "Documentation"). Run while generating this file, 2026-11-27.
+- [X] T002 **Doc-impact sweep** (REQUIRED; constitution "Documentation"). Run while generating this file, 2026-11-27.
 
   Command, per term:
   `git grep --untracked -n -F "<term>" -- '*.md' ':!specs/' ':!docs/proposals/' ':!docs/decisions/'`
@@ -110,9 +110,11 @@ on it. A measurement records what was observed, in research.md, under the R it b
   branch, run by `workflow_dispatch`:
   - can `github.token` comment on and close an issue in its own repository;
   - does `GET /repos/{o}/{r}/commits/{sha}/pull` exist on this forge build.
+  - does a step with `if: always()` run in a job cancelled by `cancel-in-progress`, and what `job.status` it sees
+    (R12, for the outcomes step).
 
-  Record in research.md R10 and R11. Remove the throwaway workflow branch.
-  - **Done when**: both are recorded. If the run token is refused, T078 gains the `CI_DIGEST_TOKEN` usage change.
+  Record in research.md R10, R11 and R12. Remove the throwaway workflow branch.
+  - **Done when**: all three are recorded. If the run token is refused, T078 gains the `CI_DIGEST_TOKEN` usage change.
 - [ ] T007 [P] Measure attaching a reporter (R12) in the dev container:
   - does `NODE_OPTIONS="--test-reporter=… --test-reporter-destination=…"` reach `node --test` under
     `pnpm nx run pdlc:test` (which already passes its own `--test-reporter` flags) and under `scripts:test`
@@ -125,6 +127,10 @@ on it. A measurement records what was observed, in research.md, under the R it b
   ask the maintainer: (a) install a pinned, checksum-verified `pwsh` in `guardrails`, or (b) an operator-run tier for
   the script-executing tests. Record the answer in research.md's decision table and in ADR-0006.
   - **Done when**: M9 has an answer and a date. T022 and T037 follow it.
+- [ ] T008a **Record the test baseline** (FR-040, the template task this feature adds, applied to itself once T054c
+  lands; until then run `node scripts/count-repo-metrics.mjs --json` and record `testDeclarations` here). This spec's
+  Input names proposal #91, which is closed under 014's close-on-spec, so nothing is posted: the no-proposal path.
+  - **Done when**: the count and the commit are recorded in this task
 
 ---
 
@@ -505,57 +511,96 @@ codes" is observed.
 
 ### Tests for User Story 4 ⚠️
 
+Revised 2026-11-27 for decision M10 (research R12): no test target runs a second time. Task IDs T054a to T054d are
+inserted, not renumbered, so references to T055 onwards stay valid.
+
 - [ ] T049 [P] [US4] Test: the result collector (R12). In `scripts/__tests__/collect-test-results.test.mjs`, run
   `node --test` on fixture tests (one pass, one fail, one skip, one todo, nested) with the collector as reporter.
   Assert one JSON line per test case, with the file from the repository root, the full name path and the outcome
-  (data-model.md `Merge record.tests`).
+  (data-model.md `Merge record.outcomes`).
   - **Scenarios covered**: FR-038
   - **Verify RED**: `node --test scripts/__tests__/collect-test-results.test.mjs` → expected: failing —
     `Cannot find module '../lib/collect-test-results.mjs'`
 - [ ] T050 [P] [US4] Test: `feature-merged.mjs` ([contracts/feature-merged.md](contracts/feature-merged.md)). In
-  `scripts/__tests__/feature-merged.test.mjs`, with a fake forge and injected runs:
-  - PR found by the API, and by title fallback;
-  - not from a proposal → exit 0, nothing written;
-  - two markers → exit 0, warning, nothing written;
-  - an issue that is not an open proposal → exit 0;
-  - created = merge minus parent; passed counts only created passes; skip and todo never in passed;
-  - an `unknown` target makes its total `unknown`, with a reason, never 0;
-  - comment then label then close;
-  - idempotent re-run;
-  - run token first, `CI_DIGEST_TOKEN` on a 401 or 403 (R11);
-  - `--dry-run` writes nothing;
-  - a closed-without-merge PR never reaches the script (no push) — asserted on the workflow trigger in T052.
+  `scripts/__tests__/feature-merged.test.mjs`, with a fake forge, a fixture git repository (two commits, the second
+  adding test declarations) and fixture collector reports:
+  - close form: PR found by the API, and by title fallback;
+  - not from a proposal → exit 0, nothing written; two markers → exit 0, warning, nothing written; an issue that is
+    not an open proposal → exit 0;
+  - created = `count-repo-metrics` declarations at the merge minus at the parent, including a negative delta; an
+    unreadable parent → `unknown (<reason>)`, never 0;
+  - closing comment then label then close; idempotent re-run; run token first, `CI_DIGEST_TOKEN` on a 401 or 403
+    (R11); `--dry-run` writes nothing;
+  - outcomes form: per-target passed, failed, skipped, todo summed from the reports; skip and todo never in passed; a
+    missing or unparsable report → that target `unknown` with its reason; `--job-status cancelled` adds the
+    partial-run line; idempotent by the `pdlc-outcomes` trailer; never changes a label or closes; **always exits 0**,
+    including on a failed write and on no proposal;
+  - neither form spawns a test run (asserted by an injected spawn that fails the test if it sees `nx` or `node --test`);
+  - a closed-without-merge PR never reaches the script (no push) — asserted on the workflow trigger in T051.
   - **Scenarios covered**: US4-AC2, US4-AC3, FR-014, FR-038, FR-039, SC-010
   - **Verify RED**: `node --test scripts/__tests__/feature-merged.test.mjs` → expected: failing —
     `Cannot find module '../feature-merged.mjs'`
 - [ ] T051 [P] [US4] Test: config and workflow guards. In `scripts/__tests__/feature-merged-workflow.guard.test.mjs`:
   - `scripts/feature-merged.config.json` targets equal the test targets in `.forgejo/workflows/guardrails.yml`;
-  - `feature-merged.yml` triggers on `push` to `main` and on `workflow_dispatch` only;
-  - runner `belay`, timeout 30;
-  - the token passes through env only;
-  - a digest step is present;
-  - it is not named in branch protection's required checks (documented assertion).
-  - **Scenarios covered**: FR-014, plan Constraints ("a merge is never blocked")
+  - `feature-merged.yml` triggers on `push` to `main` and on `workflow_dispatch` only; runner `belay`; timeout 5;
+    `fetch-depth: 2`; a concurrency group with no `cancel-in-progress`; no step runs `nx` or a test target;
+  - `guardrails.yml`'s `guardrails` job has a last step running `feature-merged.mjs --outcomes` with
+    `if: always() && github.event_name == 'push'` and `continue-on-error: true`, and its timeout is still 10;
+  - the tokens pass through env only; a digest step is present in `feature-merged.yml`;
+  - neither new step is named in branch protection's required checks (documented assertion).
+  - **Scenarios covered**: FR-014, FR-039, plan Constraints ("a merge is never blocked", no second test run)
   - **Verify RED**: `node --test scripts/__tests__/feature-merged-workflow.guard.test.mjs` → expected: failing —
     `ENOENT .forgejo/workflows/feature-merged.yml`
+- [ ] T054a [P] [US4] Test: `backlog.mjs record-tests` ([contracts/feature-merged.md](contracts/feature-merged.md)
+  "Template count comments"). Extend `scripts/__tests__/backlog.test.mjs`, with a fake forge and a fixture git
+  repository:
+  - `--point baseline` counts `HEAD`; `--point close-out` also counts the merge base with `origin/<default>` and
+    prints the delta;
+  - counts are printed on stdout in every case;
+  - no `Proposal #<n>`, two markers, a closed issue and a non-proposal issue → prints why, posts nothing, exit 0;
+  - an open proposal → one comment with the contract text, no label change;
+  - a missing credential → exit 3 with the counts still printed; a 403 → exit 4; a transport failure → exit 5;
+  - bad `--point` → exit 2.
+  - **Scenarios covered**: FR-040
+  - **Verify RED**: `node --test scripts/__tests__/backlog.test.mjs` → expected: failing —
+    `Unknown command: record-tests`
+- [ ] T054b [P] [US4] Test: the tasks-template override carries the two count tasks. Extend
+  `scripts/__tests__/check-speckit-overrides.test.mjs` (or the override's existing guard): the override holds a
+  REQUIRED **Record the test baseline** task in Phase 1 and a REQUIRED **Record the test count** task immediately
+  before **Open the PR**, each naming `backlog.mjs record-tests` with its `--point`, the "not from a proposal: nothing
+  posted, not a failure" rule and the "on a non-zero exit, record the counts and the exit code, report it, and
+  continue" rule; and the EXCEPTION comment lists both as required.
+  - **Scenarios covered**: FR-040
+  - **Verify RED**: `node --test scripts/__tests__/check-speckit-overrides.test.mjs` → expected: failing —
+    `tasks-template override has no "Record the test baseline" task`
 
 ### Implementation for User Story 4
 
 - [ ] T052 [P] [US4] Implement `scripts/lib/collect-test-results.mjs` (prerequisite: T049 RED)
   - **Verify GREEN**: `node --test scripts/__tests__/collect-test-results.test.mjs` → expected: 0 failures
-- [ ] T053 [US4] Implement `scripts/feature-merged.mjs` and `scripts/feature-merged.config.json`. Cite
-  data-model.md `Merge record.proposal` (exactly one marker, or none) and `Proposal issue.state` (the close happens
-  only here, at merged). Attach the reporter
-  by the path T007 chose; if that is the opt-in `--report`, add it to `scripts/project.json` `test` and
-  `mcp-servers/pdlc/project.json` `test` and `integration`, keeping default output unchanged. Add the
-  `scripts:feature-merged` Nx target (prerequisite: T050 RED; T052 GREEN)
+- [ ] T053 [US4] Implement `scripts/feature-merged.mjs` (both forms) and `scripts/feature-merged.config.json`. Count
+  with `measureCommit` from `scripts/count-repo-metrics.mjs`, imported, never re-implemented. Cite data-model.md
+  `Merge record.proposal` (exactly one marker, or none) and `Proposal issue.state` (the close happens only here, at
+  merged). Attach the reporter to the three test targets by the path T007 chose; if that is the opt-in `--report`,
+  add it to `scripts/project.json` `test` and `mcp-servers/pdlc/project.json` `test` and `integration`, keeping
+  default output unchanged. Add the `scripts:feature-merged` Nx target (prerequisite: T050 RED; T052 GREEN)
   - **Verify GREEN**: `node --test scripts/__tests__/feature-merged.test.mjs` → expected: 0 failures; then
     `pnpm nx run scripts:test` passes
-- [ ] T054 [US4] Add `.forgejo/workflows/feature-merged.yml`, and update the CI digest coverage gate
-  (`check-ci-digest-coverage`) for its steps (prerequisite: T051 RED)
+- [ ] T054 [US4] Add `.forgejo/workflows/feature-merged.yml`, add the reporter attachment and the final outcomes step
+  to `guardrails.yml`'s `guardrails` job, and update the CI digest coverage gate (`check-ci-digest-coverage`) for the
+  new steps (prerequisite: T051 RED; T006 answers whether an `always()` step runs in a cancelled job)
   - **Verify GREEN**: `node --test scripts/__tests__/feature-merged-workflow.guard.test.mjs` and
     `node --test scripts/__tests__/check-ci-digest-coverage.test.mjs` → expected: 0 failures; then
     `pnpm nx run scripts:lint` passes
+- [ ] T054c [US4] Implement the `record-tests` verb in `scripts/backlog.mjs`, importing `measureCommit` and the
+  proposal-marker parser shared with `feature-merged.mjs` (prerequisite: T054a RED; T053 GREEN)
+  - **Verify GREEN**: `node --test scripts/__tests__/backlog.test.mjs` → expected: 0 failures; then
+    `pnpm nx run scripts:test` passes
+- [ ] T054d [US4] Add the two REQUIRED count tasks to `.specify/templates/overrides/tasks-template.md` and to its
+  EXCEPTION comment (contract text above), then run `node scripts/check-speckit-overrides.mjs` (prerequisite: T054b
+  RED; T054c GREEN)
+  - **Verify GREEN**: `node --test scripts/__tests__/check-speckit-overrides.test.mjs` → expected: 0 failures; then
+    `node scripts/check-speckit-overrides.mjs` exits 0
 
 **Checkpoint**: the stage model closes on merge (SC-004, SC-010 after the feature merges).
 
@@ -704,7 +749,10 @@ FR-036.
 - [ ] T070 Write the MCM hand-off additions (FR-033) in `docs/runbooks/pdlc.md` § hand-off:
   - the four labels;
   - the `stage` verb and both hooks;
-  - the `feature-merged` workflow and its config;
+  - the `feature-merged` workflow, the `guardrails` outcomes step and their config;
+  - the tasks-template count tasks and `record-tests`;
+  - that BELAY's counter recognises `node:test` declarations only, so MCM names a counting rule for its own test
+    kinds before adopting the counts;
   - the ready-listing change;
   - the confirmation steps for SC-004 and SC-010 in MCM.
   - **Done when**: the section lists each item and its order, and a reader can carry it out without asking
@@ -721,8 +769,8 @@ FR-036.
   - the file table (lines 170 to 171);
   - the hand-off lines (193, 204), with T070.
   - **Done when**: every hit in T002 for this file is resolved
-- [ ] T074 [P] Update `docs/runbooks/spec-kit.md`: rows 5a and 7 (the hooks and the skill), line 79, and the reinstall
-  steps (lines 158 to 160)
+- [ ] T074 [P] Update `docs/runbooks/spec-kit.md`: rows 5a and 7 (the hooks and the skill), line 79, the reinstall
+  steps (lines 158 to 160), and the tasks-template override's two new required count tasks (FR-040)
   - **Done when**: `node scripts/check-speckit-overrides.mjs` passes and the runbook rows match its inventory
 - [ ] T075 [P] Update `mcp-servers/pdlc/README.md` (lines 6 and 17)
   - **Done when**: it states the default-branch-read-only, feature-branch-published model and the stage model
@@ -739,8 +787,8 @@ FR-036.
 - [ ] T078 [P] Update `openwiki/invariants/secrets-management.md` (canonical): the `pdlc` token row's scope
   (`write:repository`); and `CI_DIGEST_TOKEN`'s users if T006 showed the fallback is used
   - **Done when**: the rows match research M5 and M6 as measured
-- [ ] T079 [P] Add the `feature-merged` workflow to `docs/runbooks/ci.md`: trigger, not required, token, re-run by
-  `workflow_dispatch` with `sha`, and reading its result
+- [ ] T079 [P] Add the `feature-merged` workflow and the `guardrails` outcomes step to `docs/runbooks/ci.md`: trigger,
+  not required, token, re-run by `workflow_dispatch` with `sha`, no second test run, and reading their comments
   - **Done when**: the page names the workflow and how to re-run it
 - [ ] T080 **Close-out re-search**: re-run T002's searches for the OLD identifiers (`close-proposal`,
   `close-on-spec`, `closes once its spec`, `read-only local cop`, `never commits`, `Superseded by spec`, and
@@ -758,8 +806,12 @@ FR-036.
   re-uploaded. §4 (merge) and §7 (server absent) complete only after this PR merges and with the next proposal; record
   them on the backlog item that tracks this feature's acceptance.
   - **Done when**: each section's expected outcome is observed and noted with its date. Note the observed
-    `start_spec` time (§2 step 1) and the `feature-merged` run time (§4) against the plan's performance goals
+    `start_spec` time (§2 step 1), the `feature-merged` run time and the `guardrails` run time on `main` (§4) against
+    the plan's performance goals
     (finding P1)
+- [ ] T082a **Record the test count**: `node scripts/backlog.mjs record-tests --spec specs/016-pdlc-spec-intake --point close-out`
+  after the last code commit. Expected: counts printed, "not an open proposal (#91 is closed); nothing posted", exit 0.
+  - **Done when**: the counts, the delta and the exit code are recorded in this task
 - [ ] T083 **Open the PR** from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
   1. `git push origin HEAD:016-pdlc-spec-intake`
   2. `node scripts/forge-pr.mjs open --head 016-pdlc-spec-intake --title "Feature 016: PDLC spec intake (proposal item #91)" --body-file <file>`
@@ -781,8 +833,9 @@ FR-036.
   - T003 blocks Phase 10.
   - T004 and T008 block T022.
   - T005 blocks T068.
-  - T006 blocks T053 and T078.
+  - T006 blocks T053, T054 and T078.
   - T007 blocks T053.
+  - T054c and T054d follow T053 (shared marker parser and `measureCommit` import).
 - **Foundational (Phase 2)**: blocks every story. T012 before T014, which cross-checks against the same fixtures.
 - **US1 (Phase 3)** → **US2 (Phase 4)**: approval needs a started spec.
 - **US3 (Phase 5)**: the `backlog.mjs`, hooks and gate tasks (T036, T037, T039, T040) need only Phase 2. The lock
@@ -804,6 +857,7 @@ contract, manifest and skill move together (FR-030).
 - Phase 2: T009, T011, T013 and T015 are different files.
 - US1: T017 to T020 are tests in different files; T023 to T025 are implementations in different files.
 - US4 can proceed in parallel with US1 to US3: `scripts/` only, no server file.
+- US4: T049, T050, T051, T054a and T054b are tests in different files.
 - Polish: T071 to T079 are different documents.
 
 ## Parallel Example: User Story 1
@@ -852,7 +906,8 @@ Before marking `016-pdlc-spec-intake` complete, verify every success criterion f
   (quickstart §7; T069)
 - [ ] **SC-009**: a chat edit and a pane edit of each document reach the saved proposal and committed spec
   (quickstart §2 step 3; T060)
-- [ ] **SC-010**: the closing comment's counts match a hand count (quickstart §4; T050)
+- [ ] **SC-010**: the created count matches `count-repo-metrics.mjs` at the merge and its parent, the outcomes match
+  the `guardrails` log, and no second test run happened (quickstart §4; T050, T051)
 - [ ] **SC-011**: take latest keeps 100% of unpublished edits or shows them as conflicts (T043, T045)
 - [ ] All test tasks used the TDD checkpoint format (Verify RED confirmed before implementation)
 - [ ] `pnpm nx run pdlc:test`: unit and contract tests pass, at or above 70% line coverage
