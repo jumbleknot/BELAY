@@ -335,10 +335,18 @@ server as `local-agent-mode-<extension display name>` 1.0.0 and advertises
 | Host capabilities | `openLinks`, `downloadFile`, `updateModelContext {text, image}`, `message {text}`, `serverTools {listChanged}`, `serverResources {listChanged}`, `logging`, `sandbox` |
 | Tool result to the page | `ui/notifications/tool-input` then `ui/notifications/tool-result` (with `structuredContent`) arrive right after initialisation |
 | App-only tools hidden from the model | **Yes**: the model listed only `probe_show`, `probe_set_text` and `probe_get_state`, and said the widget's own tools cannot be called from the chat |
-| (2) App-only call reaches the server | **Not yet shown.** After a pane Save and after polling, the server's `appCalls` stayed empty. The page log for that instance was not kept; re-run pending |
-| (3) Re-render after a model write | A new `probe_show` call opens a **new** inline page (it does not update the existing one), which renders the new state from its tool result. Updating an already-open page depends on (2) |
+| (2) App-only call reaches the server | **Yes, but not the model's server process.** Second pass (same day): every pane Save and every 2 s poll appears in `mcp-server-<display name>.log` as `tools/call` (ids 4 to 23) with a result, and the page got real answers (a stale Save refused `pane_edit_pending`, a current one saved). **None of the model's calls** (`probe_show`, `probe_set_text`, `probe_get_state`) appear in that log, and the two sides kept separate in-memory state: the app side reached revision 2 (`pane edit 1`, writer `pane`) while the model side reached revision 3 (`model edit 3`, writer `model`), and the model's `appCalls` stayed empty throughout. So the page's tool calls and the model's tool calls are served by **two different server processes** |
+| (3) Re-render after a model write | A new `probe_show` call opens a **new** inline page (it does not update the existing one), which renders the new state from its tool result. An open page **polling an app-only tool every 2 s works** (each poll answered in about 1 ms). Nothing pushes to an open page. Whether a poll sees a model-side write depends on the state being shared through disk (below) |
+| Display mode after the move | `ui/request-display-mode {mode:"fullscreen"}` answered `{mode:"fullscreen"}`, then `host-context-changed` with `displayMode: fullscreen` and `containerDimensions` about 953 × 1098; saves work from the pane |
 | `ui/update-model-context` | Answered `ok`, but the model's next turn did not see the text |
 | `ui/message` | **Works**: the page's message appeared in the chat as a user message, and the model acted on it |
+
+**What this means for the design (pending the disk-sharing check, T003 third pass)**: the server must keep **no state
+in memory between calls**. Every revision, draft and "what the model last read" snapshot lives in files under the
+clone root, which both processes can read, if they share the workstation's disk. "The server notifies the pane"
+is not possible: the page **polls** an app-only read tool instead, and moves itself beside the chat with
+`ui/request-display-mode fullscreen`. `ui/update-model-context` cannot carry a pane edit to the model; the
+`base_revision` refusal (`pane_edit_pending`) and a re-read are the only channel.
 
 **If (1) fails**, the spec's assumption applies: FR-035 and FR-036 go back to the maintainer and are not quietly
 dropped. The fallback already required by FR-037 (show the document in the chat) keeps the feature usable meanwhile.
