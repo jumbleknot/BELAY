@@ -1,0 +1,55 @@
+{
+  "//": "Read cases: comment bodies oldest first, and what a reader must conclude (contracts/stages.md 'The stage trailer'). Shared with the pdlc server's stages tests.",
+  "cases": [
+    {
+      "name": "no comments: no stage record",
+      "comments": [],
+      "expect": { "latest": null, "withdrawn": [], "warnings": 0 }
+    },
+    {
+      "name": "one trailer, after human text and a blank line",
+      "comments": ["Spec started on branch `016-a` in `specs/016-a/` (Claude Desktop).\n\n<!-- pdlc-stage: stage=spec-in-progress branch=016-a spec=specs/016-a/ -->"],
+      "expect": { "latest": { "stage": "spec-in-progress", "branch": "016-a", "spec": "specs/016-a/" }, "withdrawn": [], "warnings": 0 }
+    },
+    {
+      "name": "most recent wins",
+      "comments": [
+        "Started.\n\n<!-- pdlc-stage: stage=spec-in-progress branch=016-a spec=specs/016-a/ -->",
+        "A human comment with no trailer.",
+        "Approved.\n\n<!-- pdlc-stage: stage=ready-to-plan branch=016-a spec=specs/016-a/ -->"
+      ],
+      "expect": { "latest": { "stage": "ready-to-plan", "branch": "016-a", "spec": "specs/016-a/" }, "withdrawn": [], "warnings": 0 }
+    },
+    {
+      "name": "every withdrawn trailer is collected; a later start is the latest",
+      "comments": [
+        "Started.\n\n<!-- pdlc-stage: stage=spec-in-progress branch=016-a spec=specs/016-a/ -->",
+        "Withdrawn.\n\n<!-- pdlc-stage: stage=withdrawn branch=016-a spec=specs/016-a/ -->",
+        "Started.\n\n<!-- pdlc-stage: stage=spec-in-progress branch=017-a spec=specs/017-a/ -->",
+        "Withdrawn.\n\n<!-- pdlc-stage: stage=withdrawn branch=017-a spec=specs/017-a/ -->",
+        "Started.\n\n<!-- pdlc-stage: stage=spec-in-progress branch=018-a spec=specs/018-a/ -->"
+      ],
+      "expect": { "latest": { "stage": "spec-in-progress", "branch": "018-a", "spec": "specs/018-a/" }, "withdrawn": ["016-a", "017-a"], "warnings": 0 }
+    },
+    {
+      "name": "a trailer that is not the last line is not a trailer",
+      "comments": ["Quoting an old one:\n<!-- pdlc-stage: stage=ready-to-plan branch=016-a spec=specs/016-a/ -->\nand more text"],
+      "expect": { "latest": null, "withdrawn": [], "warnings": 0 }
+    },
+    {
+      "name": "a malformed trailer is ignored with a warning, and the earlier valid one stands",
+      "comments": [
+        "Started.\n\n<!-- pdlc-stage: stage=spec-in-progress branch=016-a spec=specs/016-a/ -->",
+        "Broken.\n\n<!-- pdlc-stage: stage=ready-to-plan branch=016 a spec=specs/016-a/ -->",
+        "Unknown stage.\n\n<!-- pdlc-stage: stage=shipped branch=016-a spec=specs/016-a/ -->",
+        "Fields out of order.\n\n<!-- pdlc-stage: branch=016-a stage=ready-to-plan spec=specs/016-a/ -->"
+      ],
+      "expect": { "latest": { "stage": "spec-in-progress", "branch": "016-a", "spec": "specs/016-a/" }, "withdrawn": [], "warnings": 3 }
+    },
+    {
+      "name": "trailing whitespace and CRLF after the trailer are tolerated",
+      "comments": ["Approved.\r\n\r\n<!-- pdlc-stage: stage=ready-to-plan branch=016-a spec=specs/016-a/ -->  \r\n"],
+      "expect": { "latest": { "stage": "ready-to-plan", "branch": "016-a", "spec": "specs/016-a/" }, "withdrawn": [], "warnings": 0 }
+    }
+  ]
+}

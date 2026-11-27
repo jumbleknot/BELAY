@@ -1,0 +1,21 @@
+{
+  "//": "Render cases for the stage trailer (contracts/stages.md). Shared by scripts/__tests__/stage-trailer.test.mjs and the pdlc server's tests/unit/stages.test.mjs, so both implementations of the grammar see the same cases.",
+  "valid": [
+    { "in": { "stage": "spec-in-progress", "branch": "016-pdlc-spec-intake", "spec": "specs/016-pdlc-spec-intake/" }, "out": "<!-- pdlc-stage: stage=spec-in-progress branch=016-pdlc-spec-intake spec=specs/016-pdlc-spec-intake/ -->" },
+    { "in": { "stage": "ready-to-plan", "branch": "016-pdlc-spec-intake", "spec": "specs/016-pdlc-spec-intake/" }, "out": "<!-- pdlc-stage: stage=ready-to-plan branch=016-pdlc-spec-intake spec=specs/016-pdlc-spec-intake/ -->" },
+    { "in": { "stage": "in-engineering", "branch": "feature/017-x.y", "spec": "specs/017-x-y/" }, "out": "<!-- pdlc-stage: stage=in-engineering branch=feature/017-x.y spec=specs/017-x-y/ -->" },
+    { "in": { "stage": "merged", "branch": "018-a", "spec": "specs/018-a/" }, "out": "<!-- pdlc-stage: stage=merged branch=018-a spec=specs/018-a/ -->" },
+    { "in": { "stage": "withdrawn", "branch": "019-b", "spec": "specs/019-b/" }, "out": "<!-- pdlc-stage: stage=withdrawn branch=019-b spec=specs/019-b/ -->" }
+  ],
+  "refused": [
+    { "in": { "stage": "spec-in-progress", "branch": "016 space", "spec": "specs/016-x/" }, "why": "branch" },
+    { "in": { "stage": "spec-in-progress", "branch": "016-x-->", "spec": "specs/016-x/" }, "why": "branch" },
+    { "in": { "stage": "spec-in-progress", "branch": "016-é", "spec": "specs/016-x/" }, "why": "branch" },
+    { "in": { "stage": "spec-in-progress", "branch": "", "spec": "specs/016-x/" }, "why": "branch" },
+    { "in": { "stage": "spec-in-progress", "branch": "016-x", "spec": "specs/016-x" }, "why": "spec" },
+    { "in": { "stage": "spec-in-progress", "branch": "016-x", "spec": "docs/016-x/" }, "why": "spec" },
+    { "in": { "stage": "spec-in-progress", "branch": "016-x", "spec": "specs/../x/" }, "why": "spec" },
+    { "in": { "stage": "draft", "branch": "016-x", "spec": "specs/016-x/" }, "why": "stage" },
+    { "in": { "stage": "closed", "branch": "016-x", "spec": "specs/016-x/" }, "why": "stage" }
+  ]
+}

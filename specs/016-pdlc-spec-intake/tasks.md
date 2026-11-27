@@ -159,7 +159,7 @@ on it. A measurement records what was observed, in research.md, under the R it b
   `TAXONOMY` (data-model.md Label contract) (prerequisite: T009 RED)
   - **Verify GREEN**: same commands as T009 → expected: 0 failures; then `pnpm nx run scripts:test` and
     `pnpm nx run pdlc:test` still pass
-- [ ] T011 [P] Test: the stage trailer grammar ([contracts/stages.md](contracts/stages.md) "The stage trailer").
+- [X] T011 [P] Test: the stage trailer grammar ([contracts/stages.md](contracts/stages.md) "The stage trailer").
   Write `scripts/__tests__/stage-trailer.test.mjs` from fixtures in `scripts/__tests__/fixtures/stage-trailer/`:
   - render, then parse, round-trips for each stage and for `withdrawn`;
   - most-recent wins;
@@ -170,7 +170,7 @@ on it. A measurement records what was observed, in research.md, under the R it b
     `Proposal issue.withdrawn_branches`)
   - **Verify RED**: `node --test scripts/__tests__/stage-trailer.test.mjs` → expected: failing —
     `Cannot find module '../lib/stage-trailer.mjs'`
-- [ ] T012 Implement `scripts/lib/stage-trailer.mjs` (prerequisite: T011 RED)
+- [X] T012 Implement `scripts/lib/stage-trailer.mjs` (prerequisite: T011 RED)
   - **Verify GREEN**: `node --test scripts/__tests__/stage-trailer.test.mjs` → expected: 0 failures
 - [ ] T013 [P] Test: the server's stages module. In `mcp-servers/pdlc/tests/unit/stages.test.mjs`:
   - the transition table, every allowed row passing and every other (from, to, caller) pair refused
