@@ -491,11 +491,10 @@ reporter destination's folder. In `guardrails` it passes only because `scripts:t
 AGENTS.md: "a tool's no is about the tool"):
 - the parent commit is not readable by the counter → created `unknown`;
 - a target's reporter file is missing or unparsable → that target `unknown`;
-- the run was cancelled (a later push to `main`) → outcomes `unknown (run cancelled by a later push)`, if the final
-  step runs on cancellation. Whether a Forgejo `always()` step runs in a cancelled job is **unverified**, measured in
-  T006's throwaway workflow. If it does not, the closing comment's last line ("Suite outcomes follow from this
-  commit's guardrails run; if none follows, that run was cancelled or did not report") keeps the absence from
-  reading as a pass.
+- the run was cancelled (a later push to `main`) → **no outcomes comment at all**: measured (T006, R11), a Forgejo
+  `always()` step does not run in a job cancelled by `cancel-in-progress`. The closing comment's last line ("Suite
+  outcomes follow from this commit's guardrails run. If none follows, that run was cancelled or did not report")
+  keeps the absence from reading as a pass.
 
 The close never waits for, or depends on, the outcomes.
 
