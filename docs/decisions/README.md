@@ -65,4 +65,5 @@ What this costs and what it commits later work to. Name every gate, file or cred
 | [ADR-0002](ADR-0002-session-maintained-wiki.md) | The `openwiki/` bundle is maintained by the coding session, with no generator | Accepted |
 | [ADR-0003](ADR-0003-docker-sandbox-devcontainer.md) | The dev container runs in a dedicated Docker Sandbox microVM with default-deny egress | Accepted |
 | [ADR-0004](ADR-0004-renovate-dependency-bot.md) | A self-hosted Renovate bot proposes dependency, digest and lockfile updates | Accepted |
-| [ADR-0005](ADR-0005-operator-tool-mcp-servers.md) | Operator-tool MCP servers are local stdio Node servers, shipped as Claude Desktop Extensions (constitution 1.1.0) | Accepted |
+| [ADR-0005](ADR-0005-operator-tool-mcp-servers.md) | Operator-tool MCP servers are local stdio Node servers, shipped as Claude Desktop Extensions (constitution 1.1.0) | Accepted; superseded in part by ADR-0006 |
+| [ADR-0006](ADR-0006-pdlc-spec-intake.md) | The `pdlc` server writes and publishes one feature's spec branch, and a proposal stays open until it merges | Accepted |

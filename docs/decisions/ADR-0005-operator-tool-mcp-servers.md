@@ -1,6 +1,7 @@
 # ADR-0005: Operator-tool MCP servers are local stdio Node servers, shipped as Claude Desktop Extensions
 
-- **Status:** Accepted
+- **Status:** Accepted; superseded in part by [ADR-0006](ADR-0006-pdlc-spec-intake.md) (the `pdlc` token's
+  `read:repository` scope and the read-only local copies)
 - **Date:** 2026-11-25
 - **Approved by:** the maintainer, 2026-11-25, in a Claude Code session while planning feature 014
   (decisions M1 and M2, and the transport, audit and locality rulings recorded in its `research.md`)

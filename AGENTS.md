@@ -61,6 +61,7 @@ BELAY is a polyglot monorepo of tooling that other repositories share, so every 
 - [ADR-0003 — the dev container in a dedicated Docker Sandbox microVM](openwiki/decisions/adr-0003-docker-sandbox-devcontainer.md)
 - [ADR-0004 — a self-hosted Renovate bot proposes updates](openwiki/decisions/adr-0004-renovate-dependency-bot.md)
 - [ADR-0005 — operator-tool MCP servers, local stdio, shipped as Claude Desktop Extensions](openwiki/decisions/adr-0005-operator-tool-mcp-servers.md) — constitution 1.1.0; the `pdlc` server
+- [ADR-0006 — the `pdlc` server writes one feature's spec branch; a proposal stays open until merge](openwiki/decisions/adr-0006-pdlc-spec-intake.md) — feature 016; supersedes ADR-0005's token scope
 
 ### Gotchas
 
