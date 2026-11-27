@@ -323,6 +323,23 @@ the model's context.
 2. Whether an app-only tool call from the page reaches the server, and whether a later model turn sees the change.
 3. Whether a page can be told to re-render after a model-side write.
 
+**Measured on the host, 2026-11-27 (T003, first pass)**: Claude Desktop on Windows (user agent `Claude/6.28899.6`,
+Electron 45.3.3, MSIX), plain chat, throwaway extension `pdlc-pane-probe` 0.0.1. The client presents itself to the
+server as `local-agent-mode-<extension display name>` 1.0.0 and advertises
+`extensions: {"io.modelcontextprotocol/ui": {"mimeTypes": ["text/html;profile=mcp-app"]}}`.
+
+| Item | Observed |
+| --- | --- |
+| Page renders | Yes, **inline in the conversation** first. `ui/initialize` (protocol `2026-01-26`) answered with host `Claude` 1.0.0 and `hostContext.availableDisplayModes: ["inline","fullscreen"]`, `displayMode` inline |
+| (1) Beside the chat | **Yes, on request.** `ui/request-display-mode {mode:"fullscreen"}` moves the page to the **right-hand pane**; `{mode:"inline"}` brings it back. `pip` is not offered and changes nothing |
+| Host capabilities | `openLinks`, `downloadFile`, `updateModelContext {text, image}`, `message {text}`, `serverTools {listChanged}`, `serverResources {listChanged}`, `logging`, `sandbox` |
+| Tool result to the page | `ui/notifications/tool-input` then `ui/notifications/tool-result` (with `structuredContent`) arrive right after initialisation |
+| App-only tools hidden from the model | **Yes**: the model listed only `probe_show`, `probe_set_text` and `probe_get_state`, and said the widget's own tools cannot be called from the chat |
+| (2) App-only call reaches the server | **Not yet shown.** After a pane Save and after polling, the server's `appCalls` stayed empty. The page log for that instance was not kept; re-run pending |
+| (3) Re-render after a model write | A new `probe_show` call opens a **new** inline page (it does not update the existing one), which renders the new state from its tool result. Updating an already-open page depends on (2) |
+| `ui/update-model-context` | Answered `ok`, but the model's next turn did not see the text |
+| `ui/message` | **Works**: the page's message appeared in the chat as a user message, and the model acted on it |
+
 **If (1) fails**, the spec's assumption applies: FR-035 and FR-036 go back to the maintainer and are not quietly
 dropped. The fallback already required by FR-037 (show the document in the chat) keeps the feature usable meanwhile.
 
@@ -373,10 +390,24 @@ its issue permissions are not assumed.
 and `CI_DIGEST_TOKEN` (already `write:issue`) only when the run token is refused. The runbook records which one the
 measurement showed. Neither is printed: the existing redactor covers both.
 
-**T006, second half (run token; `always()` on cancel): not measured yet, 2026-11-27.** The throwaway workflow on
-`ci-smoke` branch `pdlc-probe-016` (commit `3f8e05b`) stayed `pending`: `ci-smoke` has **no runner**
-(`GET /repos/{owner}/ci-smoke/actions/runners` → `[]`; its own `smoke` job last succeeded 2026-11-25 and has been
-`pending` since), while BELAY has its repository runner `ci-belay`. Where to run it is back with the maintainer.
+**T006, second half, measured 2026-11-27 on BELAY's own runner** (`ci-belay`, label `belay`). It was first tried on
+`ci-smoke`, whose jobs stayed `pending`: `ci-smoke` has **no runner** (`GET /repos/{owner}/ci-smoke/actions/runners`
+→ `[]`; its own `smoke` job last succeeded 2026-11-25). The maintainer chose BELAY. A throwaway workflow on throwaway
+branch `pdlc-probe-016` (`on: push` to that branch only; `concurrency` with `cancel-in-progress`) acted on a
+throwaway issue with `${{ github.token }}` only:
+
+| Measurement | Observed |
+| --- | --- |
+| Run token comments on an issue in its own repository (push event) | **Yes**: HTTP 2xx; the comment is authored by `forgejo-actions` |
+| Run token closes that issue | **Yes**: job `close` success, issue `closed` |
+| A job cancelled by `cancel-in-progress` (a second push while its 150 s step ran) | The job's commit status became **`failure`** (not a distinct `cancelled`) the moment the second run started |
+| Does its `if: always()` step run? | **No**: the cancelled run posted no always-step comment. The second, uncancelled run's always-step did run and saw `job.status=success` |
+
+**So**: M6 resolves to **the run token**; `CI_DIGEST_TOKEN` stays as the coded fallback for a 401/403 but is not
+expected to be used, and the secrets page changes nothing for it (T078). For R12, a `guardrails` run on `main`
+cancelled by a later merge posts **no** outcomes comment at all; the closing comment's line "If none follows, that
+run was cancelled or did not report" is what keeps that absence from reading as a pass. The outcomes step's
+`--job-status cancelled` path is therefore not reachable on this forge and is kept only as defence.
 
 ## R12: Counting the feature's tests (FR-038 to FR-040; decision M10)
 

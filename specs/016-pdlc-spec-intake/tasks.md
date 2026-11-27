@@ -106,7 +106,7 @@ on it. A measurement records what was observed, in research.md, under the R it b
 
   Delete the test branch afterwards with the operator's agreement. Record in research.md R6.
   - **Done when**: all three answers are recorded with their HTTP or git exit status.
-- [ ] T006 [P] Measure CI credentials and the merge lookup (R10, R11) with a throwaway workflow on a `ci-smoke`
+- [X] T006 [P] Measure CI credentials and the merge lookup (R10, R11) with a throwaway workflow on a `ci-smoke`
   branch, run by `workflow_dispatch`:
   - can `github.token` comment on and close an issue in its own repository;
   - does `GET /repos/{o}/{r}/commits/{sha}/pull` exist on this forge build.
