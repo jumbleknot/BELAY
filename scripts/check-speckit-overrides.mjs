@@ -104,6 +104,11 @@ export const PROJECT_OWNED = [
     marker: 'backlog.mjs stage',
     why: 'the after_specify and after_plan hook (feature 016, replacing 014\'s close-proposal): moves the proposal a spec came from to spec in progress, then in engineering; BELAY\'s own, in no manifest',
   },
+  {
+    file: '.claude/skills/speckit-belay-feature-dir/SKILL.md',
+    marker: 'scripts/feature-dir.mjs',
+    why: 'the before_plan hook (feature 016): writes the gitignored .specify/feature.json from the branch, so a fresh checkout of a published spec plans with no fix-up; BELAY\'s own, in no manifest',
+  },
 ];
 
 export const EXTENSIONS_YML = '.specify/extensions.yml';
@@ -155,6 +160,10 @@ export const EXTENSION_HOOKS = [
   // feature is. A proposal now closes only when its feature branch merges (in CI). A reinstall drops both.
   { event: 'after_specify', extension: 'belay', command: 'speckit.belay.spec-stage', optional: false, local: true },
   { event: 'after_plan', extension: 'belay', command: 'speckit.belay.spec-stage', optional: false, local: true },
+  // Hand-added (feature 016, T042): Spec Kit 1.4.2 plans only from SPECIFY_FEATURE_DIRECTORY or the gitignored
+  // .specify/feature.json (measured), which a fresh checkout of a feature branch lacks. Before /speckit-plan, this
+  // writes it from the branch through .claude/skills/speckit-belay-feature-dir/ and scripts/feature-dir.mjs. A reinstall drops it.
+  { event: 'before_plan', extension: 'belay', command: 'speckit.belay.feature-dir', optional: false, local: true },
 ];
 
 /** `speckit.git.feature` → `.claude/skills/speckit-git-feature/SKILL.md`. */

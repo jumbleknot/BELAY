@@ -1,11 +1,11 @@
 ---
 type: Runbook
 title: "Spec Kit: this repository's customisations, and upgrading it"
-description: The one inventory of every way BELAY changes or adds to GitHub Spec Kit — the tasks-template override (doc-impact sweep, required RED/GREEN tests, the Open the PR task), the registered local edits to /speckit-tasks and /speckit-converge, the git and agent-context extensions and their hooks, the project-owned /speckit-taskstoissues and the after_specify and after_plan spec-stage hooks and skill — with who owns which file, the gate and its failure codes, and the upgrade procedure.
+description: The one inventory of every way BELAY changes or adds to GitHub Spec Kit — the tasks-template override (doc-impact sweep, required RED/GREEN tests, the Open the PR task), the registered local edits to /speckit-tasks and /speckit-converge, the git and agent-context extensions and their hooks, the project-owned /speckit-taskstoissues the after_specify and after_plan spec-stage hooks and skill, and the before_plan feature-dir hook — with who owns which file, the gate and its failure codes, and the upgrade procedure.
 tags: [spec-kit, sdd, gates, upgrade, runbook]
 resource: docs/runbooks/spec-kit.md
-resource-sha256: a6142702d019f4d1b8f24e5737a6aa3a979ade392432f93ab94c3803228cf1de
-timestamp: 2026-11-28T01:17:41.859Z
+resource-sha256: 694365cf7ef3fcdef43a4f182790880c5422398339607f1e40dd964a28d3e3c1
+timestamp: 2026-11-28T01:22:53.098Z
 ---
 
 # Spec Kit: this repository's customisations, and upgrading it
@@ -38,9 +38,14 @@ owns `.specify/templates/overrides/` and the constitution. In order of preferenc
 - **The override is a fork.** Its first line records the fork point's hash and Spec Kit version.
   After an upgrade, merge the core template's change into it, then run `--record`. Never hand-type
   the hash, and `--record` refuses an override that lost the sweep or the TDD sample.
-- **An extension reinstall drops the four hand-added hooks.** Expect `hook-lost` for
-  `before_converge`, `after_converge` and the two mandatory `belay` `speckit.belay.spec-stage` hooks
-  (`after_specify` and `after_plan`), and re-add them.
+- **An extension reinstall drops the five hand-added hooks.** Expect `hook-lost` for
+  `before_converge`, `after_converge`, the two mandatory `belay` `speckit.belay.spec-stage` hooks
+  (`after_specify` and `after_plan`) and the mandatory `before_plan` `speckit.belay.feature-dir`, and
+  re-add them.
+- **A fresh checkout of a feature branch cannot plan without the feature-dir hook** (feature 016,
+  measured 2026-11-28). Spec Kit 1.4.2 finds the feature only from `SPECIFY_FEATURE_DIRECTORY` or the
+  gitignored `.specify/feature.json`; the `before_plan` hook runs `scripts/feature-dir.mjs`, which writes
+  that file from the branch.
 - **The spec-stage hooks move the proposal a spec came from through its stages** (feature 016, replacing
   014's close-proposal hook). Its skill, `.claude/skills/speckit-belay-spec-stage/`, is project-owned. It
   finds one `Proposal #<n>` in the spec's Input line, picks `in-engineering` when `plan.md` exists and

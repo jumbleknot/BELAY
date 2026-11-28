@@ -385,3 +385,20 @@ test('the audit line for approve_spec names the branch', async () => {
     assert.equal(w.c.audits().find((a) => a.tool === 'approve_spec').branch, BRANCH);
   } finally { await w.close(); }
 });
+
+test('US3-AC4 FR-018 at in-engineering the spec is locked: write_spec_file and approve_spec refuse document_locked, citing that planning started', async () => {
+  const { w, p, revision } = await clarified();
+  try {
+    const issue = w.forge.issue('BELAY', p.number);
+    const label = (name) => w.forge.state.labels.belay.find((l) => l.name === name);
+    issue.labels = issue.labels.filter((l) => l.name !== 'status/spec-in-progress').concat([{ ...label('status/in-engineering') }]);
+    for (const [tool, args] of [['write_spec_file', { path: 'spec.md', content: 'x' }], ['approve_spec', {}]]) {
+      const r = await w.c.call(tool, { repo: 'BELAY', number: p.number, base_revision: revision, ...args });
+      refused(r, 'document_locked');
+      assert.match(r.payload.reason, /planning has started/i, tool);
+    }
+    assert.deepEqual(w.pushes, []);
+    const g = await w.c.call('get_spec', { repo: 'BELAY', number: p.number });
+    assert.equal(g.payload.locked, true);
+  } finally { await w.close(); }
+});

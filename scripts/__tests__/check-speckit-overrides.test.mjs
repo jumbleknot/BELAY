@@ -572,3 +572,22 @@ test('spec-stage: a tree missing the hook skill fails project-file-lost', () => 
   assert.ok(codes(r).includes('project-file-lost'), JSON.stringify(r.failures));
 });
 
+
+// ── feature 016 (T042): the hand-added before_plan feature-dir hook and its project-owned skill ─────────────────────
+const DIR_HOOK = { event: 'before_plan', extension: 'belay', command: 'speckit.belay.feature-dir' };
+const DIR_SKILL = '.claude/skills/speckit-belay-feature-dir/SKILL.md';
+
+test('feature-dir: EXTENSION_HOOKS registers the before_plan belay hook, mandatory and hand-added, and its skill is PROJECT_OWNED', () => {
+  const h = EXTENSION_HOOKS.find(isStageHook(DIR_HOOK));
+  assert.ok(h, 'the before_plan feature-dir hook is not registered');
+  assert.equal(h.optional, false);
+  assert.equal(h.local, true);
+  assert.ok(PROJECT_OWNED.some((e) => e.file === DIR_SKILL && e.marker === 'scripts/feature-dir.mjs'), `${DIR_SKILL} is not in PROJECT_OWNED`);
+});
+
+test('feature-dir: a tree whose extensions.yml lost the hook reports hook-lost', () => {
+  assert.ok(EXTENSION_HOOKS.some(isStageHook(DIR_HOOK)), 'precondition: the hook is registered');
+  const yml = extensionFixtureFiles({ extensions: EXTENSIONS, hooks: EXTENSION_HOOKS.filter((h) => !isStageHook(DIR_HOOK)(h)) })[EXTENSIONS_YML];
+  const r = checkSpeckitOverrides({ root: fixture({ files: { [EXTENSIONS_YML]: yml } }) });
+  assert.ok(r.failures.some((f) => f.code === 'hook-lost' && /speckit\.belay\.feature-dir/.test(f.message)), JSON.stringify(r.failures));
+});

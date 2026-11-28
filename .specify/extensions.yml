@@ -40,6 +40,14 @@ hooks:
     prompt: Commit outstanding changes before planning?
     description: Auto-commit before implementation planning
     condition: null
+  - extension: belay
+    command: speckit.belay.feature-dir
+    enabled: true
+    optional: false
+    priority: 20
+    prompt: Find the spec to plan from the branch?
+    description: Write the gitignored .specify/feature.json from the feature branch when a fresh checkout has none (feature 016)
+    condition: null
   before_tasks:
   - extension: git
     command: speckit.git.commit

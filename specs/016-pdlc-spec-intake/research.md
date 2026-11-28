@@ -196,8 +196,25 @@ anything. The message is `docs(<NNN>): approve spec for proposal item #<n>` foll
 
 Anything else is refused with `path_outside_feature`. The path is resolved and compared after normalisation, and `..`,
 absolute paths, symlinks and an alternate data stream (`:` on Windows) are refused. Other files the specify or clarify
-prompts mention are not written: `.specify/feature.json` is gitignored, and setup-plan resolves the feature from the
-branch name when it is missing. Task "measure SC-002" confirms this on a fresh checkout. If a target repository's
+prompts mention are not written: `.specify/feature.json` is gitignored. The plan assumed setup-plan resolves the
+feature from the branch name when that file is missing; **measured false** (T042, below).
+
+**Measured 2026-11-28 (T042)**, real `pwsh` 7.6.5 and BELAY's Spec Kit 1.4.2 scripts, in a fresh clone of a published
+feature branch: `setup-plan.ps1 -Json` exits 1 with `ERROR: Feature directory not found. Set SPECIFY_FEATURE_DIRECTORY
+or run the specify command to create .specify/feature.json.` Read from `common.ps1` `Get-FeaturePathsEnv`: the feature
+folder comes ONLY from `SPECIFY_FEATURE_DIRECTORY` or `.specify/feature.json` (written by the specify step, and
+gitignored by Spec Kit's own `.specify/.gitignore`); there is no branch fallback. This is not specific to the Claude
+Desktop route: any fresh checkout or worktree of a feature branch (an Architect picking up someone else's spec) has no
+`feature.json`, so `/speckit-plan` fails there today.
+
+**Decision (T042)**: a mandatory, hand-added `before_plan` hook, `speckit.belay.feature-dir`, runs
+`node scripts/feature-dir.mjs`: when neither `SPECIFY_FEATURE_DIRECTORY` nor a `feature.json` that names an existing
+spec is present, it writes the gitignored `.specify/feature.json` from the branch (`specs/<branch>/`, only when that
+folder's `spec.md` exists), and otherwise refuses with the reason. No Spec Kit core file is edited; the server still
+writes nothing outside the spec folder; both routes plan with zero fix-ups (SC-002). Rejected: committing
+`feature.json` (Spec Kit gitignores it, and a merged one would point every later checkout at an old feature); a
+registered local edit to `common.ps1` adding a branch fallback (a core-script edit every Spec Kit upgrade must
+re-merge); a documented manual step (a fix-up, against SC-002). If a target repository's
 prompt needs another file, adding it is a change to this list and its test, as FR-020 requires.
 
 Other server writes go only to these places:

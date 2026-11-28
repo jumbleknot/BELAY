@@ -10,6 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cpSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { createLocalCopy } from '../../src/local-copy.mjs';
 import { createGitRunner } from '../../src/git-runner.mjs';
 import { createSpecKitRunner } from '../../src/spec-kit-runner.mjs';
@@ -138,6 +139,27 @@ test('approve for real: one commit touching only the spec folder, on the publish
   const read = await createSpecFiles().read({ worktree: again.worktree_path, specDir: 'specs/003-int-probe' });
   assert.deepEqual(read.files.map((f) => f.path), ['checklists/requirements.md', 'spec.md']);
   assert.equal(read.files.find((f) => f.path === 'spec.md').content, spec);
+});
+
+test('the published branch plans with no fix-up: setup-plan.ps1 resolves the spec folder from the branch, with no feature.json (T042; SC-002, FR-028)', async () => {
+  const bare = forge.originUrlFor('target');
+  const architect = join(forge.root, 'architect');
+  sh(forge.root, 'clone', '--quiet', '--branch', '003-int-probe', bare, architect);
+  assert.equal(existsSync(join(architect, '.specify', 'feature.json')), false, 'nothing but the spec folder was published');
+  const pwsh = specKit.interpreterPath('ps');
+  const setupPlan = () => execFileSync(pwsh, ['-NoProfile', '-NonInteractive', '-File', join(architect, '.specify', 'scripts', 'powershell', 'setup-plan.ps1'), '-Json'],
+    { cwd: architect, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: { PATH: process.env.PATH, HOME: process.env.HOME, GIT_TERMINAL_PROMPT: '0' } });
+  // Measured (research R5, T042): Spec Kit 1.4.2 cannot find the spec on a fresh checkout. If this ever passes, Spec
+  // Kit gained a branch fallback and BELAY's before_plan feature-dir hook can be retired.
+  assert.throws(setupPlan, /Feature directory not found/);
+  // The mandatory before_plan hook (speckit.belay.feature-dir) runs BELAY's scripts/feature-dir.mjs first.
+  execFileSync(process.execPath, [join(BELAY, 'scripts', 'feature-dir.mjs')], { cwd: architect, encoding: 'utf8', env: { PATH: process.env.PATH } });
+  assert.equal(sh(architect, 'status', '--porcelain'), '', 'the hook writes only the gitignored .specify/feature.json');
+  const out = setupPlan();
+  const json = JSON.parse(out.trim().split('\n').filter((l) => l.trim().startsWith('{')).at(-1));
+  assert.equal(json.FEATURE_SPEC.replace(/\\/g, '/').endsWith('specs/003-int-probe/spec.md'), true, JSON.stringify(json));
+  assert.equal(String(json.BRANCH), '003-int-probe');
+  assert.ok(existsSync(join(architect, 'specs', '003-int-probe', 'plan.md')), 'the plan template landed in the spec folder');
 });
 
 test('a push straight to the default branch is refused by the server, even in a valid shape (push_target_refused)', async () => {

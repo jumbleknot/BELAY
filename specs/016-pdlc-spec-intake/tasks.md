@@ -449,7 +449,7 @@ the spec.
   - **Verify RED**: `node --test scripts/__tests__/extensions-yml.test.mjs` and
     `node --test scripts/__tests__/check-speckit-overrides.test.mjs` → expected: failing — `expected
     speckit.belay.spec-stage under after_plan`
-- [ ] T038 [P] [US3] Test: the lock in the server. In `tools.test.mjs`, at `in-engineering`, `write_spec_file`,
+- [X] T038 [P] [US3] Test: the lock in the server. In `tools.test.mjs`, at `in-engineering`, `write_spec_file`,
   `approve_spec`, `reopen_spec` and `withdraw_spec` each refuse `document_locked`, citing that planning started
   (data-model.md `Spec in progress.locked`).
   - **Scenarios covered**: US3-AC4, FR-018
@@ -477,10 +477,10 @@ the spec.
   - **Also (from T027), done**: removed the `close-proposal` → `spec-stage` rewrite in
     `mcp-servers/pdlc/tests/integration/spec-lifecycle.integration.test.mjs`'s seed, which BELAY's own `extensions.yml` then
     no longer needs
-- [ ] T041 [US3] Enforce the lock in `mcp-servers/pdlc/src/tools.mjs`: read the stage before every spec write
+- [X] T041 [US3] Enforce the lock in `mcp-servers/pdlc/src/tools.mjs`: read the stage before every spec write
   (prerequisite: T038 RED)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/tools.test.mjs` → expected: 0 failures
-- [ ] T042 [US3] Integration: in `spec-lifecycle.integration.test.mjs`, check out the published branch in a second
+- [X] T042 [US3] Integration: in `spec-lifecycle.integration.test.mjs`, check out the published branch in a second
   clone and run `.specify/scripts/powershell/setup-plan.ps1 -Json` there. It resolves `specs/003-<slug>/` with no
   `feature.json` and no fix-up (R5, SC-002 machine half).
   - **Scenarios covered**: US3-AC2, SC-002, FR-028
@@ -489,6 +489,25 @@ the spec.
     `setup-plan.ps1: FEATURE_SPEC not found` (the branch has no `specs/003-<slug>/spec.md` yet)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/integration/spec-lifecycle.integration.test.mjs` → expected:
     0 failures
+  - **Done 2026-11-28, with a finding**: RED was `Feature directory not found. Set SPECIFY_FEATURE_DIRECTORY or run the
+    specify command to create .specify/feature.json`, not the planned message: R5's assumption (setup-plan falls back
+    to the branch) is false in Spec Kit 1.4.2, for any fresh checkout, from either route. Fixed by T042a/T042b; the test
+    now also asserts the measured failure, so it notices if Spec Kit gains the fallback
+- [X] T042a [US3] Test: `scripts/__tests__/feature-dir.test.mjs` (writes Spec Kit's compact `.specify/feature.json` from
+  the branch only when `specs/<branch>/spec.md` exists; respects `SPECIFY_FEATURE_DIRECTORY` and a valid
+  `feature.json`; replaces a stale one; refuses exit 2 on `main` or a branch with no spec), and the hook in
+  `extensions-yml.test.mjs` and `check-speckit-overrides.test.mjs` (`before_plan` → `belay`
+  `speckit.belay.feature-dir`, mandatory, `local: true`; its skill `PROJECT_OWNED`; `hook-lost` when removed)
+  - **Verify RED** (observed): `Cannot find module '../feature-dir.mjs'`; `expected speckit.belay.feature-dir under
+    before_plan`; `the before_plan feature-dir hook is not registered`
+- [X] T042b [US3] Implement `scripts/feature-dir.mjs`, `.claude/skills/speckit-belay-feature-dir/SKILL.md`, the
+  `before_plan` entry in `.specify/extensions.yml`, the gate's `EXTENSION_HOOKS` and `PROJECT_OWNED`, Spec Kit runbook
+  rows 5a and 7a and the reinstall steps, and the openwiki Spec Kit page (research R5, decision recorded there)
+  - **Verify GREEN** (observed): feature-dir 6/6, extensions-yml 11/11, check-speckit-overrides 67/67; the gate passes
+    with 25 hooks and 4 project-owned files; T042 passes against the real scripts
+- **T038/T041 as built**: the lock was implemented with T026 (`write_spec_file`) and T034 (`approve_spec`) in
+  `src/spec-lifecycle.mjs`, so T038's test passed on first run (no RED observed); `reopen_spec` and `withdraw_spec` get
+  their lock tests with Phases 8 and 11
 
 **Checkpoint**: the hand-off works from both sides. Proposal → approved spec → ready listing → plan → in engineering.
 

@@ -111,3 +111,12 @@ test('spec-stage: speckit.belay.close-proposal is gone from every hook point', (
     assert.ok(!hooks.some((h) => h.command === 'speckit.belay.close-proposal'), `close-proposal still under ${event}`);
   }
 });
+
+// Feature 016 (T042): a fresh checkout of a feature branch has no .specify/feature.json, and Spec Kit 1.4.2 plans only
+// from that file (measured). The mandatory before_plan hook writes it from the branch.
+test('feature-dir: the real .specify/extensions.yml has before_plan → belay speckit.belay.feature-dir, optional false', () => {
+  const h = (real016().hooks.before_plan ?? []).find((x) => x.extension === 'belay' && x.command === 'speckit.belay.feature-dir');
+  assert.ok(h, 'expected speckit.belay.feature-dir under before_plan');
+  assert.equal(h.optional, false);
+  assert.equal(h.enabled, true);
+});
