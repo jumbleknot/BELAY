@@ -28,7 +28,7 @@ test('triggers: Tuesday and Friday 04:00 UTC, dispatch, and path-filtered pull_r
   }
 });
 
-test('one job, sweep, on BELAY\'s containerized runner (never the kvm host runner, which must not run PR code)', () => {
+test('one job, sweep, on BELAY\'s containerized runner (never the belay-host host runner, which must not run PR code)', () => {
   assert.deepEqual(Object.keys(wf().jobs), ['sweep']);
   assert.equal(wf().jobs.sweep['runs-on'], 'belay');
   assert.ok(Number(wf().jobs.sweep['timeout-minutes']) > 0);

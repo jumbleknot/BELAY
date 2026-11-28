@@ -104,39 +104,48 @@ If the digest notes the **degraded channel**, `CI_DIGEST_TOKEN` was unavailable 
 
 ## Runner
 
-- **Runner:** `ci-belay`, a **repository** runner registered for BELAY only, under **Settings → Actions → Runners**. It runs on the homelab host as the `ci` user's systemd-user service `forgejo-runner-belay`, from `~/runner-belay`.
-- **Label:** jobs use `runs-on: belay`. The runner maps it to `docker://node:26-bookworm`, so a job starts in a Node 26 container. `setup-node` still pins the exact 26.13.1 in the workflow.
-- **The one exception:** the `devcontainer-image` job runs on the shared host runner (`runs-on: kvm`), because building an image needs a Docker daemon and `ci-belay` deliberately has no host Docker access. That runner has the host's Docker, so **the job must never run pull-request code**: its triggers are push to `main`, manual dispatch and the weekly schedule only. `scripts/__tests__/devcontainer-image-workflow.guard.test.mjs` fails if a `pull_request` or `pull_request_target` trigger is added. It also means an image build can queue behind MovieCollectionManager's jobs on that runner.
-- **A host-runner job never writes shared host state, and never runs a tool from it** (items #79, #84). The host runner runs as the same Unix user as MovieCollectionManager's runner, so the two share one home folder, one Actions tool cache and one Docker daemon. Anything a job installs to a fixed path there, or adds to PATH from there, is shared, and a version bump on either side changes it for both. Measured on 2026-11-25:
-  - `build-publish` ran `install-pnpm.sh` as a global install into the shared Node, and MovieCollectionManager's jobs failed their pnpm version check (item #79).
-  - The same job installed Trivy into the shared `~/.local/bin`, which MovieCollectionManager's host jobs also write and run. It left Trivy's database in the shared `~/.cache/trivy`, and `docker login` left BELAY's write-scoped registry token in the shared `~/.docker/config.json` (item #84). Both projects pinned the same Trivy, so nothing had broken yet, by coincidence.
+BELAY has two runners of its own, both **repository** runners registered for BELAY only under **Settings → Actions → Runners**. Each runs on the homelab host as its own Unix user, with that user's own rootless Docker daemon, and each runs one job at a time (item #92, 2026-11-28).
 
-  So every tool, cache and credential a `kvm` job creates lives under `${{ runner.temp }}`: `PNPM_PREFIX` (`belay-pnpm`), `BELAY_TRIVY` (`belay-trivy`, with `TRIVY_CACHE_DIR` inside it) and `DOCKER_CONFIG` (`belay-docker`). The scan step refuses to run a `trivy` other than the job's own. One `if: always()` step removes all three. `scripts/lib/host-runner-rules.mjs` holds the rules and `scripts/__tests__/host-runner-shared-state.guard.test.mjs` proves each on a bad example, then holds every workflow's `kvm` jobs to them. They fail:
+| Runner | Unix user | Label | What runs there |
+| --- | --- | --- | --- |
+| `ci-belay` | `belay-ci` | `belay:docker://node:26-bookworm` | every job, in a fresh container, pull requests included |
+| `ci-belay-host` | `belay-host-ci` | `belay-host:host` | `devcontainer-image › build-publish` only, directly on the host |
+
+The host-side setup (the users, their daemons and the systemd-user units) lives in MovieCollectionManager's server runbook, §7.5, because that repository owns the host.
+
+- **Container jobs:** jobs use `runs-on: belay`. The runner maps it to `docker://node:26-bookworm`, so a job starts in a Node 26 container. `setup-node` still pins the exact 26.13.1 in the workflow.
+- **The one exception:** the `devcontainer-image` job runs on `ci-belay-host` (`runs-on: belay-host`), because building an image needs a Docker daemon and `ci-belay` deliberately has no host Docker access. That job runs on the host itself, so **it must never run pull-request code**: its triggers are push to `main`, manual dispatch and the weekly schedule only. `scripts/__tests__/devcontainer-image-workflow.guard.test.mjs` fails if a `pull_request` or `pull_request_target` trigger is added.
+- **`DOCKER_HOST` is derived, never written down.** The Docker check step sets it to `unix:///run/user/$(id -u)/docker.sock`, the daemon of whichever user the runner runs as. Until item #92 it was a literal uid, which would have pointed the job at the old user's daemon after the move. The same guard fails a `/run/user/<number>` literal.
+- **The retired label is `kvm`.** It belongs to the instance-wide runner that BELAY shared with MovieCollectionManager until item #92; that runner is now scoped to MovieCollectionManager. A BELAY job left on `runs-on: kvm` would wait for a runner for ever, with no failure to read. `scripts/__tests__/host-runner-shared-state.guard.test.mjs` fails any workflow that still names it.
+- **A host job never leaves state behind, and never runs a tool from the runner user's home** (items #79, #84). Until item #92 the host runner ran as the same Unix user as MovieCollectionManager's runner, so the two shared one home folder, one Actions tool cache and one Docker daemon. Measured on 2026-11-25:
+  - `build-publish` ran `install-pnpm.sh` as a global install into the shared Node, and MovieCollectionManager's jobs failed their pnpm version check (item #79).
+  - The same job installed Trivy into the shared `~/.local/bin`, which MovieCollectionManager's host jobs also write and run. It left Trivy's database in the shared `~/.cache/trivy`, and `docker login` left BELAY's write-scoped registry token in the shared `~/.docker/config.json` (item #84).
+
+  `belay-host-ci` is BELAY's alone now, but its home still outlives every job, so a fixed-path install would leak from one commit's job into the next. So every tool, cache and credential a host job creates still lives under `${{ runner.temp }}`: `PNPM_PREFIX` (`belay-pnpm`), `BELAY_TRIVY` (`belay-trivy`, with `TRIVY_CACHE_DIR` inside it) and `DOCKER_CONFIG` (`belay-docker`). The scan step refuses to run a `trivy` other than the job's own. One `if: always()` step removes all three. `scripts/lib/host-runner-rules.mjs` holds the rules and `scripts/__tests__/host-runner-shared-state.guard.test.mjs` proves each on a bad example, then holds every workflow's `belay-host` jobs to them. They fail:
   - a pnpm install without the prefix, `npm -g` and `corepack enable`;
   - a PATH entry outside `runner.temp`, and a Trivy install there;
   - Trivy without a private cache, and `docker login` without a private `DOCKER_CONFIG`;
   - `pnpm/action-setup`, and setup-node's `cache:`;
   - any command naming a home-folder path;
   - a private path that no `always()` step removes.
+- **The Docker daemon is BELAY's alone.** Before item #92, MovieCollectionManager's host jobs pruned the shared daemon and could delete BELAY's build cache or freshly tagged image mid-run. That cannot happen any more. The cost is that `ci-belay-host` keeps its own build cache, so its first build after the move, or after its daemon is reset, is a cold one and takes noticeably longer.
+- **Why its own runners:** the instance-wide runner is MovieCollectionManager's and runs one job at a time. BELAY's first run waited about 36 minutes behind it. The unique `belay` and `belay-host` labels keep the two repositories from queuing behind each other.
+- **A run stays "Waiting for a runner with the following label: belay"** (or `belay-host`): that runner is offline. On the host, as its Unix user, run `systemctl --user status <unit>` and `journalctl --user -u <unit> -f`; the unit names are in MovieCollectionManager's server runbook, §7.5. `scripts/__tests__/guardrails-workflow.test.mjs` pins the `belay` label, so change it in the same commit as `runs-on`.
 
-  The structural fix, a separate Unix user for each project's runner, is a host change tracked in MovieCollectionManager's backlog.
-- **The shared Docker daemon is still shared** (item #84). MovieCollectionManager's `app-e2e`, `dast` and `build-deploy` prune it (`docker image prune -af`, and `docker builder prune` in `build-deploy`). One that runs during `build-publish` can delete the build cache mid-build, or the freshly tagged image between Build, Scan and Push. Each of those steps then fails, so nothing unscanned is published. The symptom is an unexplained red run: "image not found", or a build cache that vanished. Check whether one of MovieCollectionManager's host jobs was running at that moment, then re-run. BELAY's host job runs on image-input merges, on dispatch, and on Fridays at 06:00 UTC.
-- **Why its own runner:** the global `ci-homelab` runner (labels `ubuntu-latest`, `kvm`) is shared with MovieCollectionManager and runs one job at a time. BELAY's first run waited about 36 minutes behind it. The unique `belay` label keeps the two repositories from queuing behind each other.
-- **A run stays "Waiting for a runner with the following label: belay":** `ci-belay` is offline. On the host, run `systemctl --user status forgejo-runner-belay` and `journalctl --user -u forgejo-runner-belay -f`. `scripts/__tests__/guardrails-workflow.test.mjs` pins the label, so change it in the same commit as `runs-on`.
+To recreate a runner:
+1. Go to **Settings → Actions → Runners → Create new runner**, named `ci-belay` or `ci-belay-host`, and note the `--uuid` and the secret.
+2. On the host, as that runner's Unix user (`belay-ci` or `belay-host-ci`), save the secret to a `runner-token` file in the runner's folder, mode 600.
+3. Run `forgejo-runner daemon --url <forge url> --uuid <uuid> --token-url file://<runner folder>/runner-token --label <label>` from a systemd-user unit, where `<label>` is `belay:docker://node:26-bookworm` for `ci-belay` and `belay-host:host` for `ci-belay-host`. Never give one runner both labels, and never register a host label on `ci-belay` (see below).
 
-To recreate the runner:
-1. Go to **Settings → Actions → Runners → Create new runner**, named `ci-belay`, and note the `--uuid` and the secret.
-2. On the host, as `ci`, save the secret to `~/runner-belay/runner-token` with mode 600.
-3. Run `forgejo-runner daemon --url <forge url> --uuid <uuid> --token-url file:///home/ci/runner-belay/runner-token --label belay:docker://node:26-bookworm` from a systemd-user unit, set up like the global runner in MovieCollectionManager's server-setup runbook.
+**Runner security.** Pull-request code runs on these self-hosted runners.
+- `ci-belay` registers only a `docker://` label, so every job runs in a fresh container that is removed when the job ends; nothing runs on the host. The one way out of that container is host Docker access. Pin it off explicitly rather than relying on the default:
+  - run `./forgejo-runner generate-config > config.yaml`;
+  - set `container.docker_host: "-"`;
+  - add `--config <runner folder>/config.yaml` to the unit's `ExecStart`.
+- `ci-belay-host` runs jobs on the host. A pull request **can** write `runs-on: belay-host`, and its workflow runs before any guard test can fail it, so no test in this repository prevents that. What bounds it is the host: **`ci-belay-host` runs as its own Unix user, `belay-host-ci`, with its own Docker daemon** (decided 2026-11-27, item #92). A host job therefore cannot reach the container jobs' daemon, read `ci-belay`'s token file, or touch MovieCollectionManager's runner. One user for both runners was the alternative; it would have left that boundary resting only on who can push.
+- If this repository's runners ever run another repository's jobs, keep the same rule: one Unix user per repository and per kind of runner (container or host), never a shared one.
 
-**Runner security.** Pull-request code runs on this self-hosted runner. The runner registers only a `docker://` label, so every job runs in a fresh container that is removed when the job ends; nothing runs on the host.
-
-The one way out of that container is host Docker access. Pin it off explicitly rather than relying on the default:
-- run `./forgejo-runner generate-config > config.yaml`;
-- set `container.docker_host: "-"`;
-- add `--config /home/ci/runner-belay/config.yaml` to the unit's `ExecStart`.
-
-The repository is private, and Forgejo gives no secrets (`CI_DIGEST_TOKEN`) to fork PRs. If collaborators or fork PRs are ever allowed, require approval before a fork's workflows run.
+The repository is private, and Forgejo gives no secrets (`CI_DIGEST_TOKEN`) to fork PRs. Only the maintainer and the dependency bot can push. If collaborators or fork PRs are ever allowed, require approval before a fork's workflows run.
 
 ## The devcontainer-image workflow
 
@@ -150,7 +159,7 @@ The repository is private, and Forgejo gives no secrets (`CI_DIGEST_TOKEN`) to f
   vulnerable digest is published. The report is uploaded as the `image-scan-report` artifact either way. See
   [image-scanning.md](image-scanning.md).
 - **Dispatch on a branch:** `node scripts/forge-pr.mjs dispatch devcontainer-image.yml --ref <branch>`. A dispatched run posts no commit status, so follow it in the Actions tab.
-- **Never dispatch over a queued push run (item #81).** The host runner is shared, so a push run can wait 20 minutes or more before a runner picks it up. While it waits it is in `/actions/runs` but **not** in `/actions/tasks`, which lists only picked-up jobs. On 2026-11-25 a session read `/actions/tasks`, decided the merge of PR #80 had created no push run, and dispatched the builder. The `concurrency` group's `cancel-in-progress` cancelled the queued push run 143 in the same second the dispatch was created (run 147). The trigger was never broken. `forge-pr.mjs dispatch` now refuses while a run of the same workflow on the same branch is waiting, running or blocked; `--supersede` replaces it on purpose. To see whether a merge created a run: `/actions/runs?workflow_id=devcontainer-image.yml&page=1&limit=5`.
+- **Never dispatch over a queued push run (item #81).** A push run can wait before its runner picks it up: behind another BELAY job on the same one-job runner, or while that runner is offline. Before item #92 the host runner was shared, and waits of 20 minutes or more were measured. While it waits it is in `/actions/runs` but **not** in `/actions/tasks`, which lists only picked-up jobs. On 2026-11-25 a session read `/actions/tasks`, decided the merge of PR #80 had created no push run, and dispatched the builder. The `concurrency` group's `cancel-in-progress` cancelled the queued push run 143 in the same second the dispatch was created (run 147). The trigger was never broken. `forge-pr.mjs dispatch` now refuses while a run of the same workflow on the same branch is waiting, running or blocked; `--supersede` replaces it on purpose. To see whether a merge created a run: `/actions/runs?workflow_id=devcontainer-image.yml&page=1&limit=5`.
 - **The result:** the job writes the digest-pinned reference to the step summary, which this forge cannot read back. Resolve the digest from the registry instead (the recipe is in [devcontainer.md](devcontainer.md)).
 - **Failure digest:** the job ends with the standard failure-digest step, like every job here.
 

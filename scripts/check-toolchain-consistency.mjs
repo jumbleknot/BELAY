@@ -385,7 +385,7 @@ export function findNodeMajorDrift(root = REPO_ROOT) {
  */
 export const RUNNER_IMPLICIT_NODE = {
   belay: "BELAY's runner container image (node:26-bookworm), whose Node only the host config sets",
-  kvm: "the CI host's own Node (kvm:host)",
+  'belay-host': "the CI host's own Node (belay-host:host)",
 };
 
 /**
@@ -605,13 +605,13 @@ function selftest() {
   const job = (runsOn, steps) => `jobs:\n  j:\n    runs-on: ${runsOn}\n    steps:\n      - uses: actions/checkout@abc\n${steps}`;
   const implicit = (runsOn, steps) => collectImplicitNodeJobs(job(runsOn, steps), 'x.yml');
   t('a job running node with no setup-node is REJECTED', implicit('belay', '      - run: node scripts/gate.mjs\n').length === 1);
-  t('a kvm job running pnpm via ci-log-step with no setup-node is REJECTED', implicit('kvm', '      - run: bash scripts/ci-log-step.sh x pnpm install --frozen-lockfile\n').length === 1);
+  t('a belay-host job running pnpm via ci-log-step with no setup-node is REJECTED', implicit('belay-host', '      - run: bash scripts/ci-log-step.sh x pnpm install --frozen-lockfile\n').length === 1);
   t('node used BEFORE setup-node is REJECTED', implicit('belay', `      - run: node scripts/gate.mjs\n${SN}`).length === 1);
   t('setup-node with no node-version is REJECTED', implicit('belay', '      - uses: actions/setup-node@abc\n      - run: node x.mjs\n').length === 1);
   t('install-pnpm.sh before setup-node is allowed', implicit('belay', `      - run: bash scripts/install-pnpm.sh\n${SN}      - run: pnpm install\n`).length === 0);
   t('install-pnpm.sh with no setup-node at all is REJECTED', implicit('belay', '      - run: bash scripts/install-pnpm.sh\n').length === 1);
   t('setup-node first is clean', implicit('belay', `${SN}      - run: node scripts/gate.mjs\n`).length === 0);
-  t('a job that never runs Node needs no setup-node', implicit('kvm', '      - run: echo hi\n      - run: docker run node:26 true\n').length === 0);
+  t('a job that never runs Node needs no setup-node', implicit('belay-host', '      - run: echo hi\n      - run: docker run node:26 true\n').length === 0);
   t('`npm` in an echo sentence is prose, not Node use', implicit('belay', '      - run: |\n          echo "and npm, which the step below runs"\n').length === 0);
   t('node inside $( ) and after && is Node use', implicit('belay', '      - run: X=$(node -p 1) && true\n').length === 1 && implicit('belay', '      - run: true && pnpm -v\n').length === 1);
   let yamlThrew = false;

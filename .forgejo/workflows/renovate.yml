@@ -23,7 +23,7 @@
 # lookup, or a repository that never finished `done` fails the run. It posts renovate/verdict on the
 # commit, because a scheduled run has no other readable record.
 #
-# The belay runner, never kvm: the bot runs no PR code, but it holds a token that can push branches.
+# The belay container runner, never belay-host: the bot runs no PR code, but it holds a token that can push branches.
 #
 # OPERATOR PREREQUISITES (one time, never in git): the Actions secret RENOVATE_TOKEN (the bot account's
 # token) and, optionally, RENOVATE_GITHUB_COM_TOKEN (a github.com read token). See docs/runbooks/renovate.md.

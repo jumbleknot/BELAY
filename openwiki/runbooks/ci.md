@@ -4,8 +4,8 @@ title: CI guardrails, the failure digest, and the PR loop
 description: The single guardrails Forgejo Actions workflow required on main — what it runs and how to reproduce it locally, how a failure is read back from the redacted digest and its package bundle with ci-status.mjs, the dedicated repository runner and the one exception to it (the dev-container image job, which never runs pull-request code), the sast job beside guardrails, the report-only registry-retention job, branch protection, the terminal PR loop through forge-pr.mjs, and the rule every new job must follow.
 tags: [ci, forgejo, pull-requests, runbook]
 resource: docs/runbooks/ci.md
-resource-sha256: 6c6e747366f1d08eb1ff338d0fff044396cc9716c6811d49a30b3d284ee99277
-timestamp: 2026-11-25T18:50:42.212Z
+resource-sha256: 4f387e3400cf07888b3b7d62b7d49f496f509396a4c8bf1400a3356ac2617764
+timestamp: 2026-11-27T01:29:53.048Z
 ---
 
 # CI guardrails, the failure digest, and the PR loop
@@ -57,37 +57,41 @@ node scripts/forge-pr.mjs merge <n> --expect-head "$(git rev-parse HEAD)"
   <name>` has a sample even for a job that has never failed.
 - **A dispatched run posts no commit status.** Follow a `forge-pr.mjs dispatch` run in the Actions
   tab, because `ci-status` cannot see it.
-- **Never dispatch over a queued run (item #81).** A run waiting for the shared host runner is in
+- **Never dispatch over a queued run (item #81).** A run waiting for its runner is in
   `/actions/runs` but not in `/actions/tasks`, which lists only picked-up jobs. A dispatch on the same
   branch cancels it through the workflow's `cancel-in-progress`. On 2026-11-25 that cancelled the
   queued image push run that a session wrongly thought was never created. `forge-pr.mjs dispatch` now
   refuses while a run of the same workflow and branch is waiting, running or blocked, and fails closed
   when it cannot list runs; `--supersede` replaces the run on purpose.
-- **The runner is BELAY's own, with one exception.** Jobs use `runs-on: belay`, served by a
-  repository runner that maps it to a Node 26 container with no host Docker access. The global
-  runner is shared with MovieCollectionManager and runs one job at a time, and BELAY's first run
-  waited about 36 minutes behind it. A run stuck on "Waiting for a runner with the following label:
-  belay" means that runner is offline. The label is pinned by `guardrails-workflow.test.mjs`, so
+- **BELAY has two runners of its own, each under its own Unix user with its own Docker daemon**
+  (item #92). `ci-belay` (`belay-ci`) serves `runs-on: belay`, a fresh Node 26 container per job with
+  no host Docker access. `ci-belay-host` (`belay-host-ci`) serves `runs-on: belay-host`, directly on
+  the host. Both run one job at a time. A run stuck on "Waiting for a runner with the following label"
+  means that runner is offline. The `belay` label is pinned by `guardrails-workflow.test.mjs`, so
   change both together.
   - **The exception is `devcontainer-image`**, which builds the dev-container toolchain image and so
-    needs a Docker daemon. It runs on the shared host runner (`runs-on: kvm`), which has the host's
-    Docker, so it **must never run pull-request code**. Its triggers are push to `main`, dispatch and
-    the weekly schedule, and a guard test fails on any `pull_request` trigger.
-  - **A host-runner job never writes shared host state, and never runs a tool from it.** The host
-    runner shares its home folder, Actions tool cache and Docker daemon with MovieCollectionManager's
-    runner. On 2026-11-25:
+    needs a Docker daemon. It runs on `belay-host`, on the host, so it **must never run pull-request
+    code**. Its triggers are push to `main`, dispatch and the weekly schedule, and a guard test fails
+    on any `pull_request` trigger. Its `DOCKER_HOST` is derived from `id -u`, never a literal uid.
+  - **`kvm` is retired.** It was the instance-wide runner shared with MovieCollectionManager, now
+    scoped to that repository. A job left on it waits for ever, so a guard fails any workflow naming it.
+  - **A PR can still target `belay-host`**, and its workflow runs before any guard can fail it. The
+    separate Unix user is what keeps such a job away from the container jobs' daemon and `ci-belay`'s
+    token; one user for both was rejected for that reason.
+  - **A host job never leaves state behind on the host, and never runs a tool from there.** Before
+    item #92 the host runner shared its home folder, tool cache and Docker daemon with
+    MovieCollectionManager's runner. On 2026-11-25:
     - a global pnpm install broke MovieCollectionManager's pnpm check (item #79);
     - the shared `~/.local/bin/trivy`, `~/.cache/trivy` and a registry login in `~/.docker/config.json`
       turned out to be shared too (item #84).
 
-    So pnpm, Trivy and its cache, and `DOCKER_CONFIG` all live under `runner.temp`, and one
-    `if: always()` step removes them. `scripts/lib/host-runner-rules.mjs` fails a `kvm` job that
-    installs globally, adds to PATH from outside `runner.temp`, runs Trivy without a private cache,
-    logs in to Docker without a private config, uses `pnpm/action-setup` or setup-node's `cache:`,
-    names a home-folder path in a command, or leaves a private path unremoved.
-  - **The Docker daemon is still shared.** MovieCollectionManager's host jobs prune it, so one that
-    overlaps `build-publish` can make a build, scan or push fail ("image not found"). It fails closed,
-    because nothing unscanned is published. Check for an overlapping job, then re-run.
+    The runner user's home still outlives every job, so pnpm, Trivy and its cache, and `DOCKER_CONFIG`
+    all live under `runner.temp`, and one `if: always()` step removes them.
+    `scripts/lib/host-runner-rules.mjs` fails a `belay-host` job that installs globally, adds to PATH
+    from outside `runner.temp`, runs Trivy without a private cache, logs in to Docker without a private
+    config, uses `pnpm/action-setup` or setup-node's `cache:`, names a home-folder path in a command,
+    or leaves a private path unremoved.
+  - **Its build cache is its own**, so the first build after the move, or after a daemon reset, is cold.
   - **Its result is not readable from the run.** The forge cannot read back the step summary, so the
     published digest is resolved from the registry (see the [dev container](./devcontainer.md)). It scans the
     built image **before** `Push`, and a fixable Critical publishes nothing ([image scanning](image-scanning.md)).
