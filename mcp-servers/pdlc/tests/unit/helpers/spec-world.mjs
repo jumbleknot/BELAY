@@ -46,6 +46,10 @@ export async function specWorld({ branch = '017-pane-probe', fixture = SPEC_KIT_
   const commits = [];
   const pushes = [];
   const pushFails = { on: false };
+  const heads = new Map();          // worktree → its HEAD sha (each commit makes a new one)
+  const tips = new Map();           // branch → its tip on the forge
+  const headOf = (cwd) => heads.get(cwd) ?? 'a'.repeat(40);
+  const newSha = () => String(commits.length + 1).padStart(2, '0').repeat(20);
   const git = {
     async run(args, { cwd, spec } = {}) {
       calls.push({ args: [...args], cwd, ...(spec && { spec }) });
@@ -56,12 +60,15 @@ export async function specWorld({ branch = '017-pane-probe', fixture = SPEC_KIT_
       if (args[0] === 'status' && args.includes('--')) return { stdout: dirty.has(cwd) ? ' M spec.md\n' : '' };
       if (k.startsWith('status --porcelain')) return { stdout: '' };
       if (k.startsWith('rev-list --count')) return { stdout: '0\n' };
-      if (k === 'rev-parse HEAD') return { stdout: `${'a'.repeat(40)}\n` };
+      if (k === 'rev-parse HEAD') return { stdout: `${headOf(cwd)}\n` };
+      if (k === 'rev-parse origin/main') return { stdout: `${'f'.repeat(40)}\n` };
       if (args[0] === 'fetch') return { stdout: '' };
       if (args[0] === 'clone') { cpSync(args[3], args[4], { recursive: true }); return { stdout: '' }; }
       if (args[0] === 'checkout') return { stdout: '' };
       if (k.startsWith('rev-parse --verify --quiet refs/remotes/origin/')) {
-        if (remoteBranches.has(k.split('refs/remotes/origin/')[1])) return { stdout: 'b'.repeat(40) };
+        const b = k.split('refs/remotes/origin/')[1];
+        if (tips.has(b)) return { stdout: tips.get(b) };
+        if (remoteBranches.has(b)) return { stdout: 'b'.repeat(40) };
         throw new Error('no such ref');
       }
       if (k.startsWith('rev-parse --verify --quiet refs/heads/')) {
@@ -78,12 +85,14 @@ export async function specWorld({ branch = '017-pane-probe', fixture = SPEC_KIT_
       if (k === 'config --get user.email') return identity.email ? { stdout: `${identity.email}\n` } : Promise.reject(new Error('unset'));
       if (args[0] === 'status' && args.includes('--')) return { stdout: dirty.has(cwd) ? ' M spec.md\n' : '' };
       if (args[0] === 'add') return { stdout: '' };
-      if (args[0] === 'commit') { dirty.delete(cwd); commits.push({ cwd, message: args[3] }); return { stdout: '' }; }
+      if (args[0] === 'commit') { dirty.delete(cwd); commits.push({ cwd, message: args[3] }); heads.set(cwd, newSha()); return { stdout: '' }; }
       if (args[0] === 'push') {
         if (pushFails.on) throw new Error('remote: unable to access');
         const b = /^refs\/heads\/([^:]+):/.exec(args[2])[1];
-        remoteBranches.add(b); pushes.push(b); return { stdout: '' };
+        remoteBranches.add(b); pushes.push(b); tips.set(b, headOf(cwd)); return { stdout: '' };
       }
+      if (args[0] === 'log' && args[1] === '--format=%H%x09%an%x09%s') return { stdout: `${'c'.repeat(40)}\tSomeone else\tdocs: edit on the forge\n` };
+      if (args[0] === 'diff' && args[1] === '--stat') return { stdout: ' spec.md | 2 +-\n' };
       if (k === 'worktree list --porcelain') {
         return { stdout: worktrees.map((w) => `worktree ${w.path}\nHEAD ${'a'.repeat(40)}\nbranch refs/heads/${w.branch}\n`).join('\n') };
       }
@@ -112,7 +121,7 @@ export async function specWorld({ branch = '017-pane-probe', fixture = SPEC_KIT_
   const worktreePath = join(cloneRoot, '.pdlc-specs', 'BELAY', branch.split('/').pop());
   return {
     root, cloneRoot, copyPath, worktreePath, forge, git, calls, scripts, remoteBranches, localBranches, worktrees, c, ready, labelsOf,
-    identity, commits, pushes, pushFails,
+    identity, commits, pushes, pushFails, tips,
     parseWorktreeList,
     close: async () => { await c.close(); rmSync(root, { recursive: true, force: true }); },
   };

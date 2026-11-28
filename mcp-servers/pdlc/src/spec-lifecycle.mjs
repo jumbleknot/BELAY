@@ -74,6 +74,18 @@ export function createSpecLifecycle({ forge, allowlist, proposals, localCopy, sp
   const gitCtx = (repo, state) => ({ cloneRoot: config.cloneRoot, repo: repo.name, copyPath: localCopy.pathOf(repo.name), defaultBranch: repo.default_branch,
     featureBranch: state.branch, specDir: state.spec_dir.replace(/\/$/, ''), recordedRemoteTip: state.recorded_remote_tip });
 
+  /**
+   * FR-023: a stage change after the start targets only the issue the spec came from, which is the issue whose latest
+   * stage record (trailer) names this spec's branch. A state file that claims another proposal is refused before any
+   * git or forge write.
+   */
+  const assertIssueOwnsSpec = async (path, number, state) => {
+    const { latest } = readTrailers(await comments(path, number));
+    if (!latest || latest.branch !== state.branch) {
+      throw new Refusal('stage_transition_refused', `proposal #${number}'s stage record ${latest ? `names branch ${latest.branch}` : 'names no spec branch'}, not ${state.branch}; the spec belongs to another proposal, so nothing was changed`);
+    }
+  };
+
   /** The stage, and the guards every spec write shares: locked from in-engineering on, editable only in spec-in-progress. */
   const editableStage = (issue, number, what) => {
     const stage = stageFromLabels(names(issue));
@@ -147,8 +159,8 @@ export function createSpecLifecycle({ forge, allowlist, proposals, localCopy, sp
       return {
         repo: repo.name, number, stage, locked: LOCKED.has(stage), branch: state.branch, spec_dir: state.spec_dir,
         worktree_path: state.worktree_path, files: list, revision,
-        // The forge-side check (R8) lands with take_latest_spec (User Story 8); until a first publish there is nothing to compare.
-        remote: { changed: false },
+        // R8: on every resume, has the published branch moved since the server last saw it?
+        remote: await worktree.remoteCheck({ repo, copyPath: localCopy.pathOf(repo.name), state }),
         markers: findMarkers(spec),
         clarified: countClarifySessions(spec) > state.sessions_at_start_or_reopen,
         proposal_updated_since_start: issue.updated_at !== state.proposal_updated_at_start,
@@ -168,6 +180,13 @@ export function createSpecLifecycle({ forge, allowlist, proposals, localCopy, sp
         throw new Refusal('pane_edit_pending', 'the spec changed since you last read it (an edit in the pane, or another session); read it again with get_spec, show the author, then approve', { revision });
       }
       approval.check({ spec: list.find((f) => f.path === 'spec.md')?.content ?? '', state });
+      await assertIssueOwnsSpec(path, number, state);
+      // R8, FR-022: before every publish, refuse to overwrite a branch that moved on the forge.
+      const remote = await worktree.remoteCheck({ repo, copyPath: localCopy.pathOf(repo.name), state });
+      if (remote.changed) {
+        throw new Refusal('branch_changed', `branch ${state.branch} changed on the forge since you last published it (${remote.commits.length} new commit(s)); nothing was written. Take the latest with take_latest_spec, review, then approve again`,
+          { branch: state.branch, commits: remote.commits, diffstat: remote.diffstat });
+      }
       const { commit } = await approval.publish({ state, ctx: gitCtx(repo, state) });
       await worktree.update({ repo, specDir }, { recorded_remote_tip: commit, approvals: (state.approvals ?? 0) + 1 });
       const url = specUrl(repo, state.branch, specDir);
@@ -177,6 +196,16 @@ export function createSpecLifecycle({ forge, allowlist, proposals, localCopy, sp
         trailer: { stage: 'ready-to-plan', branch: state.branch, spec: state.spec_dir } });
       await worktree.update({ repo, specDir }, { proposal_updated_at_start: after.updated_at });
       return { repo: repo.name, number, commit, branch: state.branch, spec_url: url, stage: 'ready-to-plan' };
+    },
+
+    /** take_latest_spec (R8; FR-022; US8-AC4): bring the published branch in, keeping the author's edits. Publishes nothing. */
+    async takeLatest({ repo: repoArg, number }) {
+      const { repo, issue } = await proposals.loadProposal(repoArg, number, { write: true });
+      const { state, specDir } = await specOf(repo, number);
+      editableStage(issue, number, 'taking the latest');
+      const r = await worktree.takeLatest({ repo, copyPath: localCopy.pathOf(repo.name), state });
+      const { revision } = await files.read({ worktree: state.worktree_path, specDir });
+      return { repo: repo.name, number, branch: state.branch, merged: r.merged, conflicts: r.conflicts, backup_path: r.backup_path, revision };
     },
 
     /** write_spec_file: one path-guarded write, against the revision the caller last read (FR-007, FR-020, FR-036). */

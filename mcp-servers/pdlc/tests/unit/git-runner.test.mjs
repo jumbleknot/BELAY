@@ -244,3 +244,24 @@ test('016: the push-target guard refuses push_target_refused for the default bra
   }
   assert.equal(x.calls.length, 0);
 });
+
+test('016: a failing git call keeps its stdout too (git merge-file exits with the conflict count, its merge on stdout), redacted', async () => {
+  const { git } = runner(() => ({ code: 1, stdout: `<<<<<<< ours\nmine ${CANARY}\n=======\ntheirs\n>>>>>>> theirs\n`, stderr: '' }));
+  const MERGE = join(ROOT, '.pdlc-backups', 'BELAY', '017-pane-probe', 't', 'merge');
+  const e = await git.run(['merge-file', '-p', join(MERGE, 'ours'), join(MERGE, 'base'), join(MERGE, 'theirs')], { cwd: WT, spec: SPEC }).catch((err) => err);
+  assert.ok(e instanceof GitError);
+  assert.equal(e.exitCode, 1);
+  assert.match(e.stdout, /^<<<<<<< ours\nmine /);
+  assert.doesNotMatch(e.stdout, /canary-/);
+});
+
+test('016: `reset -- specs/<slug>` (unstage the spec folder only; moves no branch, touches no working file) runs in the worktree only', async () => {
+  const { x, git } = runner(() => ({ stdout: '' }));
+  await git.run(['reset', '--', 'specs/017-pane-probe'], { cwd: WT, spec: SPEC });
+  assert.equal(x.calls.length, 1);
+  for (const [args, cwd] of [[['reset', '--', 'specs/018-other'], WT], [['reset', '--', '.'], WT], [['reset', '--', 'specs/017-pane-probe'], SPEC.copyPath],
+    [['reset', '--hard', '--', 'specs/017-pane-probe'], WT]]) {
+    await assert.rejects(git.run(args, { cwd, spec: SPEC }), GitVerbRefused, JSON.stringify(args));
+  }
+  assert.equal(x.calls.length, 1);
+});

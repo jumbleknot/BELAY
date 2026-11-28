@@ -118,6 +118,10 @@ When the author is satisfied, ask with buttons: **Approve the spec** or **Keep e
 - `spec_has_markers`: list the open markers it returned and clarify them first.
 - `spec_not_clarified`: run step 9, then approve again.
 - `pane_edit_pending`: the spec changed since you read it; call `get_spec`, show the author what changed, then approve again.
+- `branch_changed`: someone changed the feature branch on the forge since it was last published. Show the author the commits and the files it lists, then ask with buttons: **Take latest** or **Stop**.
+  - **Take latest**: call `take_latest_spec`. It backs up the spec first (`backup_path`), brings the published branch in, and keeps the author's edits, file by file. For each file it lists under conflicts, show the author both versions between the conflict markers and write their resolution with `write_spec_file`. Nothing is published yet: when the author is satisfied, run step 9 if the spec changed in substance, then approve again.
+  - **Stop**: leave everything as it is; the author's edits stay on this computer, unpublished.
+- The same check runs whenever you resume with `get_spec`: if its `remote` says changed, offer **Take latest** or **Stop** before any further edit. `nothing_to_take` means the branch has not moved.
 - `git_identity_missing`: git on this computer has no name or email set; say so, and that it is set once in Git for Windows.
 - `publish_failed`: the commit is kept on this computer and the stage did not move; approving again retries.
 - `document_locked`: planning has started, so nothing can change here.

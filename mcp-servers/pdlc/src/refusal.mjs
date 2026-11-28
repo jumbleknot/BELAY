@@ -11,7 +11,7 @@ export const REFUSAL_CODES = Object.freeze([
   'stage_transition_refused', 'stage_ambiguous', 'push_target_refused', 'spec_kit_unavailable', 'path_outside_feature',
   'branch_exists', 'spec_state_inconsistent', 'not_ready_proposal', 'spec_already_in_progress', 'spec_hook_unsupported',
   'no_spec_for_proposal', 'document_locked', 'pane_edit_pending', 'spec_has_markers', 'spec_not_clarified', 'git_identity_missing',
-  'publish_failed',
+  'publish_failed', 'branch_changed', 'nothing_to_take',
 ]);
 
 export class Refusal extends Error {

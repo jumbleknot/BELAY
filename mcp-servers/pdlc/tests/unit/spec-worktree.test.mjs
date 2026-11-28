@@ -149,3 +149,119 @@ test('the state is read from disk every time: a second module instance sees the 
     assert.equal((await other.resume({ repo: REPO, copyPath: s.copyPath, number: 91 })).branch, BRANCH);
   } finally { s.cleanup(); }
 });
+
+// ── R8: the branch changed on the forge, and taking the latest (FR-022, US8-AC4, SC-011) ───────────────────────────
+const TIP = 'a'.repeat(40);
+const REMOTE = 'b'.repeat(40);
+const published = (over = {}) => ({ repo: 'BELAY', number: 91, branch: BRANCH, spec_dir: `${SPEC_DIR}/`, recorded_remote_tip: TIP, ...over });
+
+test('remoteCheck: unchanged when the forge tip is the recorded one, or when neither exists yet', async () => {
+  for (const [recorded, remote] of [[TIP, TIP], [null, null]]) {
+    const s = setup({
+      [`fetch origin +refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}`]: {},
+      [`rev-parse --verify --quiet refs/remotes/origin/${BRANCH}`]: remote ? { stdout: `${remote}\n` } : { code: 1 },
+    });
+    try {
+      const st = { ...published({ recorded_remote_tip: recorded }), worktree_path: s.wtPath };
+      assert.deepEqual(await s.wt.remoteCheck({ repo: REPO, copyPath: s.copyPath, state: st }), { changed: false });
+    } finally { s.cleanup(); }
+  }
+});
+
+test('remoteCheck: changed returns the remote tip, the commits (sha, author, subject) and a diffstat of the spec folder', async () => {
+  const s = setup({
+    [`fetch origin +refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}`]: {},
+    [`rev-parse --verify --quiet refs/remotes/origin/${BRANCH}`]: { stdout: `${REMOTE}\n` },
+    [`log --format=%H%x09%an%x09%s ${TIP}..${REMOTE}`]: { stdout: `${REMOTE}\tAn Architect\tdocs: tighten FR-002\n` },
+    [`diff --stat ${TIP} ${REMOTE} -- ${SPEC_DIR}`]: { stdout: ' specs/017-pane-probe/spec.md | 2 +-\n 1 file changed\n' },
+  });
+  try {
+    const st = { ...published(), worktree_path: s.wtPath };
+    assert.deepEqual(await s.wt.remoteCheck({ repo: REPO, copyPath: s.copyPath, state: st }), {
+      changed: true, remote_tip: REMOTE,
+      commits: [{ sha: REMOTE, author: 'An Architect', subject: 'docs: tighten FR-002' }],
+      diffstat: ' specs/017-pane-probe/spec.md | 2 +-\n 1 file changed',
+    });
+  } finally { s.cleanup(); }
+});
+
+test('takeLatest: nothing_to_take when the forge has not moved, and nothing is written', async () => {
+  const s = setup({
+    [`fetch origin +refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}`]: {},
+    [`rev-parse --verify --quiet refs/remotes/origin/${BRANCH}`]: { stdout: `${TIP}\n` },
+  });
+  try {
+    const st = { ...published(), worktree_path: s.wtPath };
+    await assert.rejects(s.wt.takeLatest({ repo: REPO, copyPath: s.copyPath, state: st }), refusedWith('nothing_to_take'));
+    assert.ok(!existsSync(join(s.root, '.pdlc-backups')));
+  } finally { s.cleanup(); }
+});
+
+test('takeLatest: backs up first; soft-resets ONLY an unpublished commit, ONLY onto the recorded tip; merges per file; lists conflicts', async () => {
+  const s = setup();
+  const folder = join(s.wtPath, SPEC_DIR);
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(join(folder, 'spec.md'), 'mine\n');
+  const order = [];
+  const g = fakeGit({
+    [`fetch origin +refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}`]: {},
+    [`rev-parse --verify --quiet refs/remotes/origin/${BRANCH}`]: { stdout: `${REMOTE}\n` },
+    [`log --format=%H%x09%an%x09%s ${TIP}..${REMOTE}`]: { stdout: '' },
+    [`diff --stat ${TIP} ${REMOTE} -- ${SPEC_DIR}`]: { stdout: '' },
+    [`rev-list --count ${TIP}..HEAD`]: () => { order.push('count'); return { stdout: '1\n' }; },
+    [`reset --soft ${TIP}`]: () => { order.push(`reset-soft:${existsSync(join(s.root, '.pdlc-backups')) ? 'after-backup' : 'BEFORE-BACKUP'}`); return {}; },
+    [`show ${TIP}:${SPEC_DIR}/spec.md`]: { stdout: 'base\n' },
+    [`show ${REMOTE}:${SPEC_DIR}/spec.md`]: { stdout: 'theirs\n' },
+    [`reset -- ${SPEC_DIR}`]: () => { order.push('unstage'); return {}; },
+    [`merge --ff-only origin/${BRANCH}`]: () => { order.push('ff'); return {}; },
+  });
+  // merge-file: one conflict (exit 1, the merge with markers on stdout)
+  const realRun = g.git.run.bind(g.git);
+  g.git.run = async (args, opts) => {
+    if (args[0] === 'merge-file') {
+      order.push('merge-file');
+      const { GitError } = await import('../../src/git-runner.mjs');
+      throw new GitError('git merge-file failed (exit 1)', { exitCode: 1, stderr: '', stdout: '<<<<<<< ours\nmine\n=======\ntheirs\n>>>>>>> theirs\n' });
+    }
+    return realRun(args, opts);
+  };
+  try {
+    const wt = createSpecWorktree({ cloneRoot: s.root, git: g.git, now: () => NOW });
+    const st = { ...published(), worktree_path: s.wtPath };
+    const r = await wt.takeLatest({ repo: REPO, copyPath: s.copyPath, state: st });
+    assert.deepEqual(order, ['count', 'reset-soft:after-backup', 'merge-file', 'unstage', 'ff']);
+    assert.deepEqual(r.conflicts, ['spec.md']);
+    assert.deepEqual(r.merged, []);
+    assert.match(readFileSync(join(folder, 'spec.md'), 'utf8'), /^<<<<<<< ours\nmine\n/);
+    assert.equal(readFileSync(join(r.backup_path, 'spec.md'), 'utf8'), 'mine\n', 'the author\'s file is backed up as it was');
+    assert.ok(r.backup_path.startsWith(join(s.root, '.pdlc-backups', 'BELAY', '017-pane-probe')));
+    // the soft reset named the recorded tip as its only allowed target
+    assert.equal(g.calls.find((c) => c.args[0] === 'reset' && c.args[1] === '--soft').spec.recordedRemoteTip, TIP);
+  } finally { s.cleanup(); }
+});
+
+test('takeLatest: no unpublished commit means no reset at all (no published commit is ever moved)', async () => {
+  const s = setup();
+  const folder = join(s.wtPath, SPEC_DIR);
+  mkdirSync(folder, { recursive: true });
+  writeFileSync(join(folder, 'spec.md'), 'base\n');
+  const g = fakeGit({
+    [`fetch origin +refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}`]: {},
+    [`rev-parse --verify --quiet refs/remotes/origin/${BRANCH}`]: { stdout: `${REMOTE}\n` },
+    [`log --format=%H%x09%an%x09%s ${TIP}..${REMOTE}`]: { stdout: '' },
+    [`diff --stat ${TIP} ${REMOTE} -- ${SPEC_DIR}`]: { stdout: '' },
+    [`rev-list --count ${TIP}..HEAD`]: { stdout: '0\n' },
+    [`show ${TIP}:${SPEC_DIR}/spec.md`]: { stdout: 'base\n' },
+    [`show ${REMOTE}:${SPEC_DIR}/spec.md`]: { stdout: 'theirs\n' },
+    [`reset -- ${SPEC_DIR}`]: {},
+    [`merge --ff-only origin/${BRANCH}`]: () => { writeFileSync(join(folder, 'spec.md'), 'theirs\n'); return {}; },
+  });
+  try {
+    const wt = createSpecWorktree({ cloneRoot: s.root, git: g.git, now: () => NOW });
+    const r = await wt.takeLatest({ repo: REPO, copyPath: s.copyPath, state: { ...published(), worktree_path: s.wtPath } });
+    assert.ok(!g.calls.some((c) => c.args[0] === 'reset' && c.args[1] === '--soft'));
+    assert.ok(!g.calls.some((c) => c.args[0] === 'merge-file'), 'an unchanged file needs no merge: the fast-forward brings theirs');
+    assert.deepEqual(r.conflicts, []);
+    assert.equal(readFileSync(join(folder, 'spec.md'), 'utf8'), 'theirs\n');
+  } finally { s.cleanup(); }
+});

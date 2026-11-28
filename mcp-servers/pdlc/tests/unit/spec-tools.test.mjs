@@ -402,3 +402,38 @@ test('US3-AC4 FR-018 at in-engineering the spec is locked: write_spec_file and a
     assert.equal(g.payload.locked, true);
   } finally { await w.close(); }
 });
+
+// ── US8: the branch changed on the forge (FR-022, R8) ──────────────────────────────────────────────────────────
+
+test('US8-AC4 approve_spec refuses branch_changed, listing what changed, when the forge moved since the last publish; nothing is written', async () => {
+  const { w, p, revision } = await clarified();
+  try {
+    ok(await w.c.call('approve_spec', { repo: 'BELAY', number: p.number, base_revision: revision }));
+    // someone else pushed to the feature branch on the forge
+    w.tips.set(BRANCH, 'd'.repeat(40));
+    // put it back to spec-in-progress as a reopen would (reopen_spec lands in Phase 8)
+    const issue = w.forge.issue('BELAY', p.number);
+    const label = (name) => w.forge.state.labels.belay.find((l) => l.name === name);
+    issue.labels = issue.labels.filter((l) => l.name !== 'status/ready-to-plan').concat([{ ...label('status/spec-in-progress') }]);
+    const g = await w.c.call('get_spec', { repo: 'BELAY', number: p.number });
+    assert.equal(g.payload.remote.changed, true);
+    assert.equal(g.payload.remote.commits[0].author, 'Someone else');
+    const pushes = w.pushes.length;
+    const r = await w.c.call('approve_spec', { repo: 'BELAY', number: p.number, base_revision: g.payload.revision });
+    refused(r, 'branch_changed');
+    assert.equal(r.payload.commits[0].subject, 'docs: edit on the forge');
+    assert.match(r.payload.diffstat, /spec\.md/);
+    assert.equal(w.pushes.length, pushes, 'nothing published');
+  } finally { await w.close(); }
+});
+
+test('take_latest_spec refuses nothing_to_take when the forge has not moved', async () => {
+  const { w, p, revision } = await clarified();
+  try {
+    ok(await w.c.call('approve_spec', { repo: 'BELAY', number: p.number, base_revision: revision }));
+    const issue = w.forge.issue('BELAY', p.number);
+    const label = (name) => w.forge.state.labels.belay.find((l) => l.name === name);
+    issue.labels = issue.labels.filter((l) => l.name !== 'status/ready-to-plan').concat([{ ...label('status/spec-in-progress') }]);
+    refused(await w.c.call('take_latest_spec', { repo: 'BELAY', number: p.number }), 'nothing_to_take');
+  } finally { await w.close(); }
+});

@@ -21,7 +21,7 @@ export class GitVerbRefused extends Error {
 }
 
 export class GitError extends Error {
-  constructor(message, { exitCode, stderr }) { super(message); this.name = 'GitError'; this.exitCode = exitCode; this.stderr = stderr; }
+  constructor(message, { exitCode, stderr, stdout = '' }) { super(message); this.name = 'GitError'; this.exitCode = exitCode; this.stderr = stderr; this.stdout = stdout; }
 }
 
 const READ_ONLY_VERBS = new Set(['clone', 'fetch', 'status', 'rev-parse', 'rev-list', 'symbolic-ref']);
@@ -91,6 +91,8 @@ function specShape(args, cwd, spec) {
       return m[1] === spec.defaultBranch || m[1] !== spec.featureBranch || featureIsDefault ? 'target' : 'ok';
     }
     case 'reset':
+      // `reset -- specs/<slug>`: unstage the spec folder only (take-latest, R8); moves no branch, touches no working file.
+      if (rest.length === 2 && rest[0] === '--' && folder(rest[1]) && inWorktree) return featureIsDefault ? 'target' : 'ok';
       if (!(rest.length === 2 && rest[0] === '--soft' && HEX.test(rest[1]) && rest[1] === spec.recordedRemoteTip && inWorktree)) return 'refused';
       return featureIsDefault ? 'target' : 'ok';
     case 'diff':
@@ -169,7 +171,7 @@ export function createGitRunner({ token, execFile = realExecFile, gitPath = 'git
           if (error) {
             const exitCode = typeof error.code === 'number' ? error.code : null;
             const cleanStderr = redact(String(stderr ?? '')).trim();
-            reject(new GitError(`git ${args[0]} failed${exitCode === null ? '' : ` (exit ${exitCode})`}: ${cleanStderr.split('\n').at(-1) ?? ''}`, { exitCode, stderr: cleanStderr }));
+            reject(new GitError(`git ${args[0]} failed${exitCode === null ? '' : ` (exit ${exitCode})`}: ${cleanStderr.split('\n').at(-1) ?? ''}`, { exitCode, stderr: cleanStderr, stdout: redact(String(stdout ?? '')) }));
           } else resolve({ stdout: String(stdout), stderr: String(stderr) });
         });
       });

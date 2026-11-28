@@ -105,6 +105,10 @@ export const TOOLS = Object.freeze({
     description: "Approve the spec in progress: refuse while [NEEDS CLARIFICATION] markers remain or clarification has not run, then commit the spec folder, publish the feature branch, and move the proposal to ready to plan with a comment linking the folder.",
     input: strict({ repo, number, base_revision: revision }),
   },
+  take_latest_spec: {
+    description: "When the feature branch changed on the forge, bring the published branch into the spec in progress: back up first, keep the author's edits by a three-way merge per file, and list any conflicts for the author to resolve. Publishes nothing and changes no stage.",
+    input: strict({ repo, number }),
+  },
 });
 
 export const TOOL_NAMES = Object.freeze(Object.keys(TOOLS));

@@ -9,7 +9,7 @@
 // The author's edits are uncommitted files in the worktree between sessions; resume is reading the worktree. The state
 // file holds only what git cannot answer, and is read from disk on every call: the server keeps no state in memory
 // (two server processes serve one Claude Desktop session; research R9, measured).
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { Refusal } from './refusal.mjs';
 
@@ -65,6 +65,36 @@ export function createSpecWorktree({ cloneRoot, git, now = () => new Date() }) {
     });
   };
 
+  /**
+   * R8: has the feature branch moved on the forge since the server last saw it? { changed: false } or
+   * { changed: true, remote_tip, commits: [{ sha, author, subject }], diffstat }.
+   */
+  const remoteCheck = async ({ repo, copyPath, state }) => {
+    const out = async (args, cwd) => (await git.run(args, { cwd })).stdout;
+    await git.run(['fetch', 'origin', `+refs/heads/${state.branch}:refs/remotes/origin/${state.branch}`], { cwd: copyPath });
+    let remote = null;
+    try { remote = (await out(['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${state.branch}`], copyPath)).trim() || null; } catch { remote = null; }
+    const recorded = state.recorded_remote_tip ?? null;
+    if (remote === recorded) return { changed: false };
+    if (!remote) return { changed: false }; // nothing published, or it was deleted on the forge: nothing to take
+    const from = recorded ?? (await out(['rev-parse', `origin/${repo.default_branch}`], copyPath)).trim();
+    const specDir = state.spec_dir.replace(/\/$/, '');
+    // log and diff are 016 shapes: they name the spec they read about (git allowlist, R4)
+    const spec = specCtx(repo, copyPath, state.branch, state.spec_dir);
+    const commits = (await git.run(['log', '--format=%H%x09%an%x09%s', `${from}..${remote}`], { cwd: copyPath, spec })).stdout.split('\n').filter(Boolean)
+      .map((l) => { const [sha, author, ...subject] = l.split('\t'); return { sha, author, subject: subject.join('\t') }; });
+    const diffstat = (await git.run(['diff', '--stat', from, remote, '--', specDir], { cwd: copyPath, spec })).stdout.replace(/\s+$/, '');
+    return { changed: true, remote_tip: remote, commits, diffstat };
+  };
+
+  /** The spec folder's editable files (spec.md, checklists/*.md), as relative paths. */
+  const editableFiles = (folder) => {
+    const out = [];
+    if (existsSync(join(folder, 'spec.md'))) out.push('spec.md');
+    if (existsSync(join(folder, 'checklists'))) for (const n of readdirSync(join(folder, 'checklists')).sort()) if (/\.md$/.test(n)) out.push(`checklists/${n}`);
+    return out;
+  };
+
   return {
     pathsFor,
 
@@ -115,6 +145,83 @@ export function createSpecWorktree({ cloneRoot, git, now = () => new Date() }) {
       if (entry.branch !== state.branch) throw inconsistent(`the worktree ${worktree} is on ${entry.branch ?? 'a detached HEAD'}, not ${state.branch}`);
       if (!existsSync(worktree) || !lstatSync(worktree).isDirectory()) throw inconsistent(`the worktree folder ${worktree} is missing`);
       return { ...state, worktree_path: worktree };
+    },
+
+    remoteCheck: (args) => remoteCheck(args),
+
+    /**
+     * take_latest_spec (R8; FR-022): bring the published branch into the author's worktree and keep their edits.
+     *   1. back up every working file of the spec folder;
+     *   2. an unpublished commit (a publish that lost a race) is soft-reset onto the RECORDED tip, so its content
+     *      becomes working changes. Only that commit moves; no published commit is ever rewritten;
+     *   3. each file the author changed is merged three ways (base = recorded tip, ours = the working file,
+     *      theirs = the published branch) with `git merge-file -p`, on temporary files kept with the backup;
+     *   4. the folder is unstaged and put back to the recorded tip's content, so the worktree is clean;
+     *   5. `merge --ff-only origin/<branch>` brings the published commits;
+     *   6. the merged results are written back, conflict markers and all, and the new tip is recorded.
+     * Nothing is published and no stage changes: the author approves again to publish.
+     */
+    async takeLatest({ repo, copyPath, state }) {
+      const check = await remoteCheck({ repo, copyPath, state });
+      if (!check.changed) throw new Refusal('nothing_to_take', `the published branch ${state.branch} has not changed since you last published or took it; there is nothing to bring in`);
+      const specDir = state.spec_dir.replace(/\/$/, '');
+      const cwd = state.worktree_path;
+      const folder = join(cwd, ...specDir.split('/'));
+      const slug = basename(specDir);
+      const backup = join(cloneRoot, '.pdlc-backups', repo.name, slug, now().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z'));
+      const mergeDir = join(backup, 'merge');
+      const out = async (args, opts) => (await git.run(args, opts)).stdout;
+      const show = async (rev, file) => { try { return await out(['show', `${rev}:${specDir}/${file}`], { cwd, spec: ctx }); } catch { return null; } };
+
+      // 1. back up
+      const working = editableFiles(folder);
+      mkdirSync(backup, { recursive: true });
+      for (const f of working) cpSync(join(folder, ...f.split('/')), join(backup, ...f.split('/')));
+
+      // 2. an unpublished commit becomes working changes, onto the recorded (or, before any publish, the starting) tip
+      const base = state.recorded_remote_tip ?? (await out(['rev-parse', `origin/${repo.default_branch}`], { cwd })).trim();
+      const ctx = { ...specCtx(repo, copyPath, state.branch, state.spec_dir), recordedRemoteTip: base };
+      if (Number.parseInt(await out(['rev-list', '--count', `${base}..HEAD`], { cwd }), 10) > 0) {
+        await git.run(['reset', '--soft', base], { cwd, spec: ctx });
+      }
+
+      // 3. three-way merge of each file the author changed
+      const plan = [];
+      for (const [i, f] of working.entries()) {
+        const ours = readFileSync(join(folder, ...f.split('/')), 'utf8');
+        const baseText = await show(base, f);
+        if (ours === baseText) continue; // unchanged by the author: the fast-forward brings theirs
+        const theirs = await show(check.remote_tip, f);
+        if (theirs === baseText) { plan.push({ f, baseText, merged: ours, conflict: false }); continue; }
+        mkdirSync(mergeDir, { recursive: true });
+        const [o, b, t] = ['ours', 'base', 'theirs'].map((k) => join(mergeDir, `${i}-${k}`));
+        writeFileSync(o, ours); writeFileSync(b, baseText ?? ''); writeFileSync(t, theirs ?? '');
+        try {
+          plan.push({ f, baseText, merged: await out(['merge-file', '-p', o, b, t], { cwd, spec: ctx }), conflict: false });
+        } catch (e) {
+          if (!(e?.exitCode > 0) || typeof e.stdout !== 'string') throw e;
+          plan.push({ f, baseText, merged: e.stdout, conflict: true });
+        }
+      }
+
+      // 4. a clean worktree at the base, 5. fast-forward, 6. write the merges back
+      await git.run(['reset', '--', specDir], { cwd, spec: ctx });
+      for (const { f, baseText } of plan) {
+        const p = join(folder, ...f.split('/'));
+        if (baseText === null) rmSync(p, { force: true }); else writeFileSync(p, baseText);
+      }
+      await git.run(['merge', '--ff-only', `origin/${state.branch}`], { cwd });
+      for (const { f, merged } of plan) {
+        mkdirSync(join(folder, ...f.split('/'), '..'), { recursive: true });
+        writeFileSync(join(folder, ...f.split('/')), merged);
+      }
+      const { stateFile } = pathsFor(repo.name, state.spec_dir);
+      if (existsSync(stateFile)) writeState(stateFile, { ...JSON.parse(readFileSync(stateFile, 'utf8')), recorded_remote_tip: check.remote_tip });
+      return {
+        merged: plan.filter((x) => !x.conflict).map((x) => x.f),
+        conflicts: plan.filter((x) => x.conflict).map((x) => x.f),
+        backup_path: backup, remote_tip: check.remote_tip,
+      };
     },
 
     /** Merge `changes` into the proposal's state file (reopen, publish, withdraw). The file must exist. */

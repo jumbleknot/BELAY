@@ -8,7 +8,7 @@
 // never skips (AGENTS.md: a skip is not a pass).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, existsSync, readdirSync, readFileSync } from 'node:fs';
+import { cpSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createLocalCopy } from '../../src/local-copy.mjs';
@@ -160,6 +160,65 @@ test('the published branch plans with no fix-up: setup-plan.ps1 resolves the spe
   assert.equal(json.FEATURE_SPEC.replace(/\\/g, '/').endsWith('specs/003-int-probe/spec.md'), true, JSON.stringify(json));
   assert.equal(String(json.BRANCH), '003-int-probe');
   assert.ok(existsSync(join(architect, 'specs', '003-int-probe', 'plan.md')), 'the plan template landed in the spec folder');
+});
+
+test('the branch changed on the forge: detected, the latest taken with one conflict and one clean edit kept, then published again (T045; US8-AC4, SC-011)', async () => {
+  const repo = { name: 'target', default_branch: 'main' };
+  const copyPath = join(forge.cloneRoot, 'target');
+  const bare = forge.originUrlFor('target');
+  const specDir = 'specs/003-int-probe';
+  let state = await worktree.resume({ repo, copyPath, number: 91 });
+  // what the approve tool records after a publish (T032 published through the module directly)
+  const published = sh(forge.root, 'ls-remote', bare, 'refs/heads/003-int-probe').split(/\s+/)[0];
+  await worktree.update({ repo, specDir }, { recorded_remote_tip: published });
+  state = await worktree.resume({ repo, copyPath, number: 91 });
+  assert.deepEqual(await worktree.remoteCheck({ repo, copyPath, state }), { changed: false });
+
+  // someone else edits FR-001 on the forge
+  const other = join(forge.root, 'other');
+  sh(forge.root, 'clone', '--quiet', '--branch', '003-int-probe', bare, other);
+  const remoteSpec = readFileSync(join(other, specDir, 'spec.md'), 'utf8').replace('- **FR-001**: x', '- **FR-001**: changed on the forge');
+  writeFileSync(join(other, specDir, 'spec.md'), remoteSpec);
+  sh(other, 'commit', '--quiet', '-am', 'docs: edit FR-001 on the forge');
+  sh(other, 'push', '--quiet', 'origin', 'HEAD:refs/heads/003-int-probe');
+  const remoteTip = sh(other, 'rev-parse', 'HEAD');
+
+  // the author, unpublished: the same line (a conflict) and a checklist line (clean)
+  const folder = join(state.worktree_path, specDir);
+  writeFileSync(join(folder, 'spec.md'), readFileSync(join(folder, 'spec.md'), 'utf8').replace('- **FR-001**: x', '- **FR-001**: changed by the author'));
+  writeFileSync(join(folder, 'checklists', 'requirements.md'), '- [x] ok\n- [x] the author adds this\n');
+
+  const check = await worktree.remoteCheck({ repo, copyPath, state });
+  assert.equal(check.changed, true);
+  assert.equal(check.remote_tip, remoteTip);
+  assert.deepEqual(check.commits.map((c) => c.subject), ['docs: edit FR-001 on the forge']);
+  assert.match(check.diffstat, /spec\.md/);
+  // nothing was published by the check, and main is untouched
+  assert.equal(sh(forge.root, 'ls-remote', bare, 'refs/heads/003-int-probe').split(/\s+/)[0], remoteTip);
+
+  const r = await worktree.takeLatest({ repo, copyPath, state });
+  assert.deepEqual(r.conflicts, ['spec.md']);
+  assert.deepEqual(r.merged, ['checklists/requirements.md']);
+  const merged = readFileSync(join(folder, 'spec.md'), 'utf8');
+  assert.match(merged, /<<<<<<< .*\n- \*\*FR-001\*\*: changed by the author\n=======\n- \*\*FR-001\*\*: changed on the forge\n>>>>>>> /);
+  assert.equal(readFileSync(join(folder, 'checklists', 'requirements.md'), 'utf8'), '- [x] ok\n- [x] the author adds this\n', 'the clean edit is kept');
+  assert.equal(sh(state.worktree_path, 'rev-parse', 'HEAD'), remoteTip, 'fast-forwarded to the published branch');
+  assert.match(readFileSync(join(r.backup_path, 'spec.md'), 'utf8'), /changed by the author/, 'the author\'s file was backed up first');
+  assert.equal(sh(forge.root, 'ls-remote', bare, 'refs/heads/003-int-probe').split(/\s+/)[0], remoteTip, 'take-latest publishes nothing');
+
+  // the author resolves the conflict and approves again: published on top, nothing rewritten
+  writeFileSync(join(folder, 'spec.md'), merged.replace(/<<<<<<< [^\n]*\n[^\n]*\n=======\n([^\n]*)\n>>>>>>> [^\n]*\n/, '$1\n- **FR-002**: and the author\'s point\n'));
+  state = await worktree.resume({ repo, copyPath, number: 91 });
+  assert.equal(state.recorded_remote_tip, remoteTip);
+  assert.deepEqual(await worktree.remoteCheck({ repo, copyPath, state }), { changed: false });
+  const ctx = { cloneRoot: forge.cloneRoot, repo: 'target', copyPath, defaultBranch: 'main', featureBranch: state.branch, specDir, recordedRemoteTip: state.recorded_remote_tip };
+  const { commit } = await createSpecApproval({ git }).publish({ state, ctx });
+  assert.equal(sh(forge.root, 'ls-remote', bare, 'refs/heads/003-int-probe').split(/\s+/)[0], commit);
+  const verify = join(forge.root, 'verify2');
+  sh(forge.root, 'clone', '--quiet', '--branch', '003-int-probe', bare, verify);
+  assert.equal(sh(verify, 'merge-base', '--is-ancestor', remoteTip, 'HEAD') === '' ? 'ancestor' : 'no', 'ancestor', 'the forge\'s commit is kept, not rewritten');
+  assert.match(readFileSync(join(verify, specDir, 'checklists', 'requirements.md'), 'utf8'), /the author adds this/);
+  assert.match(readFileSync(join(verify, specDir, 'spec.md'), 'utf8'), /changed on the forge[\s\S]*and the author's point/);
 });
 
 test('a push straight to the default branch is refused by the server, even in a valid shape (push_target_refused)', async () => {

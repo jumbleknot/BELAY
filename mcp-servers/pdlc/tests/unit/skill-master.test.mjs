@@ -19,6 +19,7 @@ const FIELDS = new Set([
   'not_ready_proposal', 'spec_already_in_progress', 'spec_kit_unavailable', 'spec_hook_unsupported', 'branch_exists',
   'no_spec_for_proposal', 'pane_edit_pending', 'path_outside_feature', 'document_locked', 'stage_transition_refused',
   'spec_has_markers', 'spec_not_clarified', 'git_identity_missing', 'publish_failed', 'spec_url',
+  'branch_changed', 'nothing_to_take', 'backup_path',
 ]);
 
 test('the skill has front matter naming it proposal-intake', () => {
@@ -106,4 +107,16 @@ test('016 US2: Approve calls approve_spec and relays every refusal in plain word
     assert.match(step, new RegExp(`\`${code}\``), code);
   }
   assert.match(step, /ready to plan/);
+});
+
+test('016 US8-AC4: on branch_changed the skill shows what changed and offers Take latest or Stop; conflicts go to the author; nothing is published until they approve again', () => {
+  const at = skill.indexOf('`branch_changed`');
+  assert.ok(at >= 0, 'the skill handles branch_changed');
+  const part = skill.slice(at, at + 1600);
+  assert.match(part, /\*\*Take latest\*\*/);
+  assert.match(part, /\*\*Stop\*\*/);
+  assert.match(part, /`take_latest_spec`/);
+  assert.match(part, /conflict/i);
+  assert.match(part, /approve again/i);
+  assert.match(part, /`backup_path`/);
 });

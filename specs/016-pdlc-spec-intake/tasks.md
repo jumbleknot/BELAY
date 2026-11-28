@@ -522,7 +522,7 @@ codes" is observed.
 
 ### Tests for User Story 8 ⚠️
 
-- [ ] T043 [P] [US8] Test: branch changed and take-latest (R8). In `spec-worktree.test.mjs`:
+- [X] T043 [P] [US8] Test: branch changed and take-latest (R8). In `spec-worktree.test.mjs`:
   - `branch_changed` returns commits and a diffstat;
   - `take_latest_spec` backs up first, then soft-resets an unpublished commit onto the recorded tip only, then runs
     the three-way merge per file, with conflicts listed;
@@ -531,7 +531,7 @@ codes" is observed.
   - **Scenarios covered**: US8-AC4, FR-022, SC-011
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/spec-worktree.test.mjs` → expected: failing —
     `takeLatest is not a function`
-- [ ] T044 [P] [US8] Test: stage target and secrets.
+- [X] T044 [P] [US8] Test: stage target and secrets.
   - In `write-guards.test.mjs`, a stage change aimed at an issue other than the spec's proposal is refused.
   - In `secret-sinks.test.mjs`, the token is absent from every new tool's result, the audit lines, the
     `execFile` argv, the Spec Kit child's environment, the worktree's `.git/config` and the state file; spec text is
@@ -547,7 +547,7 @@ codes" is observed.
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/write-guards.test.mjs` and
     `node --test mcp-servers/pdlc/tests/unit/secret-sinks.test.mjs` → expected: failing — `unknown tool
     take_latest_spec` (the sink sweep iterates the contract)
-- [ ] T045 [US8] Integration: in `spec-lifecycle.integration.test.mjs`:
+- [X] T045 [US8] Integration: in `spec-lifecycle.integration.test.mjs`:
   - push a second commit to the bare remote's feature branch, and approve: refused `branch_changed`;
   - `take_latest_spec`, with one conflicting and one clean edit: the conflict is reported and the clean edit is
     merged;
@@ -561,18 +561,31 @@ codes" is observed.
 
 ### Implementation for User Story 8
 
-- [ ] T046 [US8] Implement the remote check and take-latest in `mcp-servers/pdlc/src/spec-worktree.mjs`, and
+- [X] T046 [US8] Implement the remote check and take-latest in `mcp-servers/pdlc/src/spec-worktree.mjs`, and
   `take_latest_spec` in the contract, the handlers and the manifest (prerequisite: T043, T045 RED)
   - **Verify GREEN**: same commands as T043 and T045 → expected: 0 failures
-- [ ] T047 [US8] Close the guard gaps T044 found in `src/tools.mjs` and `src/spec-kit-runner.mjs` (prerequisite: T044
+- [X] T047 [US8] Close the guard gaps T044 found in `src/tools.mjs` and `src/spec-kit-runner.mjs` (prerequisite: T044
   RED)
   - **Verify GREEN**: same commands as T044 → expected: 0 failures; then `pnpm nx run pdlc:test` passes
-- [ ] T048 [US8] Skill: on `branch_changed`, show what changed and offer **Take latest** or **Stop**. Show conflicts
+- [X] T048 [US8] Skill: on `branch_changed`, show what changed and offer **Take latest** or **Stop**. Show conflicts
   for the author to resolve, and never publish until they approve again. Extend `skill-master.test.mjs` for
   `take_latest_spec`.
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/skill-master.test.mjs` → expected: failing —
     `skill does not name take_latest_spec`
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/skill-master.test.mjs` → expected: 0 failures
+
+- **Phase 6 as built (2026-11-28)**:
+  - Take-latest needed one more git shape, `reset -- specs/<slug>` (unstage the spec folder only), because after the
+    soft reset the index still holds the unpublished commit and `merge --ff-only` refuses; and `GitError` now keeps a
+    (redacted) stdout, because `git merge-file` reports conflicts by exit code with the merge on stdout.
+  - T045's real-git run caught what the unit doubles could not: `remoteCheck`'s `log` and `diff` must name their spec
+    to match the allowlisted shapes.
+  - T044's sweep is `tests/unit/spec-guards.test.mjs` with `tests/helpers/assert-unchanged.mjs`, over the spec tools
+    (014's sweeps are left as they are). It found a real FR-023 gap: a state file claiming another proposal made
+    `approve_spec` publish and move the wrong issue. T047 closes it: before a stage change the issue's latest stage
+    trailer must name the spec's branch. The 014 audit test's contract loop is covered for the spec tools by the same
+    file's one-audit-line-per-call test; reopen, withdraw and the pane tools join it in their phases
+  - `get_spec.remote` now reports the real forge check
 
 **Checkpoint**: every guard in FR-020 to FR-024 has an observed refusal (SC-006).
 
