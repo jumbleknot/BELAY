@@ -293,7 +293,7 @@ with BELAY's `.specify/`, and by hand per quickstart §2 step 1.
   - **Verify GREEN**: `node --test scripts/__tests__/install-pwsh.test.mjs`, `node --test scripts/__tests__/refresh-pin-checksum.test.mjs`
     and `node --test scripts/__tests__/check-renovate-config.test.mjs` → expected: 0 failures; then
     `pnpm nx run scripts:lint` passes
-- [ ] T022 [US1] Integration test: start a spec for real. In
+- [X] T022 [US1] Integration test: start a spec for real. In
   `mcp-servers/pdlc/tests/integration/spec-lifecycle.integration.test.mjs`:
   - make a bare repository seeded with a copy of BELAY's `.specify/` and one `specs/001-x/`, plus a remote branch
     `002-other` (the number-clash case);
@@ -327,9 +327,15 @@ with BELAY's `.specify/`, and by hand per quickstart §2 step 1.
     `branch` (log.test.mjs first). Server, manifest and package move to 0.2.0 (R16). `start_spec` syncs the copy first, and
     a start interrupted between the worktree and the stage move is completed, never repeated. `get_spec.remote` is
     `{changed: false}` until User Story 8's take-latest check lands
-- [ ] T027 [US1] Make the integration test pass end to end (prerequisite: T022 RED; T026 GREEN)
+- [X] T027 [US1] Make the integration test pass end to end (prerequisite: T022 RED; T026 GREEN)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/integration/spec-lifecycle.integration.test.mjs` → expected:
     0 failures, 0 skipped; then `pnpm nx run pdlc:integration` passes
+  - **Done 2026-11-28, as built**: the integration tier has no forge (no doubles there), so the test drives the git and
+    scripts half of `start_spec` through the real modules: sync, `inspect`, `prepare` (real `pwsh`, BELAY's real
+    scripts), `worktree.create` and the spec write; the forge half is unit-tested. Measured: `003-int-probe` past the
+    forge-only `002-other-feature`, and a second spec `004-second-probe` past the unpublished local `003`. Its first RED
+    was `no pwsh on the PATH` (no `interpreterPath` yet) and `speckit.belay.close-proposal` refused as unsupported: BELAY's
+    own hook until T040, so the test seeds the post-T040 hook name
 - [X] T028 [P] [US1] Test: the master skill names the new tools. Extend
   `mcp-servers/pdlc/tests/unit/skill-master.test.mjs`: the skill's tool names equal the contract's model-visible tool
   names exactly.
@@ -458,6 +464,9 @@ the spec.
   `scripts/check-speckit-overrides.mjs` (`EXTENSION_HOOKS`, `PROJECT_OWNED`) (prerequisite: T037 RED)
   - **Verify GREEN**: same commands as T037 → expected: 0 failures; then `node scripts/check-speckit-overrides.mjs`
     exits 0
+  - **Also (from T027)**: remove the `close-proposal` → `spec-stage` rewrite in
+    `mcp-servers/pdlc/tests/integration/spec-lifecycle.integration.test.mjs`'s seed, which BELAY's own `extensions.yml` then
+    no longer needs
 - [ ] T041 [US3] Enforce the lock in `mcp-servers/pdlc/src/tools.mjs`: read the stage before every spec write
   (prerequisite: T038 RED)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/tools.test.mjs` → expected: 0 failures

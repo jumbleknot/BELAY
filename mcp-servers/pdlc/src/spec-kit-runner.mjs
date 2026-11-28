@@ -214,6 +214,11 @@ export function createSpecKitRunner({ cloneRoot, git, execFile = realExecFile, f
   };
 
   return {
+    /** The interpreter prepare() would run a flavour's scripts with, or null when there is none (research M9, R1). */
+    interpreterPath(script) {
+      try { return interpreterFor(script).file; } catch { return null; }
+    },
+
     /** check_spec_kit's answer for a local copy (R3, R14; FR-005). Reads only. */
     async inspect({ copyPath }) {
       const at = (...parts) => join(copyPath, ...parts);

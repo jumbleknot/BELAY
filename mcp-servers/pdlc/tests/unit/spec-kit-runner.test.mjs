@@ -255,3 +255,12 @@ test('prepare: a short name outside the contract (2 to 4 kebab words, at most 40
     assert.equal(w.gitCalls.length, 0);
   } finally { w.cleanup(); }
 });
+
+test('interpreterPath names the interpreter prepare() would use, or null when there is none', () => {
+  const r = (found, platform) => createSpecKitRunner({ cloneRoot: '/x', git: null, execFile: null, findExecutable: (n) => found[n] ?? null, platform });
+  assert.equal(r({ pwsh: '/usr/bin/pwsh' }, 'linux').interpreterPath('ps'), '/usr/bin/pwsh');
+  assert.equal(r({ 'powershell.exe': 'C:\\ps.exe' }, 'win32').interpreterPath('ps'), 'C:\\ps.exe');
+  assert.equal(r({}, 'linux').interpreterPath('ps'), null);
+  assert.equal(r({ bash: '/bin/bash' }, 'linux').interpreterPath('sh'), '/bin/bash');
+  assert.equal(r({ 'bash.exe': 'C:\\git\\bash.exe' }, 'win32').interpreterPath('sh'), 'C:\\git\\bash.exe');
+});
