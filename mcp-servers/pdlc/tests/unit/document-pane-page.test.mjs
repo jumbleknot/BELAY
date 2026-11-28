@@ -40,12 +40,21 @@ test('read-only mode disables every editor and the save button', () => {
   assert.match(script, /disabled\s*=\s*readOnly/);
 });
 
-test('a spec shows one tab per file, one file at a time, and keeps the chosen tab across a refresh (T082 finding)', () => {
-  assert.match(script, /role',\s*'tablist'|role="tablist"/, 'a tab strip');
-  assert.match(script, /setAttribute\('role',\s*'tab'\)/, 'one tab per file');
-  assert.match(script, /setAttribute\('role',\s*'tabpanel'\)/, 'one panel per file');
+test('one tab per document that exists: the proposal, and each spec file once it has a spec; one shown at a time, the chosen tab kept across a refresh (T082 findings)', () => {
+  assert.match(script, /setAttribute\('role',\s*'tablist'\)/, 'a tab strip');
+  assert.match(script, /setAttribute\('role',\s*'tab'\)/, 'one tab per document');
+  assert.match(script, /setAttribute\('role',\s*'tabpanel'\)/, 'one panel per document');
   assert.match(script, /aria-selected/, 'the chosen tab is marked');
-  assert.match(script, /\.hidden\s*=/, 'the other files are hidden, not stacked');
-  assert.match(script, /let activePath\b/, 'the chosen tab outlives a re-render (the 2 s poll)');
-  assert.match(script, /activePath\s*=\s*f\.path/, 'clicking a tab chooses it');
+  assert.match(script, /\.hidden\s*=/, 'the other documents are hidden, not stacked');
+  assert.match(script, /let activeTab\b/, 'the chosen tab outlives a re-render (the 2 s poll)');
+  assert.match(script, /Proposal #\$\{/, 'a proposal tab');
+  assert.match(script, /has_spec/, 'a spec tab appears only when the proposal has a spec');
+  assert.match(script, /kind:\s*'spec'/, 'the page reads the spec itself');
+  assert.match(script, /kind:\s*'proposal'/, 'and the proposal itself');
+});
+
+test('it offers a button to move beside the chat whenever it is shown inline (the host may ignore the request on load)', () => {
+  assert.match(html, /id="beside"/);
+  assert.match(script, /displayMode/);
+  assert.match(script, /\$\('beside'\)\.addEventListener\('click'/);
 });

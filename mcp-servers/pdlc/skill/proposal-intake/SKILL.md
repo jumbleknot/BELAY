@@ -24,6 +24,8 @@ If the `pdlc` tools are not available, say so and stop. Do not fall back to a br
 
 Whenever you show the author a proposal or a spec to review or edit, open it in Claude Desktop's right-hand pane with `show_document` (`kind` `proposal` with its number, or with no number for a new one; `kind` `spec` with the proposal's number). The pane sits beside this chat; the author can read it there and type directly in it.
 
+- A saved proposal that has a spec (`has_spec` true in the result) shows both in the one pane, as tabs: the proposal, then each spec file. Open it once with whichever the author asked for; do not ask whether to show the proposal or the spec, and do not offer a separate step to see the other.
+
 - After every chat edit of a proposal that is not saved yet, call `show_document` again with the sections and priority as they now stand, and the `revision` it last returned as `base_revision`, so the pane shows the change. A saved proposal and a spec refresh themselves.
 - Before your next change or save, take in what the author typed in the pane: `get_proposal_draft` for a proposal, `get_spec` for a spec. Both return `pane_changes`. Tell the author what you took in, in one line, then carry on from the document as it now stands.
 - When saving a proposal that has a pane draft, pass the draft's `revision` as `draft_revision` to `create_proposal` (with its `draft_id`) or `update_proposal`. If one refuses `pane_edit_pending`, the author typed since you read it: read it again, say what changed, then save.

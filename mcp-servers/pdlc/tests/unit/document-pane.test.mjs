@@ -181,3 +181,23 @@ test('T082 finding: after update_proposal consumed the pane draft, the pane stil
     refused(await w.c.call('save_pane_edit', { repo: 'BELAY', kind: 'proposal', ref: String(p.number), base_revision: r.payload.revision, sections: r.payload.document.sections }), 'pane_edit_pending');
   } finally { await w.close(); }
 });
+
+// Asked on the workstation, 2026-11-28 (T082 §2): opening proposal #39 showed only the proposal, and the spec took a
+// second step. A proposal now says whether it has a spec, so the page shows both as tabs, and only what exists.
+test('T082 finding: a proposal says whether it has a spec (has_spec), from show_document and from the page\'s poll', async () => {
+  const { w, p } = await started();
+  const other = await w.second();
+  try {
+    const shown = await w.c.call('show_document', { repo: 'BELAY', kind: 'proposal', number: p.number });
+    ok(shown);
+    assert.equal(shown.payload.has_spec, true);
+    const polled = await other.call('read_pane_document', { repo: 'BELAY', kind: 'proposal', ref: String(p.number) });
+    ok(polled);
+    assert.equal(polled.payload.has_spec, true);
+    const bare = w.ready({ title: 'Proposal: No spec yet' });
+    assert.equal((await w.c.call('show_document', { repo: 'BELAY', kind: 'proposal', number: bare.number })).payload.has_spec, false);
+    assert.equal((await w.c.call('read_pane_document', { repo: 'BELAY', kind: 'proposal', ref: String(bare.number) })).payload.has_spec, false);
+    const draft = await w.c.call('show_document', { repo: 'BELAY', kind: 'proposal' });
+    assert.equal(draft.payload.has_spec, false, 'an unsaved draft has no spec');
+  } finally { await other.close(); await w.close(); }
+});

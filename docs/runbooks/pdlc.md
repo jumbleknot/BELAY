@@ -70,7 +70,7 @@ because nothing else uses it. Then create a new one and paste it into the extens
 ```bash
 pnpm nx run pdlc:pack
 # → target/pdlc/pdlc-<version>.mcpb        the extension
-# → target/pdlc/proposal-intake.zip        the skill
+# → target/pdlc/proposal-intake-<version>.zip  the skill (same version as the server)
 ```
 
 Download both to the workstation (VS Code Explorer → right-click → **Download**).
@@ -92,7 +92,8 @@ Download both to the workstation (VS Code Explorer → right-click → **Downloa
 
 ### Add the skill, and where to run a session
 
-1. **Settings → Skills → Upload skill**, and pick `proposal-intake.zip`. Replace the earlier copy.
+1. **Settings → Skills → Upload skill**, and pick `proposal-intake-<version>.zip`. Replace the earlier copy. A rebuild meant for
+   installing bumps the server's patch version, so the two file names say which build is which.
 2. **Start every proposal session in a plain chat**, not in a Claude Desktop project. Measured 2026-11-26 (research
    R12): a **Project coordinator (Beta)** project, with its coordinator and threads, does not get the installed
    extension. The skill finds no `pdlc` tools there and stops, as designed, even though `main.log` shows the server
@@ -105,10 +106,10 @@ Download both to the workstation (VS Code Explorer → right-click → **Downloa
 ### Update the skill whenever the master changes
 
 The master skill is `mcp-servers/pdlc/skill/proposal-intake/SKILL.md`. A change to it, or to the tool contract,
-merges with a pull request; after it merges, rebuild with `pdlc:pack` and re-upload `proposal-intake.zip`
+merges with a pull request; after it merges, rebuild with `pdlc:pack` and re-upload `proposal-intake-<version>.zip`
 (and reinstall the `.mcpb` if the server changed). Nothing updates itself.
 
-**Rebuild after feature 016** (server 0.2.0): reinstall the `.mcpb`, re-upload the skill, and replace the token
+**Rebuild after feature 016** (server 0.2.1): reinstall the `.mcpb`, re-upload the skill, and replace the token
 (above). Run `check_setup` on BELAY: `ok: true`, and `default_branch_protected: true`.
 
 ### Measured on the host
@@ -167,6 +168,12 @@ meanwhile, the save is refused `pane_edit_pending`, the author's text is kept be
 is lost. The model sees pane edits by reading again (`get_proposal_draft` reports `pane_changes`). A closed proposal,
 or a spec past `spec-in-progress`, shows read-only. Where the pane is not available, the page says so and stays in the
 conversation, which still works.
+
+The page has one tab per document that exists: the proposal, and once it has a spec (`has_spec` in the result), one
+tab per spec file, `spec.md` first. Opening either one loads the other beside it, and the tab chosen survives the 2 s
+refresh. When `start_spec` runs while the proposal is open, the spec's tabs appear and `spec.md` is chosen. The page asks
+to move beside the chat when it loads; when it is shown in the conversation instead, an **Open beside the chat** button
+asks again.
 
 Drafts live in `<clone folder>\.pdlc-drafts\<Repo>\` until the proposal is saved; a saved proposal's draft is
 deleted.
@@ -286,7 +293,7 @@ FR-026, 016 FR-033). It states what the target must do. BELAY's own adoption is 
 ### Before starting in the target
 
 1. Features 014 and 016 have merged in BELAY, so the master form, labels and trailer are final.
-2. The `pdlc` server 0.2.0 is installed (above), with the `write:repository` token, and the full loop has been proven
+2. The `pdlc` server 0.2.1 or later is installed (above), with the `write:repository` token, and the full loop has been proven
    on BELAY ([016 quickstart](../../specs/016-pdlc-spec-intake/quickstart.md) §2 to §4).
 3. The target's default branch is protected (no direct push): `check_setup` reports `default_branch_protected: true`.
    The server relies on the forge to refuse a push to it.

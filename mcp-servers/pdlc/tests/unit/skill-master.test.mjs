@@ -21,7 +21,7 @@ const FIELDS = new Set([
   'not_ready_proposal', 'spec_already_in_progress', 'spec_kit_unavailable', 'spec_hook_unsupported', 'branch_exists',
   'no_spec_for_proposal', 'pane_edit_pending', 'path_outside_feature', 'document_locked', 'stage_transition_refused',
   'spec_has_markers', 'spec_not_clarified', 'git_identity_missing', 'publish_failed', 'spec_url',
-  'branch_changed', 'nothing_to_take', 'backup_path', 'pane_changes', 'draft_id', 'draft_revision', 'read_only',
+  'branch_changed', 'nothing_to_take', 'backup_path', 'pane_changes', 'draft_id', 'draft_revision', 'read_only', 'has_spec',
 ]);
 
 test('the skill has front matter naming it proposal-intake', () => {
@@ -159,4 +159,10 @@ test('016 T082 finding: "Work on an existing proposal" lists every open proposal
 test('016 T082 finding: after start_spec the skill moves the pane to the spec (show_document kind spec)', () => {
   const step = skill.slice(skill.indexOf('## 7.'), skill.indexOf('## 8.'));
   assert.match(step, /`start_spec`[\s\S]*`show_document` with `kind` `spec`/);
+});
+
+test('T082 finding: one show_document shows a proposal and its spec as tabs, so the skill never asks which one to open', () => {
+  assert.match(skill, /tabs?/i);
+  assert.match(skill, /has_spec/);
+  assert.match(skill, /do not ask (the author )?(whether|which)/i);
 });

@@ -76,6 +76,11 @@ export function createDocumentPane({ allowlist, proposals, localCopy, worktree, 
     const stage = stageFromLabels(names(issue));
     return { repo, state, stage, specDir: state.spec_dir.replace(/\/$/, '') };
   };
+  /** Whether a saved proposal has a spec (in progress or approved), so the page shows it as a tab beside the proposal. */
+  const hasSpec = async (repo, ref) => {
+    if (!/^\d+$/.test(String(ref))) return false;
+    try { return Boolean(await worktree.resume({ repo, copyPath: localCopy.pathOf(repo.name), number: Number(ref) })); } catch { return false; }
+  };
 
   return {
     /** show_document (model): open the pane on a document, creating or refreshing a proposal draft. */
@@ -110,7 +115,7 @@ export function createDocumentPane({ allowlist, proposals, localCopy, worktree, 
         writeDraft(repo, ref, draft);
       }
       return { repo: repo.name, kind, ref: Number.isInteger(number) ? number : ref, ...(Number.isInteger(number) ? {} : { draft_id: ref }),
-        revision: draftRevision(draft), read_only: readOnly, document: draftDoc(draft) };
+        revision: draftRevision(draft), read_only: readOnly, has_spec: await hasSpec(repo, ref), document: draftDoc(draft) };
     },
 
     /** get_proposal_draft (model): the draft, with what the pane changed since the model last read it. */
@@ -169,7 +174,7 @@ export function createDocumentPane({ allowlist, proposals, localCopy, worktree, 
       const { repo, closed: readOnly } = await proposalRepo(repoArg, at);
       const draft = readDraft(repo, at) ?? (/^\d+$/.test(at) ? await issueDoc(repo, at) : null);
       if (!draft) throw new Refusal('not_found', `there is no pane draft ${ref}`);
-      return { repo: repo.name, kind, ref: /^\d+$/.test(at) ? Number(at) : at, revision: draftRevision(draft), read_only: readOnly, document: draftDoc(draft) };
+      return { repo: repo.name, kind, ref: /^\d+$/.test(at) ? Number(at) : at, revision: draftRevision(draft), read_only: readOnly, has_spec: await hasSpec(repo, at), document: draftDoc(draft) };
     },
 
     /**

@@ -8,6 +8,7 @@
   dependency, no build step). Claude Desktop shows it when show_document is called; it asks to move beside the chat
   (the fullscreen display mode, measured to be the right-hand pane), polls read_pane_document every 2 seconds, and saves
   what the author types through save_pane_edit against the revision it last read, so an edit is never lost.
+  A saved proposal and its spec share the page: one tab for the proposal, and one per spec file once it has a spec.
   It uses only the JSON-RPC that T003 measured working in Claude Desktop.
 -->
 <style>
@@ -38,6 +39,7 @@
   <h1 id="title">Loading…</h1>
   <span id="status"></span>
   <button id="save" type="button">Save</button>
+  <button id="beside" type="button" hidden>Open beside the chat</button>
 </header>
 <div id="notice"></div>
 <main id="editors"></main>
@@ -51,13 +53,16 @@ const SECTIONS = [
 ];
 const UNAVAILABLE = 'The side pane is not available here; edit in this view or through the chat.';
 const $ = (id) => document.getElementById(id);
-let doc = null;          // { repo, kind, ref, revision, read_only, document }
+// What the page shows: a proposal (a draft id or an issue number) and, once it has one, its spec. Each document is
+// { repo, kind, ref, revision, read_only, has_spec?, document } as read_pane_document returns it.
+let view = null;         // { repo, ref, proposal: doc | null, spec: doc | null }
+let activeTab = null;    // 'proposal', or the path of the spec file whose tab is chosen
 let dirty = false;       // the author has typed since the last save
 let saving = false;
 let nextId = 1;
 const pending = new Map();
 let saveTimer = null;
-let activePath = null;   // the spec file whose tab is chosen
+let canBeside = false;   // the host offers the fullscreen display mode (the right-hand pane)
 
 function request(method, params) {
   const id = nextId++;
@@ -77,45 +82,119 @@ async function callTool(name, args) {
 }
 const status = (text) => { $('status').textContent = text; };
 const notice = (text) => { const n = $('notice'); n.textContent = text; n.style.display = text ? 'block' : 'none'; };
+const numbered = () => view && /^\d+$/.test(String(view.ref));
+const readDoc = (kind) => callTool('read_pane_document', { repo: view.repo, kind, ref: String(view.ref) });
 
-function render(next) {
-  doc = next;
-  const readOnly = Boolean(doc.read_only);
-  $('title').textContent = doc.kind === 'spec' ? `Spec for proposal #${doc.ref}` : (doc.document.sections.feature_name || 'New proposal');
+// ── display mode ─────────────────────────────────────────────────────────────────────────────────────────────────
+function shownAs(mode) {
+  $('beside').hidden = !(canBeside && mode === 'inline');
+}
+async function moveBeside() {
+  try {
+    const r = await request('ui/request-display-mode', { mode: 'fullscreen' });
+    shownAs(r?.mode ?? 'fullscreen');
+  } catch {
+    shownAs('inline');
+    notice(UNAVAILABLE);
+  }
+}
+
+// ── what the page shows ──────────────────────────────────────────────────────────────────────────────────────────
+/** Open on a document the model showed (a show_document result): its tab is chosen, and the other document loads. */
+async function open(payload) {
+  const same = view && view.repo === payload.repo && String(view.ref) === String(payload.ref);
+  const ref = payload.ref;
+  view = { repo: payload.repo, ref, proposal: same ? view.proposal : null, spec: same ? view.spec : null };
+  view[payload.kind] = payload;
+  activeTab = payload.kind === 'proposal' ? 'proposal' : firstFile(payload);
+  dirty = false;
+  render();
+  await loadCompanion();
+}
+const firstFile = (spec) => (spec.document.files.find((f) => f.path === 'spec.md') ?? spec.document.files[0])?.path ?? null;
+
+/** The document the model did not show: the proposal of a spec, and the spec of a proposal that has one. */
+async function loadCompanion() {
+  if (!numbered()) return;
+  try {
+    let changed = false;
+    if (!view.proposal) { view.proposal = await readDoc('proposal'); changed = true; }
+    if (!view.spec && view.proposal?.has_spec) { view.spec = await readDoc('spec'); changed = true; }
+    if (changed && !dirty) render();
+  } catch (e) {
+    status(`Could not load everything: ${e.message}`);
+  }
+}
+
+function render() {
   const editors = $('editors');
   editors.textContent = '';
-  if (doc.kind === 'spec') {
-    // One tab per file, one file shown at a time. The chosen tab outlives a re-render (the 2 s poll), and falls back
-    // to spec.md (or the first file) when the chosen file is gone. Hidden files keep their textarea, so save() still
-    // sees every edit.
-    const files = doc.document.files;
-    if (!files.some((f) => f.path === activePath)) activePath = (files.find((f) => f.path === 'spec.md') ?? files[0])?.path ?? null;
-    const tabs = document.createElement('div');
-    tabs.setAttribute('role', 'tablist');
-    tabs.className = 'tabs';
-    editors.append(tabs);
-    const show = () => {
-      for (const t of tabs.children) t.setAttribute('aria-selected', String(t.dataset.path === activePath));
-      for (const p of editors.querySelectorAll('[role="tabpanel"]')) p.hidden = p.dataset.path !== activePath;
-    };
-    for (const f of files) {
-      const tab = document.createElement('button');
-      tab.type = 'button';
-      tab.setAttribute('role', 'tab');
-      tab.dataset.path = f.path;
-      tab.textContent = f.path;
-      tab.addEventListener('click', () => { activePath = f.path; show(); });
-      tabs.append(tab);
-      const panel = document.createElement('div');
-      panel.setAttribute('role', 'tabpanel');
-      panel.dataset.path = f.path;
+  const p = view.proposal;
+  const s = view.spec;
+  const name = p?.document.sections.feature_name;
+  $('title').textContent = numbered() ? `Proposal #${view.ref}${name ? `: ${name}` : ''}` : (name || 'New proposal');
+  const valid = [p && 'proposal', ...(s ? s.document.files.map((f) => f.path) : [])].filter(Boolean);
+  if (!valid.includes(activeTab)) activeTab = valid[0] ?? null;
+
+  const tabs = document.createElement('div');
+  tabs.setAttribute('role', 'tablist');
+  tabs.className = 'tabs';
+  editors.append(tabs);
+  const panels = [];
+  const addTab = (key, text) => {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.setAttribute('role', 'tab');
+    tab.dataset.tab = key;
+    tab.textContent = text;
+    tab.addEventListener('click', () => { activeTab = key; show(); });
+    tabs.append(tab);
+    const panel = document.createElement('div');
+    panel.setAttribute('role', 'tabpanel');
+    panel.dataset.tab = key;
+    editors.append(panel);
+    panels.push(panel);
+    return panel;
+  };
+  const show = () => {
+    for (const t of tabs.children) t.setAttribute('aria-selected', String(t.dataset.tab === activeTab));
+    for (const panel of panels) panel.hidden = panel.dataset.tab !== activeTab;
+  };
+
+  if (p) {
+    const panel = addTab('proposal', numbered() ? `Proposal #${view.ref}` : 'Proposal');
+    const readOnly = Boolean(p.read_only);
+    for (const [id, text] of SECTIONS) {
+      const label = document.createElement('label');
+      label.textContent = text;
+      const area = document.createElement('textarea');
+      area.dataset.section = id;
+      area.value = p.document.sections[id] ?? '';
+      area.readOnly = readOnly;
+      area.addEventListener('input', edited);
+      panel.append(label, area);
+    }
+    const label = document.createElement('label');
+    label.textContent = 'Priority';
+    const select = document.createElement('select');
+    select.id = 'priority';
+    for (const v of ['', 'p1', 'p2', 'p3']) { const o = document.createElement('option'); o.value = v; o.textContent = v || '(not set)'; select.append(o); }
+    select.value = p.document.priority ?? '';
+    select.disabled = readOnly;
+    select.addEventListener('change', edited);
+    panel.append(label, select);
+  }
+  if (s) {
+    const readOnly = Boolean(s.read_only);
+    // spec.md first, then the checklists in the order the server lists them
+    for (const f of [...s.document.files].sort((a, b) => (b.path === 'spec.md') - (a.path === 'spec.md'))) {
+      const panel = addTab(f.path, f.path);
       const area = document.createElement('textarea');
       area.className = 'file';
       area.dataset.path = f.path;
       area.value = f.content;
       area.readOnly = readOnly;
       area.addEventListener('input', edited);
-      editors.append(panel);
       if (f.path === 'spec.md') {
         // The section outline belongs to spec.md's tab, above its text.
         const nav = document.createElement('nav');
@@ -130,32 +209,14 @@ function render(next) {
       }
       panel.append(area);
     }
-    show();
-  } else {
-    for (const [id, text] of SECTIONS) {
-      const label = document.createElement('label');
-      label.textContent = text;
-      const area = document.createElement('textarea');
-      area.dataset.section = id;
-      area.value = doc.document.sections[id] ?? '';
-      area.readOnly = readOnly;
-      area.addEventListener('input', edited);
-      editors.append(label, area);
-    }
-    const label = document.createElement('label');
-    label.textContent = 'Priority';
-    const select = document.createElement('select');
-    select.id = 'priority';
-    for (const p of ['', 'p1', 'p2', 'p3']) { const o = document.createElement('option'); o.value = p; o.textContent = p || '(not set)'; select.append(o); }
-    select.value = doc.document.priority ?? '';
-    select.disabled = readOnly;
-    select.addEventListener('change', edited);
-    editors.append(label, select);
   }
+  show();
+  const readOnly = (!p || p.read_only) && (!s || s.read_only);
   $('save').disabled = readOnly;
   status(readOnly ? 'Read-only: this document can no longer be changed here.' : 'Up to date.');
 }
 
+// ── saving what the author typed ─────────────────────────────────────────────────────────────────────────────────
 function edited() {
   dirty = true;
   status('Unsaved changes…');
@@ -164,24 +225,30 @@ function edited() {
 }
 
 async function save() {
-  if (!doc || doc.read_only || !dirty || saving) return;
+  if (!view || !dirty || saving) return;
   saving = true;
   try {
-    if (doc.kind === 'spec') {
+    const s = view.spec;
+    if (s && !s.read_only) {
       for (const area of document.querySelectorAll('textarea[data-path]')) {
-        const before = doc.document.files.find((f) => f.path === area.dataset.path)?.content;
+        const before = s.document.files.find((f) => f.path === area.dataset.path)?.content;
         if (area.value === before) continue;
-        const r = await callTool('save_pane_edit', { repo: doc.repo, kind: 'spec', ref: String(doc.ref), base_revision: doc.revision, path: area.dataset.path, content: area.value });
-        doc.revision = r.revision;
-        doc.document.files = doc.document.files.map((f) => (f.path === area.dataset.path ? { ...f, content: area.value } : f));
+        const r = await callTool('save_pane_edit', { repo: view.repo, kind: 'spec', ref: String(view.ref), base_revision: s.revision, path: area.dataset.path, content: area.value });
+        s.revision = r.revision;
+        s.document.files = s.document.files.map((f) => (f.path === area.dataset.path ? { ...f, content: area.value } : f));
       }
-    } else {
+    }
+    const p = view.proposal;
+    if (p && !p.read_only) {
       const sections = {};
       for (const area of document.querySelectorAll('textarea[data-section]')) sections[area.dataset.section] = area.value;
       const priority = $('priority').value || undefined;
-      const r = await callTool('save_pane_edit', { repo: doc.repo, kind: 'proposal', ref: String(doc.ref), base_revision: doc.revision, sections, ...(priority && { priority }) });
-      doc.revision = r.revision;
-      doc.document = { sections, priority: priority ?? null };
+      const changed = SECTIONS.some(([id]) => (p.document.sections[id] ?? '') !== sections[id]) || (priority ?? null) !== (p.document.priority ?? null);
+      if (changed) {
+        const r = await callTool('save_pane_edit', { repo: view.repo, kind: 'proposal', ref: String(view.ref), base_revision: p.revision, sections, ...(priority && { priority }) });
+        p.revision = r.revision;
+        p.document = { sections, priority: priority ?? null };
+      }
     }
     dirty = false;
     notice('');
@@ -203,12 +270,29 @@ async function save() {
   }
 }
 
+// ── the 2 s refresh ──────────────────────────────────────────────────────────────────────────────────────────────
+const moved = (a, b) => !a || a.revision !== b.revision || a.read_only !== b.read_only || String(a.ref) !== String(b.ref) || Boolean(a.has_spec) !== Boolean(b.has_spec);
 async function poll(force = false) {
-  if (!doc) return;
+  if (!view) return;
   if (dirty) return; // never overwrite what the author is typing
   try {
-    const latest = await callTool('read_pane_document', { repo: doc.repo, kind: doc.kind, ref: String(doc.ref) });
-    if (force || latest.revision !== doc.revision || latest.read_only !== doc.read_only || String(latest.ref) !== String(doc.ref)) render({ ...doc, ...latest });
+    let changed = force;
+    let specAppeared = false;
+    if (view.proposal) {
+      const latest = await readDoc('proposal');
+      if (moved(view.proposal, latest)) changed = true;
+      if (String(latest.ref) !== String(view.ref)) view.ref = latest.ref; // a saved draft now goes by its issue number
+      view.proposal = latest;
+    }
+    if (view.spec || view.proposal?.has_spec) {
+      const latest = await readDoc('spec');
+      if (!view.spec) specAppeared = true;
+      if (moved(view.spec, latest)) changed = true;
+      view.spec = latest;
+    }
+    if (dirty) return; // the author started typing while the page read
+    if (specAppeared) activeTab = firstFile(view.spec); // the spec was just started: show it
+    if (changed) render();
   } catch (e) {
     status(`Could not refresh: ${e.message}`);
   }
@@ -225,30 +309,30 @@ window.addEventListener('message', (ev) => {
   }
   if (m.method === 'ui/notifications/tool-result') {
     const payload = m.params?.structuredContent;
-    if (payload?.document) render(payload);
+    if (payload?.document) open(payload);
   }
-  if (m.method === 'ui/notifications/host-context-changed' && m.params?.displayMode === 'inline' && doc) {
-    status('Shown in the conversation. Ask for the side pane again, or keep editing here.');
+  if (m.method === 'ui/notifications/host-context-changed' && m.params?.displayMode) {
+    shownAs(m.params.displayMode);
+    if (m.params.displayMode === 'inline' && view) status('Shown in the conversation. Use "Open beside the chat", or keep editing here.');
   }
   if (m.id !== undefined && m.method) window.parent.postMessage({ jsonrpc: '2.0', id: m.id, result: {} }, '*');
 });
 
 $('save').addEventListener('click', () => { clearTimeout(saveTimer); save(); });
+$('beside').addEventListener('click', () => { moveBeside(); });
 
 (async () => {
   try {
     const init = await request('ui/initialize', {
       protocolVersion: '2026-01-26',
-      appInfo: { name: 'pdlc-document-pane', version: '0.2.0' },
+      appInfo: { name: 'pdlc-document-pane', version: '0.2.1' },
       appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] },
     });
     notify('ui/notifications/initialized', {});
     const modes = init?.hostContext?.availableDisplayModes ?? [];
-    if (modes.includes('fullscreen')) {
-      await request('ui/request-display-mode', { mode: 'fullscreen' }).catch(() => notice(UNAVAILABLE));
-    } else {
-      notice(UNAVAILABLE);
-    }
+    canBeside = modes.includes('fullscreen');
+    shownAs(init?.hostContext?.displayMode ?? 'inline');
+    if (canBeside) await moveBeside(); else notice(UNAVAILABLE);
   } catch {
     notice(UNAVAILABLE);
   }

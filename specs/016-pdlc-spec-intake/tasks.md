@@ -979,6 +979,20 @@ FR-036.
     to one tab per file, one file at a time; the chosen tab survives the 2 s refresh, and the section outline sits in
     `spec.md`'s tab. RED/GREEN in `document-pane-page.test.mjs` (static only: no DOM runtime in the repo, so the tabs
     are checked by eye in Claude Desktop)
+  - **Finding 2026-11-28 (re-check after reinstall)**: the tabs did not show; the page looked as before. The packed
+    bundle did hold the new page, but it had the same name and version (0.2.0) as the one installed. Also asked for:
+    open a proposal and its spec together, and open beside the chat by default (it opened inline, although the page
+    asks for `fullscreen` on load). Changed:
+    - the server is now 0.2.1, and the skill zip is named after the server's version;
+    - proposal results carry `has_spec`, and the page shows one tab per document that exists (the proposal, then each
+      spec file with `spec.md` first), loading the other document itself;
+    - when the spec is started while its proposal is open, the page switches to it;
+    - while the page is shown inline, an **Open beside the chat** button asks for `fullscreen` again;
+    - the skill no longer offers a separate step to see the spec.
+
+    RED/GREEN in `document-pane.test.mjs`, `document-pane-page.test.mjs` and `skill-master.test.mjs`. The new
+    `document-pane-behaviour.test.mjs` runs the page's script in `node:vm` against a fake DOM and host; all 5 of its
+    tests fail against the previous page. Still to check in Claude Desktop: why the page opened inline
 - [ ] T082a **Record the test count**: `node scripts/backlog.mjs record-tests --spec specs/016-pdlc-spec-intake --point close-out`
   after the last code commit. Expected: counts printed, "not an open proposal (#91 is closed); nothing posted", exit 0.
   - **Done when**: the counts, the delta and the exit code are recorded in this task
