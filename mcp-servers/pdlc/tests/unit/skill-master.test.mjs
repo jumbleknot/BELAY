@@ -155,3 +155,8 @@ test('016 T082 finding: "Work on an existing proposal" lists every open proposal
   assert.match(existing, /even when (there is )?only one/i);
   assert.match(existing, /never open (one|a proposal) (the user|they) (did not|didn't) (pick|choose)/i);
 });
+
+test('016 T082 finding: after start_spec the skill moves the pane to the spec (show_document kind spec)', () => {
+  const step = skill.slice(skill.indexOf('## 7.'), skill.indexOf('## 8.'));
+  assert.match(step, /`start_spec`[\s\S]*`show_document` with `kind` `spec`/);
+});

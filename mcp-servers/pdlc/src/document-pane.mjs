@@ -44,6 +44,19 @@ export function createDocumentPane({ allowlist, proposals, localCopy, worktree, 
   };
   const draftRevision = (d) => hash({ sections: d.sections, priority: d.priority ?? null });
   const draftDoc = (d) => ({ sections: d.sections, priority: d.priority ?? null });
+  // A new proposal's draft, once create_proposal saved it, leaves a pointer to the issue number, so the pane that is still
+  // open on the draft id follows it (measured, T082: without it the page's next poll was refused not_found).
+  const savedFile = (repo, ref) => join(cloneRoot, '.pdlc-drafts', repo.name, `${ref}.saved.json`);
+  const savedAs = (repo, ref) => {
+    try { const n = JSON.parse(readFileSync(savedFile(repo, ref), 'utf8')).number; return Number.isInteger(n) ? String(n) : null; } catch { return null; }
+  };
+  /** The proposal ref the pane should use now: the draft id, or the issue number it was saved as. */
+  const follow = (repo, ref) => (readDraft(repo, ref) || /^\d+$/.test(String(ref)) ? String(ref) : (savedAs(repo, ref) ?? String(ref)));
+  /** A saved proposal with no pane draft: the document is the issue on the forge (nothing written). */
+  const issueDoc = async (repo, ref) => {
+    const issue = await proposalIssue(repo, Number(ref));
+    return { sections: pick(issue.sections), priority: issue.priority === 'unknown' ? null : issue.priority };
+  };
 
   const proposalIssue = (repo, number) => proposals.get({ repo: repo.name, number });
   /** The repository and, for a proposal number, whether it is closed: drafts are keyed by the CANONICAL name. */
@@ -128,14 +141,20 @@ export function createDocumentPane({ allowlist, proposals, localCopy, worktree, 
         const { revision } = await files.write({ worktree: state.worktree_path, specDir, path, content });
         return { repo: repo.name, kind, ref: number, branch: state.branch, revision };
       }
-      const { repo, closed } = await proposalRepo(repoArg, ref);
-      if (closed) throw new Refusal('document_locked', `proposal #${ref} is closed, so the pane shows it read-only`);
-      const draft = readDraft(repo, ref);
+      const at = follow(await allowlist.resolve(repoArg), ref);
+      const { repo, closed } = await proposalRepo(repoArg, at);
+      if (closed) throw new Refusal('document_locked', `proposal #${at} is closed, so the pane shows it read-only`);
+      let draft = readDraft(repo, at);
+      if (!draft && /^\d+$/.test(at)) {
+        // the proposal is saved and has no draft: the pane edits the issue as it is on the forge
+        const doc = await issueDoc(repo, at);
+        draft = { ...doc, model_read: { ...doc } };
+      }
       if (!draft) throw new Refusal('not_found', `there is no pane draft ${ref}; open it with show_document`);
       if (draftRevision(draft) !== base) throw new Refusal('pane_edit_pending', 'the draft changed since the pane read it; the pane reloads it', { revision: draftRevision(draft) });
       const next = { ...draft, sections: pick({ ...draft.sections, ...(sections ?? {}) }), priority: priority ?? draft.priority ?? null };
-      writeDraft(repo, ref, next);
-      return { repo: repo.name, kind, ref, revision: draftRevision(next) };
+      writeDraft(repo, at, next);
+      return { repo: repo.name, kind, ref: /^\d+$/.test(at) ? Number(at) : at, revision: draftRevision(next) };
     },
 
     /** read_pane_document (app only): what the page polls. */
@@ -146,16 +165,18 @@ export function createDocumentPane({ allowlist, proposals, localCopy, worktree, 
         const { files: list, revision } = await files.read({ worktree: state.worktree_path, specDir });
         return { repo: repo.name, kind, ref: number, revision, read_only: LOCKED.has(stage) || stage !== 'spec-in-progress', document: { files: list } };
       }
-      const { repo, closed: readOnly } = await proposalRepo(repoArg, ref);
-      const draft = readDraft(repo, ref);
+      const at = follow(await allowlist.resolve(repoArg), ref);
+      const { repo, closed: readOnly } = await proposalRepo(repoArg, at);
+      const draft = readDraft(repo, at) ?? (/^\d+$/.test(at) ? await issueDoc(repo, at) : null);
       if (!draft) throw new Refusal('not_found', `there is no pane draft ${ref}`);
-      return { repo: repo.name, kind, ref, revision: draftRevision(draft), read_only: readOnly, document: draftDoc(draft) };
+      return { repo: repo.name, kind, ref: /^\d+$/.test(at) ? Number(at) : at, revision: draftRevision(draft), read_only: readOnly, document: draftDoc(draft) };
     },
 
     /**
      * Before create_proposal (by draft_id) or update_proposal (by number): when the pane holds a draft, the caller's
      * draft_revision must be its current one (pane_edit_pending otherwise). Returns a function that deletes the draft,
-     * for after the write succeeded, or null when there is no draft.
+     * for after the write succeeded (given the new issue number, it leaves a pointer so an open pane follows it), or
+     * null when there is no draft.
      */
     async guardDraft({ repo: repoArg, ref, draft_revision: rev }) {
       if (ref === undefined || ref === null) return null;
@@ -166,7 +187,10 @@ export function createDocumentPane({ allowlist, proposals, localCopy, worktree, 
       if (rev !== draftRevision(draft)) {
         throw new Refusal('pane_edit_pending', 'the author changed this proposal in the pane; read it with get_proposal_draft, take the change in, then save with its draft_revision', { revision: draftRevision(draft) });
       }
-      return () => rmSync(draftFile(repo, ref), { force: true });
+      return (number) => {
+        rmSync(draftFile(repo, ref), { force: true });
+        if (Number.isInteger(number) && !/^\d+$/.test(String(ref))) writeFileSync(savedFile(repo, ref), JSON.stringify({ number }));
+      };
     },
   };
 }

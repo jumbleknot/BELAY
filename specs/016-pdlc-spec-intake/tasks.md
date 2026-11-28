@@ -962,6 +962,14 @@ FR-036.
     asking; #88 (ready) never showed. The master skill said "offer to list drafts", and nothing said to let the user
     pick from one. Fixed in the skill (list with `status: "all"`, show the stage, always ask), with a RED/GREEN test in
     `skill-master.test.mjs`. Contract and manifest unchanged. Re-run §2 with the rebuilt skill zip
+  - **Finding 2026-11-28 (§2 on BELAY before merge)**: `check_spec_kit` correctly refused BELAY, whose `main` still has
+    014's mandatory `speckit.belay.close-proposal` hook ("Spec for #88 can't be started here"). §2 needs this feature
+    merged, as the Prerequisites say; the operator ran §2 on `ci-smoke` instead.
+  - **Finding 2026-11-28 (§2 on `ci-smoke`)**: once `create_proposal` saved the pane's draft, the open pane showed
+    "Could not refresh: there is no pane draft <id>" (the draft is deleted on save), and it stayed on the proposal after
+    `start_spec`. Fixed: a saved draft leaves a pointer to its issue number, a saved proposal with no draft is read
+    from the forge, the page follows a changed `ref`, and the skill calls `show_document` on the spec after
+    `start_spec`. RED/GREEN in `document-pane.test.mjs` and `skill-master.test.mjs`
 - [ ] T082a **Record the test count**: `node scripts/backlog.mjs record-tests --spec specs/016-pdlc-spec-intake --point close-out`
   after the last code commit. Expected: counts printed, "not an open proposal (#91 is closed); nothing posted", exit 0.
   - **Done when**: the counts, the delta and the exit code are recorded in this task

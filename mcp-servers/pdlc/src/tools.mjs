@@ -27,7 +27,7 @@ export function createToolHandlers(deps = {}) {
       // Feature 016 (FR-036): a pane draft of this new proposal is saved only at its current revision, then deleted.
       const done = pane ? await pane.guardDraft({ repo: args.repo, ref: args.draft_id, draft_revision: args.draft_revision }) : null;
       const result = await proposals.create(args);
-      done?.();
+      done?.(result.number);
       wrote('create_proposal', 'proposal created', { repo: args.repo, number: result.number }, ctx);
       return result;
     },

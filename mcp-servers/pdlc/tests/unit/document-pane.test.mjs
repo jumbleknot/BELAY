@@ -144,3 +144,40 @@ test('show_document refuses a spec kind without a number, and a kind other than 
     refused(await w.c.call('show_document', { repo: 'BELAY', kind: 'plan', number: 1 }), 'invalid_input');
   } finally { await w.close(); }
 });
+
+// Measured on the workstation, 2026-11-28 (T082 §2): once create_proposal saved the pane's draft, the open pane's next poll
+// was refused "there is no pane draft <id>", and it stayed on a document it could no longer read or save.
+test('T082 finding: once a pane draft is saved as a proposal, the open pane follows it to the new proposal number, and can still be edited', async () => {
+  const w = await specWorld();
+  try {
+    const sections = { feature_name: 'Pane probe', problem: 'p', proposed_value: 'v', personas: 'c', goals_success: 'g', rough_scope: 'r', open_questions: '', out_of_scope: '' };
+    const r = await w.c.call('show_document', { repo: 'BELAY', kind: 'proposal', sections, priority: 'p2' });
+    const c = await w.c.call('create_proposal', { repo: 'BELAY', title: 'Proposal: Pane probe', sections, priority: 'p2', status: 'ready', draft_id: r.payload.draft_id, draft_revision: r.payload.revision });
+    ok(c);
+    // the page, in the other process, still polls by the draft id
+    const other = await w.second();
+    const polled = await other.call('read_pane_document', { repo: 'BELAY', kind: 'proposal', ref: r.payload.draft_id });
+    ok(polled);
+    assert.deepEqual([polled.payload.kind, polled.payload.ref, polled.payload.read_only], ['proposal', c.payload.number, false]);
+    assert.equal(polled.payload.document.sections.problem, 'p');
+    // and from then on by the number: a pane edit is kept, and the model must take it in before its next save
+    const s = await other.call('save_pane_edit', { repo: 'BELAY', kind: 'proposal', ref: String(c.payload.number), base_revision: polled.payload.revision, sections: { ...sections, problem: 'typed after saving' } });
+    ok(s);
+    const issue = await w.c.call('get_proposal', { repo: 'BELAY', number: c.payload.number });
+    refused(await w.c.call('update_proposal', { repo: 'BELAY', number: c.payload.number, expected_updated_at: issue.payload.updated_at, sections: { problem: 'chat edit' } }), 'pane_edit_pending');
+  } finally { await w.close(); }
+});
+
+test('T082 finding: after update_proposal consumed the pane draft, the pane still reads the saved proposal from the forge, and a stale save is refused', async () => {
+  const w = await specWorld();
+  try {
+    const p = w.ready();
+    const r = await w.c.call('show_document', { repo: 'BELAY', kind: 'proposal', number: p.number });
+    const issue = await w.c.call('get_proposal', { repo: 'BELAY', number: p.number });
+    ok(await w.c.call('update_proposal', { repo: 'BELAY', number: p.number, expected_updated_at: issue.payload.updated_at, sections: { problem: 'saved from the chat' }, draft_revision: r.payload.revision }));
+    const polled = await w.c.call('read_pane_document', { repo: 'BELAY', kind: 'proposal', ref: String(p.number) });
+    ok(polled);
+    assert.equal(polled.payload.document.sections.problem, 'saved from the chat');
+    refused(await w.c.call('save_pane_edit', { repo: 'BELAY', kind: 'proposal', ref: String(p.number), base_revision: r.payload.revision, sections: r.payload.document.sections }), 'pane_edit_pending');
+  } finally { await w.close(); }
+});

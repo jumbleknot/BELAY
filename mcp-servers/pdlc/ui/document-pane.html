@@ -180,7 +180,7 @@ async function poll(force = false) {
   if (dirty) return; // never overwrite what the author is typing
   try {
     const latest = await callTool('read_pane_document', { repo: doc.repo, kind: doc.kind, ref: String(doc.ref) });
-    if (force || latest.revision !== doc.revision || latest.read_only !== doc.read_only) render({ ...doc, ...latest });
+    if (force || latest.revision !== doc.revision || latest.read_only !== doc.read_only || String(latest.ref) !== String(doc.ref)) render({ ...doc, ...latest });
   } catch (e) {
     status(`Could not refresh: ${e.message}`);
   }

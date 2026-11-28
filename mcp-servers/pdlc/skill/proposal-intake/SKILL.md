@@ -91,6 +91,7 @@ After a proposal is saved as ready, or when the user picks a ready proposal, cal
 On **Start the spec**, suggest a short name of two to four lowercase words joined by hyphens (the branch and folder name after the number) as buttons, then call `start_spec` with it.
 
 - It runs the repository's own branch numbering and template, creates the feature branch in its own folder, writes `spec.md` with the Input line filled from the proposal, and moves the proposal to spec in progress. Tell the user the branch name and the folder (`spec_dir`).
+- Then call `show_document` with `kind` `spec` and the proposal's number, so the pane moves from the proposal to the spec. After every `write_spec_file` the pane refreshes itself.
 - If it refuses `spec_already_in_progress`, offer to resume that spec (the refusal names its branch) instead of starting another.
 - If it refuses `not_ready_proposal`, `spec_kit_unavailable`, `spec_hook_unsupported` or `branch_exists`, relay the reason in plain words. `branch_exists` means someone else took the number: offer to start again.
 
