@@ -97,6 +97,14 @@ and they move together.
   - `toolchain.Dockerfile` upgrades the package, so the image BELAY publishes is clean.
   - Delete both once upstream rebuilds and the base is re-pinned. The dependency bot proposes that re-pin, and its PR
     carries both deletions ([renovate.md](renovate.md#a-base-image-re-pin-that-discharges-an-allowlist-entry)).
+- **Upstream's rebuild cleared that one and still carried the next (2026-11-28, run 8667, item #97).** Docker Hub
+  rebuilt `node:26-bookworm` as `sha256:893ea481…`, with `linux-libc-dev` 6.1.192-2. That fixes CVE-2026-99083, but a
+  newer Critical, CVE-2026-99362, is fixed only in 6.1.192-3.
+  - The base was re-pinned to `893ea481…` by hand, and the CVE-2026-99083 entry was deleted.
+  - CVE-2026-99362 is allowlisted against the new pin until 2026-12-28.
+  - The `--only-upgrade linux-libc-dev` layer stays. It now carries CVE-2026-99362.
+  - A re-pin can clear one advisory and expose the next on the same package. Scan the candidate digest before
+    deleting the upgrade layer.
 
 ## Not a required check
 
