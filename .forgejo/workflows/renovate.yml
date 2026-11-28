@@ -100,7 +100,7 @@ jobs:
           # "pending" for ever (MCM). It is a global-only option, so it can only be set here.
           RENOVATE_DOCKER_MAX_PAGES: '10'
           # The only post-upgrade task: the checksum refresh for a version-and-sha256 pair (rule C8).
-          RENOVATE_ALLOWED_COMMANDS: '["^node scripts/refresh-pin-checksum\\.mjs (trivy|rustup-init|cargo-audit)$"]'
+          RENOVATE_ALLOWED_COMMANDS: '["^node scripts/refresh-pin-checksum\\.mjs (trivy|rustup-init|cargo-audit|pwsh)$"]'
           LOG_FORMAT: json
           LOG_LEVEL: info
           RENOVATE_LOG_FILE: renovate-log.ndjson

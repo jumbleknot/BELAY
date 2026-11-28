@@ -42,9 +42,35 @@ const TRIVY_ASSET = 'https://github.com/aquasecurity/trivy/releases/download/v0.
 const TRIVY_SUMS = 'https://github.com/aquasecurity/trivy/releases/download/v0.77.0/trivy_0.77.0_checksums.txt';
 const trivyRoutes = (published = GOOD) => ({ [TRIVY_ASSET]: BYTES, [TRIVY_SUMS]: `${'c'.repeat(64)}  trivy_0.77.0_Linux-ARM64.tar.gz\n${published}  trivy_0.77.0_Linux-64bit.tar.gz\n` });
 
-test('CHECKSUM_PAIRS names the three pairs, each with its installer file', () => {
+test('CHECKSUM_PAIRS names the four pairs, each with its installer file', () => {
   assert.deepEqual(CHECKSUM_PAIRS.map((p) => [p.pin, p.file]), [
-    ['trivy', 'scripts/install-trivy.mjs'], ['rustup-init', 'scripts/sast-prepare.mjs'], ['cargo-audit', 'scripts/sast-prepare.mjs']]);
+    ['trivy', 'scripts/install-trivy.mjs'], ['rustup-init', 'scripts/sast-prepare.mjs'], ['cargo-audit', 'scripts/sast-prepare.mjs'],
+    // Feature 016 (research M9): CI's PowerShell, tracked under the same dependency as the dev container's.
+    ['pwsh', 'scripts/install-pwsh.mjs']]);
+  assert.equal(CHECKSUM_PAIRS.find((p) => p.pin === 'pwsh').depName, 'PowerShell/PowerShell');
+});
+
+// PowerShell publishes hashes.sha256 as UTF-16LE with a byte-order mark (measured, 7.7.0, 2026-11-27): read as UTF-8
+// it is NUL-interleaved and matches nothing. The pair must decode it, and still accept a plain UTF-8 file.
+const PWSH = (v, sha) => `export const PWSH_PIN = Object.freeze({\n  version: '${v}',\n  asset: 'powershell-${v}-linux-x64.tar.gz',\n  sha256: '${sha}',\n});\n`;
+const PWSH_ASSET = 'https://github.com/PowerShell/PowerShell/releases/download/v7.8.0/powershell-7.8.0-linux-x64.tar.gz';
+const PWSH_SUMS = 'https://github.com/PowerShell/PowerShell/releases/download/v7.8.0/hashes.sha256';
+const pwshSums = (published) => `${'c'.repeat(64)} *powershell-7.8.0-linux-arm64.tar.gz\r\n${published} *powershell-7.8.0-linux-x64.tar.gz\r\n`;
+const utf16le = (text) => Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, 'utf16le')]);
+
+test('refreshPair(pwsh) reads the published UTF-16LE hashes.sha256 and rewrites only the sha256', async () => {
+  const root = repo({ 'scripts/install-pwsh.mjs': PWSH('7.8.0', OLD) });
+  const r = await refreshPair('pwsh', { root, fetch: fakeFetch({ [PWSH_ASSET]: BYTES, [PWSH_SUMS]: utf16le(pwshSums(GOOD)) }), log: () => {} });
+  assert.equal(r.changed, true);
+  assert.equal(readFileSync(join(root, 'scripts/install-pwsh.mjs'), 'utf8'), PWSH('7.8.0', GOOD));
+});
+
+test('refreshPair(pwsh) also reads a UTF-8 hashes.sha256, and refuses bytes the publisher disagrees with', async () => {
+  const root = repo({ 'scripts/install-pwsh.mjs': PWSH('7.8.0', OLD) });
+  assert.equal((await refreshPair('pwsh', { root, fetch: fakeFetch({ [PWSH_ASSET]: BYTES, [PWSH_SUMS]: Buffer.from(pwshSums(GOOD)) }), log: () => {} })).changed, true);
+  const root2 = repo({ 'scripts/install-pwsh.mjs': PWSH('7.8.0', OLD) });
+  await assert.rejects(refreshPair('pwsh', { root: root2, fetch: fakeFetch({ [PWSH_ASSET]: BYTES, [PWSH_SUMS]: utf16le(pwshSums('d'.repeat(64))) }), log: () => {} }), /publisher says/);
+  assert.equal(readFileSync(join(root2, 'scripts/install-pwsh.mjs'), 'utf8'), PWSH('7.8.0', OLD));
 });
 
 test('refreshPair(trivy) rewrites only the sha256, when the bytes match the published checksums file', async () => {
@@ -99,8 +125,8 @@ test('refreshPair(cargo-audit): an API answer with no digest for the asset fails
 });
 
 test('verifyChanged checks only pairs whose version or sha256 moved, and passes when they agree', async () => {
-  const base = { 'scripts/install-trivy.mjs': TRIVY('0.76.2', OLD), 'scripts/sast-prepare.mjs': SAST('1.29.3', OLD, '0.23.0', OLD) };
-  const head = { 'scripts/install-trivy.mjs': TRIVY('0.77.0', GOOD), 'scripts/sast-prepare.mjs': SAST('1.29.3', OLD, '0.23.0', OLD) };
+  const base = { 'scripts/install-trivy.mjs': TRIVY('0.76.2', OLD), 'scripts/sast-prepare.mjs': SAST('1.29.3', OLD, '0.23.0', OLD), 'scripts/install-pwsh.mjs': PWSH('7.7.0', OLD) };
+  const head = { 'scripts/install-trivy.mjs': TRIVY('0.77.0', GOOD), 'scripts/sast-prepare.mjs': SAST('1.29.3', OLD, '0.23.0', OLD), 'scripts/install-pwsh.mjs': PWSH('7.7.0', OLD) };
   const root = repo(head);
   const f = fakeFetch(trivyRoutes());
   const r = await verifyChanged({ root, readBase: (file) => base[file], fetch: f, log: () => {} });
@@ -110,7 +136,7 @@ test('verifyChanged checks only pairs whose version or sha256 moved, and passes 
 
 test('verifyChanged fails a pair whose version moved alone', async () => {
   const base = { 'scripts/install-trivy.mjs': TRIVY('0.76.2', OLD) };
-  const root = repo({ 'scripts/install-trivy.mjs': TRIVY('0.77.0', OLD), 'scripts/sast-prepare.mjs': SAST('1.29.3', OLD, '0.23.0', OLD) });
+  const root = repo({ 'scripts/install-trivy.mjs': TRIVY('0.77.0', OLD), 'scripts/sast-prepare.mjs': SAST('1.29.3', OLD, '0.23.0', OLD), 'scripts/install-pwsh.mjs': PWSH('7.7.0', OLD) });
   const r = await verifyChanged({ root, readBase: (file) => base[file] ?? readFileSync(join(root, file), 'utf8'), fetch: fakeFetch(trivyRoutes()), log: () => {} });
   assert.equal(r.failures.length, 1);
   assert.match(r.failures[0], /trivy/);
@@ -118,7 +144,7 @@ test('verifyChanged fails a pair whose version moved alone', async () => {
 });
 
 test('verifyChanged with nothing changed downloads nothing and passes', async () => {
-  const files = { 'scripts/install-trivy.mjs': TRIVY('0.76.2', OLD), 'scripts/sast-prepare.mjs': SAST('1.29.3', OLD, '0.23.0', OLD) };
+  const files = { 'scripts/install-trivy.mjs': TRIVY('0.76.2', OLD), 'scripts/sast-prepare.mjs': SAST('1.29.3', OLD, '0.23.0', OLD), 'scripts/install-pwsh.mjs': PWSH('7.7.0', OLD) };
   const f = fakeFetch({});
   const r = await verifyChanged({ root: repo(files), readBase: (file) => files[file], fetch: f, log: () => {} });
   assert.deepEqual(r, { checked: [], failures: [] });
@@ -127,7 +153,7 @@ test('verifyChanged with nothing changed downloads nothing and passes', async ()
 
 test('the pairs read each version from the installer\'s own constant (no second copy here)', () => {
   const src = readFileSync(new URL('../refresh-pin-checksum.mjs', import.meta.url), 'utf8');
-  assert.doesNotMatch(src, /'0\.76\.2'|'1\.29\.3'|'0\.23\.0'/, 'a pinned version is hardcoded in the refresh script');
+  assert.doesNotMatch(src, /'0\.76\.2'|'1\.29\.3'|'0\.23\.0'|'7\.7\.0'/, 'a pinned version is hardcoded in the refresh script');
 });
 
 test('selftest passes, using injected fixtures only', async () => {

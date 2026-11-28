@@ -152,7 +152,7 @@ function goodWorkflow() {
     on: { schedule: [{ cron: '17 1,7,13,19 * * *' }, { cron: '0 5 * * 3' }] },
     jobs: { renovate: { steps: [
       { run: 'bash scripts/ci-log-step.sh renovate-install-pnpm bash scripts/install-pnpm.sh' },
-      { env: { RENOVATE_ALLOWED_COMMANDS: '["^node scripts/refresh-pin-checksum\\\\.mjs (trivy|rustup-init|cargo-audit)$"]' }, run: 'x' },
+      { env: { RENOVATE_ALLOWED_COMMANDS: '["^node scripts/refresh-pin-checksum\\\\.mjs (trivy|rustup-init|cargo-audit|pwsh)$"]' }, run: 'x' },
     ] } },
   };
 }
@@ -321,12 +321,17 @@ test('C6 fails a glob managerFilePattern (only the /regex/ form can be checked o
 
 // ── C8: version-and-checksum pairs ──────────────────────────────────────────────────────────────
 
-const pairRules = () => ['trivy', 'rustup-init', 'cargo-audit'].map((pin) => ({
+const PAIR_FILE = { trivy: 'scripts/install-trivy.mjs', 'rustup-init': 'scripts/sast-prepare.mjs', 'cargo-audit': 'scripts/sast-prepare.mjs', pwsh: 'scripts/install-pwsh.mjs' };
+const pairRules = () => ['trivy', 'rustup-init', 'cargo-audit', 'pwsh'].map((pin) => ({
   matchDepNames: [pin], postUpgradeTasks: { commands: [`node scripts/refresh-pin-checksum.mjs ${pin}`],
-    fileFilters: [pin === 'trivy' ? 'scripts/install-trivy.mjs' : 'scripts/sast-prepare.mjs'], executionMode: 'update' },
+    fileFilters: [PAIR_FILE[pin]], executionMode: 'update' },
 }));
 test('C8 passes when each pair has its post-upgrade task, allowed by the workflow', () => {
   assert.deepEqual(run('C8', (c) => c.config.packageRules.push(...pairRules())), []);
+});
+test('C8 fails when the pwsh pair (feature 016) has no post-upgrade task', () => {
+  const v = run('C8', (c) => c.config.packageRules.push(...pairRules().filter((r) => r.matchDepNames[0] !== 'pwsh')));
+  assert.ok(v.some((x) => /pwsh/.test(x.detail)), JSON.stringify(v));
 });
 test('C8 fails a pair with no post-upgrade task', () => {
   assert.equal(run('C8', (c) => c.config.packageRules.push(...pairRules().slice(1))).length, 1);
@@ -336,7 +341,8 @@ test('C8 fails a command other than the refresh script', () => {
   assert.ok(v.some((x) => /trivy/.test(x.detail)));
 });
 test('C8 fails a command the workflow does not allow', () => {
-  assert.equal(run('C8', (c) => { c.config.packageRules.push(...pairRules()); c.workflow.jobs.renovate.steps[1].env.RENOVATE_ALLOWED_COMMANDS = '["^node scripts/refresh-pin-checksum\\\\.mjs trivy$"]'; }).length, 2);
+  assert.equal(run('C8', (c) => { c.config.packageRules.push(...pairRules()); c.workflow.jobs.renovate.steps[1].env.RENOVATE_ALLOWED_COMMANDS = '["^node scripts/refresh-pin-checksum\\\\.mjs trivy$"]'; }).length, 3,
+    'one violation for each pair the workflow does not allow: rustup-init, cargo-audit and pwsh');
 });
 
 // ── C1, C7: automerge, holds and approvals ──────────────────────────────────────────────────────

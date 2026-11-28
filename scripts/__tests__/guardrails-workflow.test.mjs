@@ -40,7 +40,8 @@ test('two jobs, guardrails and sast, each on the belay runner label with a timeo
 test('steps run in contract order with pinned actions, Node 26 and the Nx targets', () => {
   const steps = load().jobs.guardrails.steps;
   // Feature 014 added the three pdlc steps (pdlc:lint, pdlc:test, pdlc:integration) after scripts:test.
-  assert.equal(steps.length, 10, 'the contract defines exactly ten steps');
+  // Feature 016 (research M9) added the pinned pwsh install just before pdlc:integration.
+  assert.equal(steps.length, 11, 'the contract defines exactly eleven steps');
   assert.equal(steps[0].uses, CHECKOUT);
   assert.equal(steps[1].uses, SETUP_NODE);
   assert.equal(String(steps[1].with['node-version']), NODE_VERSION);
@@ -61,6 +62,9 @@ test('pdlc: the server\'s lint, test and real-git integration run after scripts:
   const integ = at('bash scripts/ci-log-step.sh guardrails-pdlc-integration pnpm nx run pdlc:integration');
   const scriptsTest = at('bash scripts/ci-log-step.sh guardrails-test pnpm nx run scripts:test');
   assert.ok(lint > scriptsTest && unit > lint && integ > unit, `order: ${runs.join(' | ')}`);
+  // Feature 016: pdlc:integration runs Spec Kit's PowerShell scripts, so the pinned pwsh is installed right before it.
+  const pwsh = runs.findIndex((r) => r.startsWith('bash scripts/ci-log-step.sh guardrails-install-pwsh '));
+  assert.equal(pwsh, integ - 1, `the pinned pwsh install is the step before pdlc:integration: ${runs.join(' | ')}`);
   assert.ok(integ < steps.length - 1, 'the digest stays the last step');
 });
 

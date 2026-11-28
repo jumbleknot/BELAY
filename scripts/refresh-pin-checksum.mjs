@@ -21,7 +21,7 @@
 // file by regex, and never holds a copy.
 //
 // Usage:
-//   node scripts/refresh-pin-checksum.mjs <trivy|rustup-init|cargo-audit>     # rewrite the pair's sha256
+//   node scripts/refresh-pin-checksum.mjs <trivy|rustup-init|cargo-audit|pwsh>  # rewrite the pair's sha256
 //   node scripts/refresh-pin-checksum.mjs --verify-changed [--base <ref>]      # check pairs that moved
 //   node scripts/refresh-pin-checksum.mjs --selftest
 //
@@ -36,7 +36,7 @@ import { fileURLToPath } from 'node:url';
 import { isMain } from './lib/is-main.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const USAGE = 'Usage: refresh-pin-checksum.mjs <trivy|rustup-init|cargo-audit> | --verify-changed [--base <ref>] | --selftest';
+const USAGE = 'Usage: refresh-pin-checksum.mjs <trivy|rustup-init|cargo-audit|pwsh> | --verify-changed [--base <ref>] | --selftest';
 const TIMEOUT_MS = 120_000;
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const HEX64 = /^[0-9a-f]{64}$/;
@@ -47,6 +47,18 @@ async function fromChecksumsFile(get, url, name) {
   const line = text.split('\n').map((l) => l.trim().split(/\s+/)).find(([h, n]) => HEX64.test(h ?? '') && n?.replace(/^\*/, '') === name);
   if (!line) throw new PinChecksumError(`${url} lists no checksum for ${name}`);
   return line[0];
+}
+
+/**
+ * The publisher checksum for an asset from a checksums file that may be UTF-16 (feature 016). PowerShell publishes
+ * hashes.sha256 as UTF-16LE with a byte-order mark (measured, v7.7.0, 2026-11-27); read as UTF-8 it matches nothing.
+ */
+async function fromChecksumsFileAnyEncoding(get, url, name) {
+  const bytes = await get(url, 'bytes');
+  const text = bytes[0] === 0xff && bytes[1] === 0xfe ? bytes.subarray(2).toString('utf16le')
+    : bytes[0] === 0xfe && bytes[1] === 0xff ? Buffer.from(bytes.subarray(2)).swap16().toString('utf16le')
+      : bytes.toString('utf8');
+  return fromChecksumsFile(async () => text.replace(/\r/g, ''), url, name);
 }
 
 /** The version-and-checksum pairs (research R7). `versionName` / `shaName` are the detector's names. */
@@ -79,6 +91,15 @@ export const CHECKSUM_PAIRS = Object.freeze([
       if (!m) throw new PinChecksumError(`${api} has no published digest for ${name}: the downloaded bytes are not trusted alone`);
       return m[1];
     },
+  },
+  {
+    // Feature 016 (research M9): CI's PowerShell, which pdlc:integration needs for Spec Kit's scripts.
+    pin: 'pwsh', depName: 'PowerShell/PowerShell', file: 'scripts/install-pwsh.mjs',
+    versionName: 'PWSH_PIN.version', shaName: 'PWSH_PIN.sha256',
+    version: /^\s*version:\s*'([^']+)'/m, sha: /^(\s*sha256:\s*')([0-9a-f]{64})(')/m,
+    asset: /^\s*asset:\s*'([^']+)'/m, assetName: (v) => `powershell-${v}-linux-x64.tar.gz`,
+    url: (v) => `https://github.com/PowerShell/PowerShell/releases/download/v${v}/powershell-${v}-linux-x64.tar.gz`,
+    published: (v, get) => fromChecksumsFileAnyEncoding(get, `https://github.com/PowerShell/PowerShell/releases/download/v${v}/hashes.sha256`, `powershell-${v}-linux-x64.tar.gz`),
   },
 ]);
 

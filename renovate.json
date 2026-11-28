@@ -94,6 +94,15 @@
       "extractVersionTemplate": "^v(?<version>.+)$"
     },
     {
+      "description": "PowerShell for CI (scripts/install-pwsh.mjs, feature 016). Same dependency as the dev container's, so both move in one PR; the version and the asset name move together, and the sha256 is moved by the post-upgrade task below.",
+      "customType": "regex",
+      "managerFilePatterns": ["/^scripts\\/install-pwsh\\.mjs$/"],
+      "matchStrings": ["version: '(?<currentValue>\\d+\\.\\d+\\.\\d+)'", "asset: 'powershell-(?<currentValue>\\d+\\.\\d+\\.\\d+)-linux-x64\\.tar\\.gz'"],
+      "depNameTemplate": "PowerShell/PowerShell",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.+)$"
+    },
+    {
       "description": "PowerShell, which Spec Kit's scripts need, in the dev-container image.",
       "customType": "regex",
       "managerFilePatterns": ["/^\\.devcontainer\\/toolchain\\.Dockerfile$/"],
@@ -217,6 +226,15 @@
       "postUpgradeTasks": {
         "commands": ["node scripts/refresh-pin-checksum.mjs rustup-init"],
         "fileFilters": ["scripts/sast-prepare.mjs"],
+        "executionMode": "update"
+      }
+    },
+    {
+      "description": "The pwsh pair moves together, agreed by the release's hashes.sha256 (UTF-16LE; feature 016).",
+      "matchDepNames": ["PowerShell/PowerShell"],
+      "postUpgradeTasks": {
+        "commands": ["node scripts/refresh-pin-checksum.mjs pwsh"],
+        "fileFilters": ["scripts/install-pwsh.mjs"],
         "executionMode": "update"
       }
     },

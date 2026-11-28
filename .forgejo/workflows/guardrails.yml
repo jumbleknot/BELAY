@@ -64,6 +64,15 @@ jobs:
         run: bash scripts/ci-log-step.sh guardrails-pdlc-lint pnpm nx run pdlc:lint
       - name: pdlc server unit and contract tests (pdlc:test)
         run: bash scripts/ci-log-step.sh guardrails-pdlc-test pnpm nx run pdlc:test
+      # Feature 016 (research M9, ADR-0006): pdlc:integration runs the target repository's real Spec Kit PowerShell
+      # scripts, and this runner image has no pwsh. A version-pinned, sha256-verified install (never a piped
+      # installer); the pin lives in scripts/install-pwsh.mjs and Renovate moves it with the dev container's.
+      - name: Install pwsh (pinned; Spec Kit's scripts in pdlc:integration)
+        run: |
+          bash scripts/ci-log-step.sh guardrails-install-pwsh bash -e /dev/stdin <<'CI_LOG_STEP'
+          node scripts/install-pwsh.mjs "$HOME/.local/pwsh"
+          echo "$HOME/.local/pwsh" >> "$GITHUB_PATH"
+          CI_LOG_STEP
       - name: pdlc server real-git integration (pdlc:integration)
         run: bash scripts/ci-log-step.sh guardrails-pdlc-integration pnpm nx run pdlc:integration
       # Publish an agent-readable failure digest. The forge API exposes no log or artifact endpoint,

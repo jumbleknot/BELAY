@@ -270,7 +270,7 @@ with BELAY's `.specify/`, and by hand per quickstart §2 step 1.
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/tools.test.mjs` then
     `node --test mcp-servers/pdlc/tests/unit/tool-contract.test.mjs` → expected: failing — `unknown tool start_spec`
     and `tools/list differs from the contract`
-- [ ] T022a [P] [US1] Test: the pinned `pwsh` install (M9). In `scripts/__tests__/install-pwsh.test.mjs`, mirroring
+- [X] T022a [P] [US1] Test: the pinned `pwsh` install (M9). In `scripts/__tests__/install-pwsh.test.mjs`, mirroring
   `install-trivy.test.mjs` with injected fetch, extract and version:
   - a matching sha256 installs and checks `pwsh --version`; a mismatch refuses and installs nothing; a download that
     fails three times refuses; a wrong reported version removes the binary; `--print-pin` prints the pin; bad
@@ -281,10 +281,15 @@ with BELAY's `.specify/`, and by hand per quickstart §2 step 1.
   - **Scenarios covered**: plan Testing ("`pdlc:integration` needs `pwsh`"), research M9
   - **Verify RED**: `node --test scripts/__tests__/install-pwsh.test.mjs` → expected: failing —
     `Cannot find module '../install-pwsh.mjs'`
-- [ ] T022b [US1] Implement `scripts/install-pwsh.mjs` with `PWSH_PIN` 7.7.0 and its sha256 read once from the
+- [X] T022b [US1] Implement `scripts/install-pwsh.mjs` with `PWSH_PIN` 7.7.0 and its sha256 read once from the
   release's published hashes, the `refresh-pin-checksum.mjs` entry, the Renovate regex manager and post-upgrade task,
   and the `guardrails` step before `pdlc:integration`; add the pin to `docs/runbooks/ci.md` with T079
   (prerequisite: T022a RED)
+  - **Done 2026-11-27**: pin sha256 `c89d9c68…a0cb` read from the release's `hashes.sha256` (UTF-16LE with a BOM:
+    `refresh-pin-checksum.mjs` gained a decoder for it) and equal to the downloaded tarball's; the tarball is a
+    763-file folder, so the install unpacks it whole. A real install in the dev container took 9.6 s. Two existing
+    exact-count guards were updated to the new premise: `guardrails-workflow.test.mjs` (eleven steps, pwsh right
+    before `pdlc:integration`) and C8's "one violation per disallowed pair" (three)
   - **Verify GREEN**: `node --test scripts/__tests__/install-pwsh.test.mjs`, `node --test scripts/__tests__/refresh-pin-checksum.test.mjs`
     and `node --test scripts/__tests__/check-renovate-config.test.mjs` → expected: 0 failures; then
     `pnpm nx run scripts:lint` passes
