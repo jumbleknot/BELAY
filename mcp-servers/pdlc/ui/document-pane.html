@@ -26,6 +26,10 @@
   textarea.file { min-height: 60vh; }
   textarea[readonly] { opacity: 0.75; }
   button { font: inherit; padding: 4px 12px; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid #8886; margin: 4px 0 8px; }
+  .tabs button { border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0; background: none; color: inherit; opacity: 0.7; font: 12px ui-monospace, monospace; padding: 5px 10px; cursor: pointer; }
+  .tabs button[aria-selected="true"] { border-color: #8886; background: #8881; opacity: 1; font-weight: 600; margin-bottom: -1px; }
+  [hidden] { display: none !important; }
   #kept { display: none; white-space: pre-wrap; font: 12px ui-monospace, monospace; border: 1px dashed #8888; padding: 8px; }
 </style>
 </head>
@@ -36,7 +40,6 @@
   <button id="save" type="button">Save</button>
 </header>
 <div id="notice"></div>
-<nav id="outline"></nav>
 <main id="editors"></main>
 <pre id="kept"></pre>
 <script>
@@ -54,6 +57,7 @@ let saving = false;
 let nextId = 1;
 const pending = new Map();
 let saveTimer = null;
+let activePath = null;   // the spec file whose tab is chosen
 
 function request(method, params) {
   const id = nextId++;
@@ -79,30 +83,54 @@ function render(next) {
   const readOnly = Boolean(doc.read_only);
   $('title').textContent = doc.kind === 'spec' ? `Spec for proposal #${doc.ref}` : (doc.document.sections.feature_name || 'New proposal');
   const editors = $('editors');
-  const outline = $('outline');
   editors.textContent = '';
-  outline.textContent = '';
   if (doc.kind === 'spec') {
-    for (const f of doc.document.files) {
-      const label = document.createElement('label');
-      label.textContent = f.path;
+    // One tab per file, one file shown at a time. The chosen tab outlives a re-render (the 2 s poll), and falls back
+    // to spec.md (or the first file) when the chosen file is gone. Hidden files keep their textarea, so save() still
+    // sees every edit.
+    const files = doc.document.files;
+    if (!files.some((f) => f.path === activePath)) activePath = (files.find((f) => f.path === 'spec.md') ?? files[0])?.path ?? null;
+    const tabs = document.createElement('div');
+    tabs.setAttribute('role', 'tablist');
+    tabs.className = 'tabs';
+    editors.append(tabs);
+    const show = () => {
+      for (const t of tabs.children) t.setAttribute('aria-selected', String(t.dataset.path === activePath));
+      for (const p of editors.querySelectorAll('[role="tabpanel"]')) p.hidden = p.dataset.path !== activePath;
+    };
+    for (const f of files) {
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.setAttribute('role', 'tab');
+      tab.dataset.path = f.path;
+      tab.textContent = f.path;
+      tab.addEventListener('click', () => { activePath = f.path; show(); });
+      tabs.append(tab);
+      const panel = document.createElement('div');
+      panel.setAttribute('role', 'tabpanel');
+      panel.dataset.path = f.path;
       const area = document.createElement('textarea');
       area.className = 'file';
       area.dataset.path = f.path;
       area.value = f.content;
       area.readOnly = readOnly;
       area.addEventListener('input', edited);
-      editors.append(label, area);
+      editors.append(panel);
       if (f.path === 'spec.md') {
+        // The section outline belongs to spec.md's tab, above its text.
+        const nav = document.createElement('nav');
+        panel.append(nav);
         for (const line of f.content.split('\n').filter((l) => /^##\s/.test(l))) {
           const a = document.createElement('a');
           a.textContent = line.replace(/^#+\s*/, '');
           a.href = '#';
           a.addEventListener('click', (ev) => { ev.preventDefault(); const i = area.value.indexOf(line); area.focus(); area.setSelectionRange(i, i); });
-          outline.append(a);
+          nav.append(a);
         }
       }
+      panel.append(area);
     }
+    show();
   } else {
     for (const [id, text] of SECTIONS) {
       const label = document.createElement('label');

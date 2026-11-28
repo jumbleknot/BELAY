@@ -39,3 +39,13 @@ test('read-only mode disables every editor and the save button', () => {
   assert.match(script, /readOnly\s*=\s*true|\.readOnly\s*=\s*readOnly/);
   assert.match(script, /disabled\s*=\s*readOnly/);
 });
+
+test('a spec shows one tab per file, one file at a time, and keeps the chosen tab across a refresh (T082 finding)', () => {
+  assert.match(script, /role',\s*'tablist'|role="tablist"/, 'a tab strip');
+  assert.match(script, /setAttribute\('role',\s*'tab'\)/, 'one tab per file');
+  assert.match(script, /setAttribute\('role',\s*'tabpanel'\)/, 'one panel per file');
+  assert.match(script, /aria-selected/, 'the chosen tab is marked');
+  assert.match(script, /\.hidden\s*=/, 'the other files are hidden, not stacked');
+  assert.match(script, /let activePath\b/, 'the chosen tab outlives a re-render (the 2 s poll)');
+  assert.match(script, /activePath\s*=\s*f\.path/, 'clicking a tab chooses it');
+});
