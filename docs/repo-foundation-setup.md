@@ -247,8 +247,11 @@ Use a runner registered **for this repository only**, with its own label. BELAY'
 
 1. Go to Forgejo **Settings → Actions → Runners → Create new runner** (BELAY's is named `ci-belay`).
    Note its uuid and secret.
-2. On the CI host, as the `ci` user, save the secret to a file with mode 600, and run
+2. On the CI host, as a Unix user that belongs to this runner alone (BELAY's is `belay-ci`), with its
+   own rootless Docker daemon, save the secret to a file with mode 600, and run
    `forgejo-runner daemon … --label <repo-label>:docker://node:26-bookworm` as a systemd user unit.
+   Never share that user with another repository's runner, or with a host runner: the rule is one Unix
+   user per repository and per kind of runner (see the CI runbook's "Runner security", item #92).
 3. **Lock it down.** Register only a `docker://` label, so every job runs in a throwaway container.
    Then generate `config.yaml` and set `container.docker_host: "-"`, so pull-request code never gets
    the host's Docker.
