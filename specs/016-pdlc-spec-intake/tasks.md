@@ -993,6 +993,14 @@ FR-036.
     RED/GREEN in `document-pane.test.mjs`, `document-pane-page.test.mjs` and `skill-master.test.mjs`. The new
     `document-pane-behaviour.test.mjs` runs the page's script in `node:vm` against a fake DOM and host; all 5 of its
     tests fail against the previous page. Still to check in Claude Desktop: why the page opened inline
+  - **Observed 2026-11-28 (0.2.1 on `ci-smoke`)**: the tabs show. The page opened inline, and **Open beside the chat**
+    moved it to the right-hand pane. The author added a duplicate user story in the pane, reopened, clarified, and
+    approved. Clarify noticed the pane edit and asked about it.
+  - **Finding 2026-11-28 (same-day reopen, `ci-smoke`)**: the first approval after the reopen was refused
+    `spec_not_clarified`. The clarify prompt had added its two answers under the existing `### Session 2026-11-28`
+    heading, so the session count did not grow; the session worked around it with a second heading. Fixed: approval
+    also accepts more answer lines in `## Clarifications` than at the start or reopen (`clarify_entries_at_start_or_reopen`,
+    data-model.md; research R15 amended). RED/GREEN in `spec-approval.test.mjs` and `spec-tools.test.mjs`
 - [ ] T082a **Record the test count**: `node scripts/backlog.mjs record-tests --spec specs/016-pdlc-spec-intake --point close-out`
   after the last code commit. Expected: counts printed, "not an open proposal (#91 is closed); nothing posted", exit 0.
   - **Done when**: the counts, the delta and the exit code are recorded in this task

@@ -28,7 +28,8 @@ One per proposal at a time (FR-004).
 | `recorded_remote_tip` | the feature branch's tip on the forge when last seen, or `null` before the first publish (R8) |
 | `revision` | a hash over the feature folder's working files; changes on every write by the model or the pane |
 | `last_start_or_reopen` | date, shown to the author |
-| `sessions_at_start_or_reopen` | integer ≥ 0: how many `### Session` headings `spec.md` had at the last start or reopen. Approval needs more (R15) |
+| `sessions_at_start_or_reopen` | integer ≥ 0: how many `### Session` headings `spec.md` had at the last start or reopen. Approval needs more, or more answer lines (R15) |
+| `clarify_entries_at_start_or_reopen` | integer ≥ 0: how many answer lines (`- ` bullets) the `## Clarifications` section had at the last start or reopen. Approval also accepts more of these (R15; T082 finding: a same-day reopen's answers go under the existing session heading). Absent in a state written before 0.2.2: then only the session count applies |
 | `proposal_updated_at_start` | the proposal's `updated_at` when the spec started. `get_spec` reports `proposal_updated_since_start` when the proposal has changed since (spec Edge Cases) |
 | `locked` | derived: the issue's stage is **in engineering** or later |
 
@@ -36,7 +37,7 @@ Persisted in `<clone_root>/.pdlc-specs/<Repo>/<NNN-slug>.state.json`, written by
 
 ```json
 { "repo": "BELAY", "number": 91, "branch": "016-pdlc-spec-intake", "spec_dir": "specs/016-pdlc-spec-intake/",
-  "recorded_remote_tip": null, "last_start_or_reopen": "2026-11-27", "sessions_at_start_or_reopen": 0,
+  "recorded_remote_tip": null, "last_start_or_reopen": "2026-11-27", "sessions_at_start_or_reopen": 0, "clarify_entries_at_start_or_reopen": 0,
   "proposal_updated_at_start": "2026-11-26T12:27:07Z", "state_version": 1 }
 ```
 

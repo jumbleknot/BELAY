@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { Refusal } from './refusal.mjs';
 import { loadLabels } from './labels.mjs';
 import { checkTransition, planStageSwap, readTrailers, renderTrailer, stageFromLabels } from './stages.mjs';
-import { countClarifySessions, findMarkers } from './spec-approval.mjs';
+import { countClarifyEntries, countClarifySessions, findMarkers, isClarified } from './spec-approval.mjs';
 
 /** Stages at which the spec is locked from Claude Desktop (FR-018). */
 const LOCKED = new Set(['in-engineering', 'merged']);
@@ -202,7 +202,7 @@ export function createSpecLifecycle({ forge, allowlist, proposals, localCopy, sp
         // R8: on every resume, has the published branch moved since the server last saw it?
         remote: await worktree.remoteCheck({ repo, copyPath: localCopy.pathOf(repo.name), state }),
         markers: findMarkers(spec),
-        clarified: countClarifySessions(spec) > state.sessions_at_start_or_reopen,
+        clarified: isClarified(spec, state),
         proposal_updated_since_start: issue.updated_at !== state.proposal_updated_at_start,
       };
     },
@@ -256,6 +256,7 @@ export function createSpecLifecycle({ forge, allowlist, proposals, localCopy, sp
       await worktree.update({ repo, specDir }, {
         last_start_or_reopen: now().toISOString().slice(0, 10),
         sessions_at_start_or_reopen: countClarifySessions(list.find((f) => f.path === 'spec.md')?.content ?? ''),
+        clarify_entries_at_start_or_reopen: countClarifyEntries(list.find((f) => f.path === 'spec.md')?.content ?? ''),
         proposal_updated_at_start: after.updated_at,
       });
       return { repo: repo.name, number, branch: state.branch, spec_dir: state.spec_dir, stage: 'spec-in-progress' };

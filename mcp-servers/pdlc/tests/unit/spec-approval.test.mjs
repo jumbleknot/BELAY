@@ -33,6 +33,19 @@ test('spec_not_clarified on a same-day reopen: the count must GROW past the one 
   assert.doesNotThrow(() => approval.check({ spec: twice, state: state({ sessions_at_start_or_reopen: 1 }) }));
 });
 
+// Measured on the workstation, 2026-11-28 (T082 §2 on ci-smoke): after a same-day reopen the clarify prompt added its
+// answers under the EXISTING "### Session <today>" heading, as it is written to do, and approval refused them.
+test('T082 finding: on a same-day reopen, new answers under the existing session heading count (the answer lines grew)', () => {
+  const more = CLARIFIED.replace('- Q: a? → A: b.\n', '- Q: a? → A: b.\n- Q: c? → A: d.\n');
+  const reopened = state({ sessions_at_start_or_reopen: 1, clarify_entries_at_start_or_reopen: 1 });
+  assert.doesNotThrow(() => approval.check({ spec: more, state: reopened }));
+  assert.throws(() => approval.check({ spec: CLARIFIED, state: reopened }), refusedWith('spec_not_clarified'), 'no new answer: still refused');
+  const outside = CLARIFIED.replace('body', 'body\n- a bullet in another section');
+  assert.throws(() => approval.check({ spec: outside, state: reopened }), refusedWith('spec_not_clarified'), 'a bullet elsewhere does not count');
+  assert.throws(() => approval.check({ spec: more, state: state({ sessions_at_start_or_reopen: 1 }) }), refusedWith('spec_not_clarified'),
+    'a state written before this rule (no entry count) keeps the session rule only');
+});
+
 test('the "No questions" session line counts as a session (clarify found nothing to ask)', () => {
   const none = SPEC('## Clarifications\n\n### Session 2026-11-28\n\n- No questions: no critical ambiguity found.\n');
   assert.doesNotThrow(() => approval.check({ spec: none, state: state() }));

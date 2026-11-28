@@ -141,7 +141,7 @@ When the author is satisfied, ask with buttons: **Approve the spec** or **Keep e
 
 ## 11. Reopen
 
-After approval, until planning starts, the author can change their mind. When they pick a proposal at ready to plan and want to change its spec, ask with buttons: **Reopen the spec** or **Leave it**. On reopen, call `reopen_spec`: the proposal goes back to spec in progress and leaves the ready list. Edit as in step 8, clarify again (step 9: a reopened spec needs a new session before it can be approved), and approve again (step 10), which publishes on the same branch. If it refuses `document_locked`, planning has started and the spec can no longer change here.
+After approval, until planning starts, the author can change their mind. When they pick a proposal at ready to plan and want to change its spec, ask with buttons: **Reopen the spec** or **Leave it**. On reopen, call `reopen_spec`: the proposal goes back to spec in progress and leaves the ready list. Edit as in step 8, clarify again (step 9: a reopened spec needs at least one new answer under `## Clarifications`, or a new session, before it can be approved; adding answers under today's existing session heading is fine), and approve again (step 10), which publishes on the same branch. If it refuses `document_locked`, planning has started and the spec can no longer change here.
 
 ## 12. Withdraw
 

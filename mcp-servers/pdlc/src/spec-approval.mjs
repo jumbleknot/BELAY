@@ -2,9 +2,11 @@
 //
 // check()   refuses before anything is written: spec_has_markers while any [NEEDS CLARIFICATION …] marker remains, and
 //           spec_not_clarified unless spec.md's `## Clarifications` section has MORE `### Session` headings than it had
-//           at the last start or reopen (a count, not a date, so a same-day reopen still needs a new session). The
-//           clarify prompt writes exactly that section; when it finds nothing to ask, the skill still adds a session with
-//           the line "- No questions: no critical ambiguity found."
+//           at the last start or reopen (a count, not a date, so a same-day reopen still needs a new session), OR more
+//           answer lines (`- ` bullets) in that section than it had then. The clarify prompt writes exactly that section,
+//           and on a same-day reopen it adds its answers under the EXISTING `### Session <today>` heading (measured,
+//           T082), so the answer count is what grows. When it finds nothing to ask, the skill still adds the line
+//           "- No questions: no critical ambiguity found."
 // publish() commits and publishes in a fixed order, each step an exact git shape the allowlist checks (R4):
 //           the workstation's own git identity (git_identity_missing otherwise, before anything is staged), then
 //           `add -- specs/<NNN-slug>`, `commit --no-verify -m <fixed message>`, and
@@ -30,6 +32,28 @@ export function countClarifySessions(text) {
   return n;
 }
 
+/** How many answer lines (`- ` bullets) the spec's `## Clarifications` section holds (T082 finding). */
+export function countClarifyEntries(text) {
+  const lines = String(text).split(/\r?\n/);
+  const start = lines.findIndex((l) => /^## Clarifications\s*$/.test(l));
+  if (start < 0) return 0;
+  let n = 0;
+  for (const l of lines.slice(start + 1)) {
+    if (/^## /.test(l)) break;
+    if (/^- \S/.test(l)) n += 1;
+  }
+  return n;
+}
+
+/**
+ * Whether clarification ran since the last start or reopen: a new session heading, or new answer lines. A state written
+ * before the answer count was recorded has only the session rule.
+ */
+export function isClarified(spec, state) {
+  if (countClarifySessions(spec) > state.sessions_at_start_or_reopen) return true;
+  return Number.isInteger(state.clarify_entries_at_start_or_reopen) && countClarifyEntries(spec) > state.clarify_entries_at_start_or_reopen;
+}
+
 /** R4's one commit message shape. The number is the feature number the branch starts with. */
 export function approvalMessage({ branch, number }) {
   const feature = /(?:^|\/)(\d{3,})-/.exec(branch)?.[1] ?? '000';
@@ -50,7 +74,7 @@ export function createSpecApproval({ git }) {
       if (markers.length) {
         throw new Refusal('spec_has_markers', `the spec still has ${markers.length} open [NEEDS CLARIFICATION] marker(s); answer them before approving`, { markers });
       }
-      if (countClarifySessions(spec) <= state.sessions_at_start_or_reopen) {
+      if (!isClarified(spec, state)) {
         throw new Refusal('spec_not_clarified', 'clarification has not run on this spec since it was started or reopened; run it (or record that it found nothing to ask) before approving');
       }
     },

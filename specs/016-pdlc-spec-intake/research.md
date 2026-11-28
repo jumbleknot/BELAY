@@ -646,6 +646,12 @@ only, and says why in plain words.
   A count, not a date, so a same-day reopen still needs a new session. Rejected: comparing session dates with the
   reopen date, because session headings carry only a date (`/speckit-analyze` finding A1).
 
+  **Amended 2026-11-28 (T082, observed on `ci-smoke`)**: after a same-day reopen, the clarify prompt added its two
+  answers under the existing `### Session 2026-11-28` heading, as the prompt is written to do. The session count did
+  not grow, so approval refused `spec_not_clarified`; the session worked around it with a second heading. Approval
+  now also passes when the section has more answer lines (`- ` bullets) than at the start or reopen
+  (`clarify_entries_at_start_or_reopen`). A state file without that count keeps the session rule alone.
+
 Approval then runs: commit (R4) → push → stage **ready to plan** with trailer (R7). The stage moves only after the push
 succeeds. A failed push leaves the commit local and the stage unchanged, and the next approve goes through R8.
 

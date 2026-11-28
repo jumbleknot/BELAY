@@ -127,7 +127,7 @@ export function createSpecWorktree({ cloneRoot, git, now = () => new Date() }) {
       await git.run(['worktree', 'add', '-b', branch, worktree, `origin/${repo.default_branch}`], { cwd: copyPath, spec: specCtx(repo, copyPath, branch, specDir) });
       const state = {
         repo: repo.name, number, branch, spec_dir: `${String(specDir).replace(/\/$/, '')}/`, recorded_remote_tip: null,
-        last_start_or_reopen: day(now()), sessions_at_start_or_reopen: sessionsAtStart, proposal_updated_at_start: proposalUpdatedAt,
+        last_start_or_reopen: day(now()), sessions_at_start_or_reopen: sessionsAtStart, clarify_entries_at_start_or_reopen: 0, proposal_updated_at_start: proposalUpdatedAt,
         withdrawn: false, state_version: STATE_VERSION,
       };
       writeState(stateFile, state);

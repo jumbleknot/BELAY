@@ -59,7 +59,7 @@ test('create: the state file holds data-model.md\'s fields, and only what git ca
     const onDisk = JSON.parse(readFileSync(file, 'utf8'));
     assert.deepEqual(onDisk, {
       repo: 'BELAY', number: 91, branch: BRANCH, spec_dir: `${SPEC_DIR}/`, recorded_remote_tip: null,
-      last_start_or_reopen: '2026-11-27', sessions_at_start_or_reopen: 0, proposal_updated_at_start: '2026-11-26T12:27:07Z',
+      last_start_or_reopen: '2026-11-27', sessions_at_start_or_reopen: 0, clarify_entries_at_start_or_reopen: 0, proposal_updated_at_start: '2026-11-26T12:27:07Z',
       withdrawn: false, state_version: 1,
     });
     assert.deepEqual(state, { ...onDisk, worktree_path: s.wtPath });

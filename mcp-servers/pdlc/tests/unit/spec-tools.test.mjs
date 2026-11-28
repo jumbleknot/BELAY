@@ -564,3 +564,21 @@ test('US6-AC3 FR-018 withdraw_spec refuses document_locked at in-engineering', a
     assert.match(r.payload.reason, /planning has started/i);
   } finally { await w.close(); }
 });
+
+test('T082 finding: after a same-day reopen, an answer added under the existing session heading lets the spec be approved again', async () => {
+  const { w, p } = await approved();
+  try {
+    ok(await w.c.call('reopen_spec', { repo: 'BELAY', number: p.number }));
+    const state = JSON.parse(readFileSync(join(w.cloneRoot, '.pdlc-specs', 'BELAY', `${BRANCH}.state.json`), 'utf8'));
+    assert.equal(state.clarify_entries_at_start_or_reopen, 1, 'the one answer already in the spec is the new baseline');
+    const g = await w.c.call('get_spec', { repo: 'BELAY', number: p.number });
+    assert.equal(g.payload.clarified, false);
+    const spec = g.payload.files.find((f) => f.path === 'spec.md').content;
+    const answered = spec.replace(/(### Session [^\n]*\n\n- [^\n]*\n)/, '$1- Q: Duplicate story? → A: Removed it.\n');
+    assert.notEqual(answered, spec);
+    const wr = await w.c.call('write_spec_file', { repo: 'BELAY', number: p.number, path: 'spec.md', content: answered, base_revision: g.payload.revision });
+    ok(wr);
+    assert.equal((await w.c.call('get_spec', { repo: 'BELAY', number: p.number })).payload.clarified, true);
+    ok(await w.c.call('approve_spec', { repo: 'BELAY', number: p.number, base_revision: wr.payload.revision }));
+  } finally { await w.close(); }
+});
