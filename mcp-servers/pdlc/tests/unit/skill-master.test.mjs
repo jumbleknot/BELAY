@@ -142,3 +142,16 @@ test('016 US9: the skill opens the pane with show_document when reviewing or edi
   assert.match(part, /`draft_revision`/);
   assert.match(part, /not available[^\n]*chat/i, 'the FR-037 fallback');
 });
+
+test('016 T082 finding: "Work on an existing proposal" lists every open proposal (status all) and always lets the user pick, even from one', () => {
+  const step = skill.slice(skill.indexOf('## 3.'), skill.indexOf('## 4.'));
+  assert.ok(skill.includes('## 3.') && skill.includes('## 4.'), 'steps 3 and 4');
+  const existing = step.slice(step.indexOf('**Existing.**'), step.indexOf('**New.**'));
+  // measured on the workstation, 2026-11-28: "offer to list drafts" listed only the one draft and the session opened it
+  // without asking, so the ready proposal never showed
+  assert.doesNotMatch(existing, /list drafts/i);
+  assert.match(existing, /`list_proposals` with `status: "all"`/);
+  assert.match(existing, /stage/i, 'each button shows the proposal\'s stage');
+  assert.match(existing, /even when (there is )?only one/i);
+  assert.match(existing, /never open (one|a proposal) (the user|they) (did not|didn't) (pick|choose)/i);
+});

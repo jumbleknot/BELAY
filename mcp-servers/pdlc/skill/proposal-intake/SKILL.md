@@ -42,7 +42,7 @@ Call `repo_status`. Tell the user how far the clone is behind its `default_branc
 
 Ask with buttons: **Work on an existing proposal** or **Start a new proposal**.
 
-**Existing.** Ask for a search term, or offer to list drafts. Call `list_proposals`, show up to four matches as buttons (number, title, status), and refine the search if there are more. Call `get_proposal` on the choice and show it section by section. Keep its `updated_at`.
+**Existing.** Call `list_proposals` with `status: "all"` (open proposals at every stage: draft, ready, spec in progress, ready to plan, in engineering). Show them as buttons, each with its number, title and stage, up to four at a time; when there are more, say how many, and offer a search term or a stage to narrow the list. Always ask the user to pick, even when only one proposal is listed: never open a proposal the user did not pick. If none is open, say so and offer **Start a new proposal**. Call `get_proposal` on the choice and show it section by section. Keep its `updated_at`.
 
 **New.** Ask with buttons: **Interview me** or **Start from a transcript**.
 
