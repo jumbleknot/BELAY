@@ -1,6 +1,6 @@
 // A real-git "forge" in a temp folder: bare repositories with uploadpack.allowFilter=true, addressed as
 // file:// URLs. A plain path would make git ignore --filter and hardlink instead, leaving the blobless
-// clone untested (research R3). Setup uses git directly; the server's git runner never commits.
+// clone untested (research R3). Setup uses git directly, never the server's git runner (whose allowlist admits only the 016 spec shapes).
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';

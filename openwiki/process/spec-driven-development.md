@@ -3,7 +3,7 @@ type: Process
 title: Proposal → spec → plan → tasks → implementation lifecycle
 description: How an idea becomes shipped work in BELAY — a proposal or design record, then GitHub Spec Kit's numbered spec, plan and tasks, then implementation — which changes need a spec first and which are exempt, the order of the /speckit-* commands, and how to read a feature folder's state.
 tags: [process, spec-kit, sdd, governance]
-timestamp: 2026-11-22
+timestamp: 2026-11-28
 ---
 
 # Proposal → spec → plan → tasks → implementation lifecycle
@@ -27,12 +27,19 @@ flowchart LR
    - **The issue backlog** (feature 014): an issue labelled `type/proposal`, filed from a Claude Desktop session
      through the `pdlc` server or through the proposal web form. A draft (`status/proposal-draft`) is shaped there;
      a ready one (`status/needs-spec`) is picked up with `backlog.mjs show <n>` and fed to `/speckit-specify` as
-     `Proposal #<n>: <title>` plus its body. The mandatory `after_specify` hook then closes it with a comment
-     linking the new spec ([the backlog](../runbooks/backlog.md)).
+     `Proposal #<n>: <title>` plus its body. Or, from Claude Desktop (feature 016), the `pdlc` server writes and
+     clarifies the spec with the repository's own Spec Kit and publishes it on its feature branch.
+     **The issue then follows the feature through stages, one label at a time, and stays open**: `spec-in-progress`
+     (the mandatory `after_specify` hook, or `start_spec`), `ready-to-plan` (approved in Claude Desktop; `ready`
+     lists it with its branch, which is checked out and planned), `in-engineering` (the mandatory `after_plan`
+     hook), and `merged`, when **only the merge closes it**, in CI's `feature-merged` workflow, with the count of tests
+     the feature created. Each move posts a comment ending in a `pdlc-stage` trailer first and changes the label
+     second ([the backlog](../runbooks/backlog.md); contract `specs/016-pdlc-spec-intake/contracts/stages.md`).
    - **`docs/proposals/**`**, kept for history and for long research documents (FR-027), with the pre-Spec-Kit
      design record and plan in `specs/000-new-repo-setup/`.
 
-   Once a numbered `specs/NNN-feature-name/` folder exists, the proposal is superseded.
+   Once a numbered `specs/NNN-feature-name/` folder exists, the spec is the source of truth; a backlog proposal
+   stays open as the feature's tracking issue until the merge.
 2. **`spec.md`**: WHAT and WHY only, meaning user stories, functional requirements and domain terms.
    It stays technology-agnostic.
 3. **`plan.md`**: HOW, meaning the stack, libraries and approach.
@@ -56,9 +63,11 @@ maintainer agrees, as `taskstoissues.mjs` did in PR #27.
 ## The commands, in order
 
 1. `/speckit-constitution`
-2. `/speckit-specify`. Its mandatory `before_specify` hook creates the feature branch.
+2. `/speckit-specify`. Its mandatory `before_specify` hook creates the feature branch; its mandatory `after_specify`
+   hook moves a source proposal to `spec-in-progress`.
 3. `/speckit-clarify` (optional)
-4. `/speckit-plan`
+4. `/speckit-plan`. Its `before_plan` hook writes `.specify/feature.json`, so a branch checked out from Claude Desktop
+   plans without a fix-up; its mandatory `after_plan` hook moves a source proposal to `in-engineering`.
 5. `/speckit-checklist` (optional)
 6. `/speckit-tasks`
 7. `/speckit-analyze` (optional)

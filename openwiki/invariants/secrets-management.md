@@ -3,7 +3,7 @@ type: Convention
 title: Secrets management posture
 description: No clear-text secrets in git, what secrets/ may hold, the forge credentials and the dependency bot's tokens with their deliberately separate scopes, why ANTHROPIC_API_KEY is never set where AI coding runs, and the scan, redactor and never-print rules that keep a credential out of output, digests and wiki pages.
 tags: [secrets, security, credentials, forge]
-timestamp: 2026-11-22
+timestamp: 2026-11-28
 ---
 
 # Secrets management posture
@@ -18,10 +18,10 @@ variable or a gitignored file, and its template is an `*.example` file.
 | Name | Where it lives | Scope | Used by |
 | --- | --- | --- | --- |
 | `FORGE_TOKEN` | user environment variable | read-only (`read:repository`, `read:issue`, `read:package`) | `ci-status.mjs`; read fallback for `backlog.mjs` |
-| `FORGE_ISSUE_TOKEN` | user environment variable | `write:issue` + `read:repository` | `backlog.mjs` and `taskstoissues.mjs` writes; `pdlc:integration-forge`, which maps it to `PDLC_FORGE_TOKEN` for its own child process only, at the point of use (it has exactly the `pdlc` scope) |
-| the `pdlc` token | **the workstation only**: a `sensitive` setting of the `pdlc` Claude Desktop Extension (measured on the workstation: encrypted at rest in the extension's settings file under `%LOCALAPPDATA%\Claude-Data`, with Electron `safeStorage`, a key Windows DPAPI protects for the logged-in user, so any process running as that user can read it; detail in [the pdlc runbook](../runbooks/pdlc.md)). Never in the dev container, CI or the tree | `write:issue` + `read:repository` | the `pdlc` server only. Dedicated: revoked and re-minted on its own, which breaks nothing else. Reaches git only through `GIT_CONFIG_*` in each child's environment, never argv or `.git/config` |
+| `FORGE_ISSUE_TOKEN` | user environment variable | `write:issue` + `read:repository` | `backlog.mjs` and `taskstoissues.mjs` writes; `pdlc:integration-forge`, which maps it to `PDLC_FORGE_TOKEN` for its own child process only, at the point of use. It covers the proposal tools; since feature 016 the `pdlc` token also needs `write:repository`, so the spec lifecycle against the real forge needs an operator-made test token with both |
+| the `pdlc` token | **the workstation only**: a `sensitive` setting of the `pdlc` Claude Desktop Extension (measured on the workstation: encrypted at rest in the extension's settings file under `%LOCALAPPDATA%\Claude-Data`, with Electron `safeStorage`, a key Windows DPAPI protects for the logged-in user, so any process running as that user can read it; detail in [the pdlc runbook](../runbooks/pdlc.md)). Never in the dev container, CI or the tree | `write:issue` + `write:repository` (feature 016: it publishes a spec's feature branch; a protected default branch refuses its pushes at the forge, measured. Before 016, `read:repository`) | the `pdlc` server only. Dedicated: revoked and re-minted on its own, which breaks nothing else. Reaches git only through `GIT_CONFIG_*` in each child's environment, never argv or `.git/config` |
 | the git credential for `origin` | the git credential helper | the account's push access | `forge-pr.mjs` (open, merge, dispatch), through `git credential fill` |
-| `CI_DIGEST_TOKEN` | repository Actions secret | `write:issue`, `write:package`, `read:repository` | the CI failure-digest step, the weekly dependency-bot health report, and (read-only) the branch-protection read for that report and the branch reaper, where the run token gets 403 |
+| `CI_DIGEST_TOKEN` | repository Actions secret | `write:issue`, `write:package`, `read:repository` | the CI failure-digest step, the weekly dependency-bot health report, and (read-only) the branch-protection read for that report and the branch reaper, where the run token gets 403. Also the coded fallback for `feature-merged` (feature 016) on a 401/403, which is not expected to be used: the run token was measured able to comment on and close an issue on a `push` |
 | `RENOVATE_TOKEN` | repository Actions secret, never the dev container | `read:user`, `read:organization`, `write:repository`, `write:issue`, on the dedicated restricted `belay-renovate` account | the dependency bot's `renovate` workflow only ([runbook](../../docs/runbooks/renovate.md#the-token)) |
 | `RENOVATE_GITHUB_COM_TOKEN` | repository Actions secret (optional) | a github.com fine-grained token: public-repository read, no permissions | release lookups in the `renovate` run, past github.com's anonymous rate limit |
 

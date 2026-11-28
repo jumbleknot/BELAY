@@ -3,7 +3,7 @@ type: Reference
 title: BELAY repository — layout and working conventions
 description: What the BELAY monorepo is for and why every change here is a change to its consumers, the top-level folder layout, the repository-wide file conventions (line endings, ignored paths, lock files, secrets, license), the structural decisions that need asking first, and the working practices for shared tooling.
 tags: [repository, layout, conventions, monorepo]
-timestamp: 2026-11-22
+timestamp: 2026-11-28
 ---
 
 # BELAY repository — layout and working conventions
@@ -30,14 +30,14 @@ Most top-level folders are still empty placeholders.
 | `openwiki/` | This knowledge bundle (see [the quickstart](../quickstart.md)) |
 | `specs/` | Spec Kit feature specifications, `specs/<NNN>-<feature-name>/` (see [spec-driven development](../process/spec-driven-development.md)) |
 | `scripts/` | Repository scripts, as the Nx project `scripts` (`scripts/project.json`): the gates, the CI scripts, the PR, CI-status and backlog tools, and their tests in `scripts/__tests__/` |
-| `.forgejo/` | CI workflows (`workflows/guardrails.yml`, `workflows/devcontainer-image.yml` for the dev-container image, and `workflows/image-scan.yml` for the image CVE sweep) and two issue forms in `issue_template/`: the backlog item and the proposal (see [CI guardrails](../runbooks/ci.md) and [the backlog](../runbooks/backlog.md)) |
+| `.forgejo/` | CI workflows (`workflows/guardrails.yml`, `workflows/devcontainer-image.yml` for the dev-container image, `workflows/image-scan.yml` for the image CVE sweep, and `workflows/feature-merged.yml`, which closes a proposal when its feature merges) and two issue forms in `issue_template/`: the backlog item and the proposal (see [CI guardrails](../runbooks/ci.md) and [the backlog](../runbooks/backlog.md)) |
 | `.devcontainer/` | The dev container for the `belay` Docker Sandbox: its config, the toolchain image, the egress allowlist and the lifecycle scripts (see [the dev container](../runbooks/devcontainer.md) and `docs/runbooks/devcontainer.md`) |
 | `.specify/` | Spec Kit: templates, overrides, extensions and the constitution (see [Spec Kit](../runbooks/spec-kit.md)) |
-| `.claude/skills/` | Assistant skills: the `/speckit-*` commands (including the project-owned `speckit-belay-close-proposal` hook skill) and `forgejo-issues`. `.claude/settings.local.json` stays local |
+| `.claude/skills/` | Assistant skills: the `/speckit-*` commands (including the project-owned hook skills `speckit-belay-spec-stage` and `speckit-belay-feature-dir`) and `forgejo-issues`. `.claude/settings.local.json` stays local |
 | `api-specs/` | API specifications |
 | `secrets/` | Local secrets. Only `.gitkeep`, `README.md` and `*.example` files are tracked |
 | `agents/` | AI agents |
-| `mcp-servers/` | MCP servers. `pdlc/` is the operator-tool server for Claude Desktop proposal intake, the Nx project `pdlc` ([ADR-0005](../decisions/adr-0005-operator-tool-mcp-servers.md), [the pdlc runbook](../runbooks/pdlc.md)); its `contract/` holds the master proposal form and labels every target repository copies |
+| `mcp-servers/` | MCP servers. `pdlc/` is the operator-tool server for Claude Desktop proposal and spec intake, the Nx project `pdlc` ([ADR-0005](../decisions/adr-0005-operator-tool-mcp-servers.md), [the pdlc runbook](../runbooks/pdlc.md)); its `contract/` holds the master proposal form and labels every target repository copies |
 | `backend/` | Backend code |
 | `frontend/` | Frontend code |
 | `packages/` | Shared packages and libraries |

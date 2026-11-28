@@ -881,7 +881,7 @@ FR-036.
   `scripts/feature-merged.mjs`, `scripts/lib/*`, `.forgejo/workflows/feature-merged.yml` and
   `.claude/skills/speckit-belay-spec-stage/` (FR-031). RED by naming a new file before it exists, then GREEN.
   - **Verify GREEN**: `node --test scripts/__tests__/pdlc-independence.guard.test.mjs` → expected: 0 failures
-- [ ] T070 Write the MCM hand-off additions (FR-033) in `docs/runbooks/pdlc.md` § hand-off:
+- [X] T070 Write the MCM hand-off additions (FR-033) in `docs/runbooks/pdlc.md` § hand-off:
   - the four labels;
   - the `stage` verb and both hooks;
   - the `feature-merged` workflow, the `guardrails` outcomes step and their config;
@@ -891,13 +891,13 @@ FR-036.
   - the ready-listing change;
   - the confirmation steps for SC-004 and SC-010 in MCM.
   - **Done when**: the section lists each item and its order, and a reader can carry it out without asking
-- [ ] T071 [P] Update `.claude/skills/forgejo-issues/SKILL.md`: the stage table, ready-to-plan pick-up (check out
+- [X] T071 [P] Update `.claude/skills/forgejo-issues/SKILL.md`: the stage table, ready-to-plan pick-up (check out
   the named branch), close-on-merge, and `stage` replacing `close-proposal` (lines 20, 93 to 95)
   - **Done when**: the old terms are gone from it, and the stages match contracts/stages.md
-- [ ] T072 [P] Update `docs/runbooks/backlog.md`: the verb list (line 23), the pick-up and close paragraphs (lines 114
+- [X] T072 [P] Update `docs/runbooks/backlog.md`: the verb list (line 23), the pick-up and close paragraphs (lines 114
   to 117), the four labels, and the ready-listing notes
   - **Done when**: `close-proposal` and `Superseded by spec` appear only in a dated "until feature 016" note
-- [ ] T073 [P] Update `docs/runbooks/pdlc.md`:
+- [X] T073 [P] Update `docs/runbooks/pdlc.md`:
   - what it can do (lines 12 to 18), the token scope table (line 39);
   - the spec stage, pane, refusal codes and measured facts from T003 to T007;
   - the rebuild note;
@@ -907,29 +907,34 @@ FR-036.
 - [X] T074 [P] (rows 5a, 7, line 79 and the reinstall steps done with T040; row 1 and the upgrade step's task list, for the count tasks, with T054d) Update `docs/runbooks/spec-kit.md`: rows 5a and 7 (the hooks and the skill), line 79, the reinstall
   steps (lines 158 to 160), and the tasks-template override's two new required count tasks (FR-040)
   - **Done when**: `node scripts/check-speckit-overrides.mjs` passes and the runbook rows match its inventory
-- [ ] T075 [P] Update `mcp-servers/pdlc/README.md` (lines 6 and 17)
+- [X] T075 [P] Update `mcp-servers/pdlc/README.md` (lines 6 and 17)
   - **Done when**: it states the default-branch-read-only, feature-branch-published model and the stage model
-- [ ] T076 Refresh the openwiki pages whose `resource` changed, with the `wiki-refresh` skill:
+- [X] T076 Refresh the openwiki pages whose `resource` changed, with the `wiki-refresh` skill:
   - `openwiki/runbooks/{backlog,pdlc,spec-kit}.md`;
   - `openwiki/runbooks/index.md` descriptions;
   - `openwiki/projects/repository.md` line 36.
 
   Then run `node scripts/wiki-refresh.mjs --stale`, then `--record <page>` for each.
   - **Done when**: `node scripts/wiki-refresh.mjs --stale` reports nothing, and the OKF gate (V17) passes
-- [ ] T077 [P] Update `openwiki/process/spec-driven-development.md` (canonical): the proposal step's stages, the hook
+- [X] T077 [P] Update `openwiki/process/spec-driven-development.md` (canonical): the proposal step's stages, the hook
   moving the issue rather than closing it, and close on merge (line 30)
   - **Done when**: the lifecycle text matches contracts/stages.md
-- [ ] T078 [P] Update `openwiki/invariants/secrets-management.md` (canonical): the `pdlc` token row's scope
+- [X] T078 [P] Update `openwiki/invariants/secrets-management.md` (canonical): the `pdlc` token row's scope
   (`write:repository`); and `CI_DIGEST_TOKEN`'s users if T006 showed the fallback is used
   - **Done when**: the rows match research M5 and M6 as measured
 - [X] T079 [P] Add the `feature-merged` workflow and the `guardrails` outcomes step to `docs/runbooks/ci.md`: trigger,
   not required, token, re-run by `workflow_dispatch` with `sha`, no second test run, and reading their comments
   - **Done when**: the page names the workflow and how to re-run it
-- [ ] T080 **Close-out re-search**: re-run T002's searches for the OLD identifiers (`close-proposal`,
+- [X] T080 **Close-out re-search**: re-run T002's searches for the OLD identifiers (`close-proposal`,
   `close-on-spec`, `closes once its spec`, `read-only local cop`, `never commits`, `Superseded by spec`, and
   `read:repository` on the `pdlc` token row). Every remaining hit in a doc that states current procedure is fixed or
   justified here.
-- [ ] T081 Run the full checks CI runs, and the gates the diff touches:
+  - **Done 2026-11-28**: fixed `mcp-servers/pdlc/manifest.json` (description, clone-folder setting), the
+    `integration-forge/run.mjs` and `bare-forge.mjs` comments. Justified as history or as guards: ADR-0005/0006 and
+    their wiki pages, `docs/proposals/**`, the dated "Until feature 016" note in `docs/runbooks/backlog.md`, the
+    skill's note that proposals closed before 016 stay closed, the "replaces 014's close-proposal" provenance lines in
+    `scripts/` and `.claude/skills/speckit-belay-spec-stage/`, and the tests asserting the old verb and hook are gone
+- [X] T081 Run the full checks CI runs, and the gates the diff touches:
   - `pnpm nx run scripts:lint`
   - `pnpm nx run scripts:test`
   - `pnpm nx run pdlc:lint`
@@ -937,6 +942,8 @@ FR-036.
   - `pnpm nx run pdlc:integration`
   - `node scripts/check-speckit-overrides.mjs`
   - **Done when**: all exit 0, with 0 skipped (watch the skip count)
+  - **Done 2026-11-28**: both lints clean; `scripts:test` 1654 passed, 0 failed, 0 skipped, 0 todo; `pdlc:test` 389
+    passed, 0 failed, 0 skipped; `pdlc:integration` 21 passed, 0 failed, 0 skipped; the overrides gate passed
 - [ ] T082 Run [quickstart.md](quickstart.md) §2 to §7 on the workstation and BELAY after the bundle is rebuilt and
   re-uploaded. §4 (merge) and §7 (server absent) complete only after this PR merges and with the next proposal; record
   them on the backlog item that tracks this feature's acceptance.

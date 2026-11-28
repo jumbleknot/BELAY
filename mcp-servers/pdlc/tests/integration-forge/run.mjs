@@ -2,8 +2,9 @@
 // pdlc:integration-forge (research R16): the real forge and the real `ci-smoke` repository (M3), never
 // mocked, operator-run in the dev container and never in CI.
 //
-// The credential is mapped at the POINT OF USE: the dev container's FORGE_ISSUE_TOKEN has exactly the
-// pdlc scope (write:issue + read:repository), so it becomes PDLC_FORGE_TOKEN for this child only. When
+// The credential is mapped at the POINT OF USE: the dev container's FORGE_ISSUE_TOKEN has feature 014's
+// pdlc scope (write:issue + read:repository; 016 widened the pdlc token to write:repository), so it becomes
+// PDLC_FORGE_TOKEN for this child only. When
 // it is unset the run FAILS, naming it: a live tier that skips reads as a pass.
 //
 // The forge URL and owner come from this working copy's origin remote, so no host is written down here.

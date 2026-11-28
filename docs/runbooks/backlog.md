@@ -15,12 +15,13 @@ one-line backlog edit.
 
 ```bash
 node scripts/backlog.mjs --help          # full flag reference, exit codes, measured API quirks
-node scripts/backlog.mjs ready           # open, unblocked, priority-ordered; never the bot's dashboard or a draft proposal
+node scripts/backlog.mjs ready           # open, unblocked, priority-ordered; never the bot's dashboard, a draft proposal, or a spec in progress or in engineering
 node scripts/backlog.mjs list [--state open|closed|all] [--label L]... [--milestone M] [--q TEXT]
 node scripts/backlog.mjs show <n>
 node scripts/backlog.mjs create --title T --body-file F [--label L]... [--milestone M]
 node scripts/backlog.mjs update <n> [--state closed] [--add-label L] [--remove-label L] [--body-file F]   # not for a proposal
-node scripts/backlog.mjs close-proposal <n> --spec specs/NNN-slug [--json]   # the one close path for a proposal
+node scripts/backlog.mjs stage <n> <spec-in-progress|in-engineering> --spec specs/NNN-slug --branch <branch> [--json]   # a proposal's stage (the hooks run it)
+node scripts/backlog.mjs record-tests --spec specs/NNN-slug --point baseline|close-out   # the tasks template's count tasks
 node scripts/backlog.mjs comment <n> --body-file F
 node scripts/backlog.mjs dep <n> --blocked-by <m> [--remove]
 node scripts/backlog.mjs setup-labels [--dry-run]     # idempotent
@@ -81,7 +82,7 @@ after a change adds labels):
 | --- | --- |
 | type | `type/bug` `type/feature` `type/tech-debt` `type/chore` `type/proposal` — exactly one |
 | priority | `priority/p1` `priority/p2` `priority/p3` — exactly one |
-| status | `status/blocked` (the dependency graph is the intended authority — but `ready` skips the graph for a labelled item, so a stale label silently hides it; it warns for an unlabelled item with an open blocker) · `status/needs-spec` (too large to implement directly: it goes through `specs/NNN-*/` spec → plan → tasks first) · `status/bot-managed` (the dependency bot's Dependency Dashboard issue: `ready` never lists it, and prints `(n bot-managed item(s) not listed)` instead; never edit or close it, see [renovate.md](renovate.md#reading-the-dashboard)) · `status/proposal-draft` (a proposal still being shaped: `ready` never lists it, and prints `(n draft proposal(s) not listed)`) |
+| status | `status/blocked` (the dependency graph is the intended authority — but `ready` skips the graph for a labelled item, so a stale label silently hides it; it warns for an unlabelled item with an open blocker) · `status/needs-spec` (too large to implement directly: it goes through `specs/NNN-*/` spec → plan → tasks first) · `status/bot-managed` (the dependency bot's Dependency Dashboard issue: `ready` never lists it, and prints `(n bot-managed item(s) not listed)` instead; never edit or close it, see [renovate.md](renovate.md#reading-the-dashboard)) · `status/proposal-draft` (a proposal still being shaped: `ready` never lists it, and prints `(n draft proposal(s) not listed)`) · the four spec stages of a proposal (feature 016): `status/spec-in-progress` (its spec is being written and clarified: hidden, `(n spec(s) in progress not listed)`), `status/ready-to-plan` (its spec is approved and published on its feature branch: listed with `branch:` and `spec:`), `status/in-engineering` (planning has started: hidden, `(n item(s) in engineering not listed)`), `status/merged` (its feature branch merged; the issue is closed) |
 | bot PRs | `dependencies` `security` — the dependency bot's pull requests, not backlog labels |
 
 The proposal family's names, colours and descriptions are copied from the shared contract
@@ -102,22 +103,50 @@ master, `mcp-servers/pdlc/contract/proposal.yaml`; a test fails if they differ. 
 Claude Desktop session writes through the `pdlc` server ([pdlc.md](pdlc.md)). `validate-form` reports both forms,
 and marks one that is only in the working tree as "not yet on the default branch".
 
-**Proposals** are feature ideas before they have a spec. Two states, and a close that only one command makes:
+**Proposals** are feature ideas before they have a spec. A proposal moves through stages, one stage label at a time
+(the normative table and transitions: [specs/016-pdlc-spec-intake/contracts/stages.md](../../specs/016-pdlc-spec-intake/contracts/stages.md)):
 
-| State | Labels | `ready` |
-| --- | --- | --- |
-| Draft | `type/proposal` + `status/proposal-draft` + one `priority/*` | hidden, counted in the note |
-| Ready | `type/proposal` + `status/needs-spec` + one `priority/*` | listed in priority order |
-| Superseded by a spec | unchanged | closed, with a comment linking `specs/NNN-*/` |
+| Stage | Labels | `ready` | Moved there by |
+| --- | --- | --- | --- |
+| Draft | `type/proposal` + `status/proposal-draft` + one `priority/*` | hidden, counted in the note | the form, or the `pdlc` server |
+| Ready | `type/proposal` + `status/needs-spec` + one `priority/*` | listed in priority order | the author |
+| Spec in progress | `status/spec-in-progress` replaces `status/needs-spec` | hidden, counted in the note | `start_spec` in Claude Desktop, or the `after_specify` hook |
+| Ready to plan | `status/ready-to-plan` | listed, with `branch:` and `spec:` | `approve_spec` in Claude Desktop |
+| In engineering | `status/in-engineering` | hidden, counted in the note | the `after_plan` hook |
+| Merged | `status/merged`; the issue is closed | never | `feature-merged` in CI, on the merge into `main` |
 
-A ready proposal is picked up with `show <n>`, then `/speckit-specify` started with `Proposal #<n>: <title>`
-followed by its body. The mandatory `after_specify` hook ([spec-kit.md](spec-kit.md), row 7) then runs
-`close-proposal <n> --spec specs/NNN-slug`. That verb is the **one named exception** to "closing is a state change
-on update": it refuses anything but an open, non-bot proposal whose `spec.md` exists, posts
-``Superseded by spec `specs/NNN-slug/` (branch `NNN-slug`).`` first and closes second, never touches labels, and is
-idempotent (exit 0 "already closed" when this flow closed it; exit 2 when someone else did). Exit codes are the
-usual 0 / 2 / 3 / 4 / 5. Rules for the assistant: the "Proposals" section of the
+Every stage change posts a comment **first** and changes the label second. The comment ends in one machine-readable
+trailer, `<!-- pdlc-stage: stage=… branch=… spec=specs/NNN-slug/ -->`; `ready` reads the latest one for `branch:`
+and `spec:`.
+
+**Pick-up of a ready proposal** (no spec yet): `show <n>`, then `/speckit-specify` started with
+`Proposal #<n>: <title>` followed by its body. The mandatory `after_specify` hook (`/speckit-belay-spec-stage`,
+[spec-kit.md](spec-kit.md), row 7) runs `stage <n> spec-in-progress --spec specs/NNN-slug --branch <branch>`.
+
+**Pick-up of a ready-to-plan spec** (written in Claude Desktop): check out the branch `ready` names in a worktree, then
+`/speckit-plan`. The `before_plan` hook writes `.specify/feature.json` for the folder; the mandatory `after_plan` hook
+runs `stage <n> in-engineering …`, which locks the spec from Claude Desktop.
+
+`stage` refuses (exit 2) anything but an open, non-bot proposal whose `spec.md` exists, and any move the stage table
+does not allow (`stage_transition_refused`). Re-applying the stage it is already at, with the same branch, prints
+`already <stage>` and exits 0. It never closes. Exit codes are the usual 0 / 2 / 3 / 4 / 5.
+
+**Closing happens only on merge.** `feature-merged.yml` runs `scripts/feature-merged.mjs` on every push to `main`: when
+the merged branch's spec names one open proposal, it posts the merge comment with the test declarations the feature
+created, swaps in `status/merged` and closes the issue. The suite's passed/failed/skipped counts follow in a second
+comment from that commit's `guardrails` run ([ci.md](ci.md)). A feature not started from a proposal is one log line,
+exit 0. Never close a proposal with `update --state closed` or the web UI.
+
+**`record-tests`** posts the test-declaration count on the proposal at the tasks template's first and second-to-last
+tasks (`baseline`, and `close-out` with the delta since the merge base). With no proposal, or one that is not open, it
+prints the counts and why nothing was posted, and exits 0; the template task records that and continues.
+
+Rules for the assistant: the "Proposals" section of the
 [forgejo-issues skill](../../.claude/skills/forgejo-issues/SKILL.md).
+
+> **Until feature 016 (2026-11-28)** the `after_specify` hook ran `close-proposal <n> --spec specs/NNN-slug`, which
+> closed the proposal with the comment ``Superseded by spec `specs/NNN-slug/` (branch `NNN-slug`).``. Proposals closed
+> that way keep that comment; the verb is gone.
 
 **Tasks to issues.** `/speckit-taskstoissues` mirrors a feature's `tasks.md` into its milestone: one
 item per task, titled `T0NN: …`, deduplicated by task id across all pages, and chained with `dep` so

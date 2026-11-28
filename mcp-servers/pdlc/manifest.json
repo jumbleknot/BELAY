@@ -3,7 +3,7 @@
   "name": "pdlc",
   "display_name": "pdlc proposal intake",
   "version": "0.2.0",
-  "description": "File and refine feature proposals as forge issues, and keep read-only local copies of the repositories, for the proposal-intake skill.",
+  "description": "File and refine feature proposals as forge issues, write each one's spec with the repository's own Spec Kit and publish it on its feature branch, and keep local copies whose default branch is read-only, for the proposal-intake skill.",
   "long_description": "An operator-tool MCP server for one operator (BELAY constitution 1.1.0, ADR-0005, ADR-0006). It reads and writes only issues labelled type/proposal in repositories under the configured owner, and keeps a local copy of each repository whose default branch is read-only and fast-forward only. From a ready proposal it writes a spec with the repository's own Spec Kit, in a worktree on that feature's own branch, and on the author's approval commits the spec folder and publishes that feature branch only: never the default branch, never a force push. It moves the proposal through its stage labels, and shows the proposal or spec in a pane beside the chat. It never closes, deletes or relabels arbitrary issues.",
   "author": {
     "name": "BELAY"
@@ -133,7 +133,7 @@
     "clone_root": {
       "type": "directory",
       "title": "Clone folder",
-      "description": "An existing folder for the read-only local copies, one sub-folder per repository. Connect it to the Claude Desktop project.",
+      "description": "An existing folder for the local copies (one sub-folder per repository, default branch read-only), and the server's spec worktrees (.pdlc-specs) and pane drafts (.pdlc-drafts).",
       "required": true
     }
   },
