@@ -30,8 +30,9 @@ changes nothing, no token in a result, and `repo` matched case-insensitively.
 
 | Tool | Visibility | Parameters | Does |
 | --- | --- | --- | --- |
-| `show_document` | model | `repo`, `kind`: `proposal`\|`spec`, `number?`, `draft_id?` | Opens `ui://pdlc/document-pane.html` on the document (`_meta.ui.resourceUri`); the page then asks the host for the `fullscreen` display mode, the right-hand pane (research R9). For a proposal not yet filed, it creates a draft and returns its `draft_id`. Returns `{revision, read_only}` |
+| `show_document` | model | `repo`, `kind`: `proposal`\|`spec`, `number?`, `draft_id?`; for a proposal also `sections?`, `priority?`, `base_revision?` (as built, T062: an unsaved proposal's chat edits refresh the pane only this way; refused `pane_edit_pending` when the pane moved past `base_revision`) | Opens `ui://pdlc/document-pane.html` on the document (`_meta.ui.resourceUri`); the page then asks the host for the `fullscreen` display mode, the right-hand pane (research R9). For a proposal not yet filed, it creates a draft and returns its `draft_id`. Returns `{revision, read_only}` |
 | `get_proposal_draft` | model | `repo`, `draft_id` or `number` | Reads a proposal draft: sections, priority, `revision`, and `pane_changes` since the model's last read |
+| `read_pane_document` | **app only** | `repo`, `kind`, `ref` | (As built, T062; see the row below.) |
 | `save_pane_edit` | **app only** (`_meta.ui.visibility: ["app"]`) | `repo`, `kind`, `ref`, `base_revision`, then `path` + `content` (spec) or `sections` + `priority?` (proposal) | Writes the edit (R9), returns the new `revision`. Refuses `document_locked` and `pane_edit_pending` |
 | `read_pane_document` | **app only** | `repo`, `kind`, `ref` | Returns the document's current content, `revision` and `read_only`, read from disk. The page polls it every 2 s; it changes nothing |
 
@@ -39,7 +40,7 @@ changes nothing, no token in a result, and `repo` matched case-insensitively.
 
 | Tool | Change |
 | --- | --- |
-| `create_proposal`, `update_proposal` | Optional `draft_revision`. When a pane draft exists for the proposal, the call is refused `pane_edit_pending` unless `draft_revision` equals the draft's revision. On success the draft is deleted |
+| `create_proposal`, `update_proposal` | Optional `draft_revision`, and on `create_proposal` an optional `draft_id` naming the new proposal's draft (as built, T062). When a pane draft exists for the proposal, the call is refused `pane_edit_pending` unless `draft_revision` equals the draft's revision. On success the draft is deleted |
 | `check_setup` | `missing_labels` covers the four stage labels too. New report-only field `default_branch_protected`: `true`\|`false`\|`unknown` (R6) |
 | `get_proposal`, `list_proposals` | `status` in results also takes the four new stage ids. `list_proposals`'s `status` filter gains `spec-in-progress`, `ready-to-plan`, `in-engineering` and `merged` |
 

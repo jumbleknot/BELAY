@@ -17,9 +17,9 @@ const CONTRACT = {
   list_proposals: { props: ['repo', 'status', 'query', 'state'], required: ['repo', 'status'],
     enums: { status: ['draft', 'ready', 'all'], state: ['open', 'closed', 'all'] } },
   get_proposal: { props: ['repo', 'number'], required: ['repo', 'number'] },
-  create_proposal: { props: ['repo', 'title', 'sections', 'priority', 'status'], required: ['repo', 'title', 'sections', 'priority', 'status'],
+  create_proposal: { props: ['repo', 'title', 'sections', 'priority', 'status', 'draft_id', 'draft_revision'], required: ['repo', 'title', 'sections', 'priority', 'status'],
     enums: { priority: ['p1', 'p2', 'p3'], status: ['draft', 'ready'] }, sections: { required: ['feature_name'] } },
-  update_proposal: { props: ['repo', 'number', 'expected_updated_at', 'title', 'sections', 'priority', 'status'],
+  update_proposal: { props: ['repo', 'number', 'expected_updated_at', 'title', 'sections', 'priority', 'status', 'draft_revision'],
     required: ['repo', 'number', 'expected_updated_at'], enums: { priority: ['p1', 'p2', 'p3'], status: ['draft', 'ready'] }, sections: { required: [] } },
   add_comment: { props: ['repo', 'number', 'body'], required: ['repo', 'number', 'body'] },
   // Feature 016 (specs/016-pdlc-spec-intake/contracts/tools.md), added as each user story lands.
@@ -31,6 +31,10 @@ const CONTRACT = {
   take_latest_spec: { props: ['repo', 'number'], required: ['repo', 'number'] },
   reopen_spec: { props: ['repo', 'number'], required: ['repo', 'number'] },
   withdraw_spec: { props: ['repo', 'number', 'to'], required: ['repo', 'number', 'to'], enums: { to: ['ready', 'draft'] } },
+  show_document: { props: ['repo', 'kind', 'number', 'draft_id', 'sections', 'priority', 'base_revision'], required: ['repo', 'kind'], enums: { kind: ['proposal', 'spec'], priority: ['p1', 'p2', 'p3'] } },
+  get_proposal_draft: { props: ['repo', 'draft_id', 'number'], required: ['repo'] },
+  save_pane_edit: { props: ['repo', 'kind', 'ref', 'base_revision', 'path', 'content', 'sections', 'priority'], required: ['repo', 'kind', 'ref', 'base_revision'], enums: { kind: ['proposal', 'spec'], priority: ['p1', 'p2', 'p3'] } },
+  read_pane_document: { props: ['repo', 'kind', 'ref'], required: ['repo', 'kind', 'ref'], enums: { kind: ['proposal', 'spec'] } },
 };
 
 const sorted = (a) => [...a].sort();

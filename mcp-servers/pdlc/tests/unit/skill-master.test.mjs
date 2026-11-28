@@ -3,7 +3,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { TOOLS, TOOL_NAMES, SECTION_IDS } from '../../src/tool-contract.mjs';
+import { TOOLS, TOOL_NAMES, SECTION_IDS, APP_ONLY_TOOLS } from '../../src/tool-contract.mjs';
+// The skill drives the model-visible tools; the app-only ones are the pane page's (feature 016, R9).
+const MODEL_TOOLS = TOOL_NAMES.filter((n) => !APP_ONLY_TOOLS.includes(n));
 
 const skill = readFileSync(new URL('../../skill/proposal-intake/SKILL.md', import.meta.url), 'utf8');
 
@@ -19,7 +21,7 @@ const FIELDS = new Set([
   'not_ready_proposal', 'spec_already_in_progress', 'spec_kit_unavailable', 'spec_hook_unsupported', 'branch_exists',
   'no_spec_for_proposal', 'pane_edit_pending', 'path_outside_feature', 'document_locked', 'stage_transition_refused',
   'spec_has_markers', 'spec_not_clarified', 'git_identity_missing', 'publish_failed', 'spec_url',
-  'branch_changed', 'nothing_to_take', 'backup_path',
+  'branch_changed', 'nothing_to_take', 'backup_path', 'pane_changes', 'draft_id', 'draft_revision', 'read_only',
 ]);
 
 test('the skill has front matter naming it proposal-intake', () => {
@@ -27,12 +29,13 @@ test('the skill has front matter naming it proposal-intake', () => {
 });
 
 test('the skill names every contract tool (skill does not name <tool> otherwise)', () => {
-  for (const name of TOOL_NAMES) assert.match(skill, new RegExp(`\`${name}\``), `skill does not name ${name}`);
+  for (const name of MODEL_TOOLS) assert.match(skill, new RegExp(`\`${name}\``), `skill does not name ${name}`);
+  for (const name of APP_ONLY_TOOLS) assert.doesNotMatch(skill, new RegExp(`\`${name}\``), `the skill must not call the page's app-only ${name}`);
 });
 
 test('the skill names no snake_case tool outside the contract', () => {
   const tokens = [...skill.matchAll(/`([a-z][a-z0-9]*(?:_[a-z0-9]+)+)`/g)].map((m) => m[1]);
-  const unknown = tokens.filter((t) => !TOOL_NAMES.includes(t) && !FIELDS.has(t));
+  const unknown = tokens.filter((t) => !MODEL_TOOLS.includes(t) && !FIELDS.has(t));
   assert.deepEqual([...new Set(unknown)], []);
 });
 
@@ -126,4 +129,16 @@ test('016 US7-AC1: where Spec Kit is not set up, the skill ends after the propos
   assert.match(step, /`ok: false`/);
   assert.match(step, /written in Claude Code in that repository instead/);
   assert.match(step, /end the session there\. Nothing is created/);
+});
+
+test('016 US9: the skill opens the pane with show_document when reviewing or editing, refreshes it after a chat edit, and takes in pane_changes, saying what it took in', () => {
+  const at = skill.indexOf('## Side pane');
+  assert.ok(at >= 0, 'a side-pane section');
+  const part = skill.slice(at, skill.indexOf('\n## ', at + 5) === -1 ? undefined : skill.indexOf('\n## ', at + 5));
+  assert.match(part, /`show_document`/);
+  assert.match(part, /`get_proposal_draft`/);
+  assert.match(part, /`pane_changes`/);
+  assert.match(part, /tell the author what you took in/i);
+  assert.match(part, /`draft_revision`/);
+  assert.match(part, /not available[^\n]*chat/i, 'the FR-037 fallback');
 });

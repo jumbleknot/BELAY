@@ -9,9 +9,9 @@
 import { readFileSync, realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { CallToolRequestSchema, ListResourcesRequestSchema, ListToolsRequestSchema, ReadResourceRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { Refusal } from './refusal.mjs';
-import { TOOLS, TOOL_NAMES, inputJsonSchema } from './tool-contract.mjs';
+import { PANE_URI, TOOLS, TOOL_NAMES, inputJsonSchema } from './tool-contract.mjs';
 import { createToolHandlers } from './tools.mjs';
 
 export const SERVER_NAME = 'pdlc';
@@ -29,11 +29,21 @@ const summariseIssues = (error) => error.issues
 export function createServer(deps) {
   const { log, redact } = deps;
   const handlers = { ...createToolHandlers(deps), ...(deps.handlers ?? {}) };
-  const server = new Server({ name: SERVER_NAME, version: SERVER_VERSION }, { capabilities: { tools: {} } });
+  const server = new Server({ name: SERVER_NAME, version: SERVER_VERSION }, { capabilities: { tools: {}, resources: {} } });
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: TOOL_NAMES.map((name) => ({ name, description: TOOLS[name].description, inputSchema: inputJsonSchema(name) })),
+    tools: TOOL_NAMES.map((name) => ({ name, description: TOOLS[name].description, inputSchema: inputJsonSchema(name), ...(TOOLS[name]._meta && { _meta: TOOLS[name]._meta }) })),
   }));
+
+  // Feature 016 (research R9): the right-hand pane is one MCP App page, a self-contained file the bundle carries.
+  const PANE_MIME = 'text/html;profile=mcp-app';
+  server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+    resources: [{ uri: PANE_URI, name: 'document-pane', title: 'Proposal and spec pane', mimeType: PANE_MIME }],
+  }));
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    if (request.params.uri !== PANE_URI) throw new Error(`unknown resource ${request.params.uri}`);
+    return { contents: [{ uri: PANE_URI, mimeType: PANE_MIME, text: readFileSync(new URL('../ui/document-pane.html', import.meta.url), 'utf8') }] };
+  });
 
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     const tool = request.params.name;
@@ -97,11 +107,11 @@ export async function main({ env = process.env, stderr = process.stderr } = {}) 
 
   const [{ StdioServerTransport }, { createForgeClient }, { createRepoAllowlist }, { createProposals },
     { createLocalCopy }, { createGitRunner }, { createSetupCheck }, { createSpecKitRunner }, { createSpecWorktree },
-    { createSpecFiles }, { createSpecLifecycle }, { createSpecApproval }] = await Promise.all([
+    { createSpecFiles }, { createSpecLifecycle }, { createSpecApproval }, { createDocumentPane }] = await Promise.all([
     import('@modelcontextprotocol/sdk/server/stdio.js'), import('./forge-client.mjs'), import('./repo-allowlist.mjs'),
     import('./proposals.mjs'), import('./local-copy.mjs'), import('./git-runner.mjs'), import('./setup-check.mjs'),
     import('./spec-kit-runner.mjs'), import('./spec-worktree.mjs'), import('./spec-files.mjs'), import('./spec-lifecycle.mjs'),
-    import('./spec-approval.mjs'),
+    import('./spec-approval.mjs'), import('./document-pane.mjs'),
   ]);
   const redact = createRedactor({ secrets: [config.token] });
   const log = createLogger({ stream: stderr, redact });
@@ -114,15 +124,18 @@ export async function main({ env = process.env, stderr = process.stderr } = {}) 
     originUrlFor: (name) => `${config.forgeUrl}/${encodeURIComponent(config.owner)}/${encodeURIComponent(name)}.git`,
     git,
   });
+  const specFiles = createSpecFiles();
+  const specWorktree = createSpecWorktree({ cloneRoot: config.cloneRoot, git });
   const deps = {
     log, redact, allowlist, proposals, localCopy,
+    pane: createDocumentPane({ allowlist, proposals, localCopy, worktree: specWorktree, files: specFiles, cloneRoot: config.cloneRoot }),
     setupCheck: createSetupCheck({ forge, allowlist, config }),
     // Feature 016. The Spec Kit runner never receives the token: its scripts run with none (research R1).
     specs: createSpecLifecycle({
       forge, allowlist, proposals, localCopy, config,
       specKit: createSpecKitRunner({ cloneRoot: config.cloneRoot, git }),
-      worktree: createSpecWorktree({ cloneRoot: config.cloneRoot, git }),
-      files: createSpecFiles(),
+      worktree: specWorktree,
+      files: specFiles,
       approval: createSpecApproval({ git }),
     }),
   };

@@ -13,6 +13,7 @@ import { createSpecWorktree, parseWorktreeList } from '../../../src/spec-worktre
 import { createSpecFiles } from '../../../src/spec-files.mjs';
 import { createSpecLifecycle } from '../../../src/spec-lifecycle.mjs';
 import { createSpecApproval } from '../../../src/spec-approval.mjs';
+import { createDocumentPane } from '../../../src/document-pane.mjs';
 import { fakeForge } from './fake-forge.mjs';
 import { connect } from './mcp-client.mjs';
 import { CANARY } from './fixtures.mjs';
@@ -114,14 +115,24 @@ export async function specWorld({ branch = '017-pane-probe', fixture = SPEC_KIT_
   const realFiles = createSpecFiles();
   const files = { ...realFiles, write: async (a) => { dirty.add(a.worktree); return realFiles.write(a); } };
   const specs = createSpecLifecycle({ forge: client, allowlist, proposals, localCopy, specKit, worktree, files, approval: createSpecApproval({ git }), config, now: () => new Date(`${ISO_DAY}T12:00:00Z`) });
-  const c = await connect({ allowlist, proposals, localCopy, specs });
+  const pane = createDocumentPane({ allowlist, proposals, localCopy, worktree, files, cloneRoot, randomId: () => 'draft01' });
+  const c = await connect({ allowlist, proposals, localCopy, specs, pane });
+  // A second, independent server over the same clone root and forge: Claude Desktop serves the model's calls and the
+  // page's calls from two different server processes (research R9, measured), so nothing may live in memory.
+  const second = async () => {
+    const files2 = createSpecFiles();
+    const worktree2 = createSpecWorktree({ cloneRoot, git, now: () => new Date(`${ISO_DAY}T12:00:00Z`) });
+    const proposals2 = createProposals({ forge: client, allowlist, config });
+    const specs2 = createSpecLifecycle({ forge: client, allowlist, proposals: proposals2, localCopy, specKit, worktree: worktree2, files: files2, approval: createSpecApproval({ git }), config, now: () => new Date(`${ISO_DAY}T12:00:00Z`) });
+    return connect({ allowlist, proposals: proposals2, localCopy, specs: specs2, pane: createDocumentPane({ allowlist, proposals: proposals2, localCopy, worktree: worktree2, files: files2, cloneRoot }) });
+  };
 
   const ready = (over = {}) => forge.addIssue('BELAY', { title: 'Proposal: Pane probe', body: '### Feature name\n\nPane probe\n\n### Problem\n\nA problem.', labels: ['type/proposal', 'status/needs-spec', 'priority/p2'], ...over });
   const labelsOf = (n) => forge.issue('BELAY', n).labels.map((l) => l.name);
   const worktreePath = join(cloneRoot, '.pdlc-specs', 'BELAY', branch.split('/').pop());
   return {
     root, cloneRoot, copyPath, worktreePath, forge, git, calls, scripts, remoteBranches, localBranches, worktrees, c, ready, labelsOf,
-    identity, commits, pushes, pushFails, tips,
+    identity, commits, pushes, pushFails, tips, second,
     parseWorktreeList,
     close: async () => { await c.close(); rmSync(root, { recursive: true, force: true }); },
   };

@@ -7,7 +7,8 @@
 // the model's calls and the pane's calls are served by different server processes (research R9, measured). Every
 // stage change goes through the transition table (FR-023) and posts its comment, with the trailer, BEFORE the label
 // swap, so a failure between the two leaves a record that says what was meant (contracts/backlog-stage-cli.md).
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { Refusal } from './refusal.mjs';
 import { loadLabels } from './labels.mjs';
 import { checkTransition, planStageSwap, readTrailers, renderTrailer, stageFromLabels } from './stages.mjs';
@@ -66,6 +67,32 @@ export function createSpecLifecycle({ forge, allowlist, proposals, localCopy, sp
     const state = await worktree.resume({ repo, copyPath: localCopy.pathOf(repo.name), number });
     if (!state) throw new Refusal('no_spec_for_proposal', `proposal #${number} in ${repo.name} has no spec in progress; start one with start_spec`);
     return { state, specDir: state.spec_dir.replace(/\/$/, '') };
+  };
+
+  // FR-036: the spec as the model last read or wrote it, a file (two server processes serve one session; R9), so
+  // get_spec can say what the author changed in the pane since: pane_changes.
+  const snapshotFile = (repo, number) => join(config.cloneRoot, '.pdlc-drafts', repo.name, `spec-${number}.model-read.json`);
+  const saveSnapshot = (repo, number, list) => {
+    const f = snapshotFile(repo, number);
+    mkdirSync(join(f, '..'), { recursive: true });
+    writeFileSync(`${f}.tmp`, JSON.stringify({ files: list }));
+    renameSync(`${f}.tmp`, f);
+  };
+  const paneChangesSince = (repo, number, list) => {
+    const f = snapshotFile(repo, number);
+    if (!existsSync(f)) return [];
+    let before;
+    try { before = new Map(JSON.parse(readFileSync(f, 'utf8')).files.map((x) => [x.path, x.content])); } catch { return []; }
+    const out = [];
+    for (const { path: p, content } of list) {
+      const old = before.get(p);
+      if (old === content) continue;
+      const a = new Set((old ?? '').split('\n'));
+      const b = new Set(content.split('\n'));
+      const diff = [...(old ?? '').split('\n').filter((l) => !b.has(l)).map((l) => `- ${l}`), ...content.split('\n').filter((l) => !a.has(l)).map((l) => `+ ${l}`)].join('\n');
+      out.push({ path: p, diff });
+    }
+    return out;
   };
 
   const startedText = (branch, specDir) => `Spec started on branch \`${branch}\` in \`${specDir}/\` (Claude Desktop).`;
@@ -150,6 +177,7 @@ export function createSpecLifecycle({ forge, allowlist, proposals, localCopy, sp
       const state = await worktree.create({ repo, copyPath, number, branch: prep.branch, specDir, withdrawn, proposalUpdatedAt: issue.updated_at, sessionsAtStart: 0 });
       const content = fillTemplate(prep.template, { number, title: issue.title, body: issue.body, branch: prep.branch, date: day(now()) });
       const { revision } = await files.write({ worktree: state.worktree_path, specDir, path: 'spec.md', content });
+      saveSnapshot(repo, number, [{ path: 'spec.md', content }]);
       const after = await moveStage({ path, issue, to: 'spec-in-progress', by: 'start_spec', text: startedText(prep.branch, specDir),
         trailer: { stage: 'spec-in-progress', branch: prep.branch, spec: `${specDir}/` } });
       // Recorded after the server's own comment and label change, so only a later edit counts as "the proposal changed".
@@ -165,8 +193,11 @@ export function createSpecLifecycle({ forge, allowlist, proposals, localCopy, sp
       const stage = stageFromLabels(names(issue));
       const { files: list, revision } = await files.read({ worktree: state.worktree_path, specDir });
       const spec = list.find((f) => f.path === 'spec.md')?.content ?? '';
+      const paneChanges = paneChangesSince(repo, number, list);
+      saveSnapshot(repo, number, list);
       return {
         repo: repo.name, number, stage, locked: LOCKED.has(stage), branch: state.branch, spec_dir: state.spec_dir,
+        pane_changes: paneChanges,
         worktree_path: state.worktree_path, files: list, revision,
         // R8: on every resume, has the published branch moved since the server last saw it?
         remote: await worktree.remoteCheck({ repo, copyPath: localCopy.pathOf(repo.name), state }),
@@ -269,6 +300,7 @@ export function createSpecLifecycle({ forge, allowlist, proposals, localCopy, sp
         throw new Refusal('pane_edit_pending', 'the spec changed since you last read it (an edit in the pane, or another session); read it again with get_spec, take the change in, then write', { revision: current });
       }
       const { revision } = await files.write({ worktree: state.worktree_path, specDir, path: file, content });
+      saveSnapshot(repo, number, (await files.read({ worktree: state.worktree_path, specDir })).files);
       return { repo: repo.name, number, branch: state.branch, path: file, revision };
     },
   };

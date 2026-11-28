@@ -92,6 +92,22 @@
     {
       "name": "withdraw_spec",
       "description": "Withdraw a spec in progress or ready to plan, until planning starts: the proposal goes back to the stage the author chooses (ready or draft), with a comment naming the branch, which is kept and never reused. Deletes nothing."
+    },
+    {
+      "name": "show_document",
+      "description": "Open the right-hand pane on a proposal (by number, or a new draft, refreshed from the chat with sections and priority) or a spec in progress (by number). Returns the document, its revision and whether it is read-only. Call it again after each chat edit of an unsaved proposal so the pane shows it."
+    },
+    {
+      "name": "get_proposal_draft",
+      "description": "Read the pane's draft of a proposal: its sections, priority and revision, and pane_changes, the sections the author edited in the pane since you last read it."
+    },
+    {
+      "name": "save_pane_edit",
+      "description": "App only: the pane page saves what the author typed, against the revision it last read."
+    },
+    {
+      "name": "read_pane_document",
+      "description": "App only: the pane page reads the document and its revision (it polls every 2 seconds)."
     }
   ],
   "user_config": {

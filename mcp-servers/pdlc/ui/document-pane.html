@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Proposal and spec</title>
+<!--
+  The pdlc right-hand pane (feature 016, US9; research R9; decision M7: one hand-written, self-contained file, no
+  dependency, no build step). Claude Desktop shows it when show_document is called; it asks to move beside the chat
+  (the fullscreen display mode, measured to be the right-hand pane), polls read_pane_document every 2 seconds, and saves
+  what the author types through save_pane_edit against the revision it last read, so an edit is never lost.
+  It uses only the JSON-RPC that T003 measured working in Claude Desktop.
+-->
+<style>
+  :root { color-scheme: light dark; font: 14px/1.45 system-ui, sans-serif; }
+  body { margin: 0; padding: 12px 14px 40px; }
+  header { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin-bottom: 8px; }
+  h1 { font-size: 16px; margin: 0; }
+  #status { font-size: 12px; opacity: 0.8; }
+  #notice { display: none; margin: 8px 0; padding: 8px 10px; border-radius: 6px; background: #f6eedf; color: #483a0f; }
+  @media (prefers-color-scheme: dark) { #notice { background: #483a0f; color: #f6eedf; } }
+  nav { font-size: 12px; margin: 6px 0 10px; }
+  nav a { margin-right: 8px; }
+  label { display: block; font-weight: 600; margin: 12px 0 4px; }
+  textarea, select { width: 100%; box-sizing: border-box; font: 13px/1.45 ui-monospace, monospace; padding: 6px; }
+  textarea { min-height: 72px; resize: vertical; }
+  textarea.file { min-height: 60vh; }
+  textarea[readonly] { opacity: 0.75; }
+  button { font: inherit; padding: 4px 12px; }
+  #kept { display: none; white-space: pre-wrap; font: 12px ui-monospace, monospace; border: 1px dashed #8888; padding: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Loading…</h1>
+  <span id="status"></span>
+  <button id="save" type="button">Save</button>
+</header>
+<div id="notice"></div>
+<nav id="outline"></nav>
+<main id="editors"></main>
+<pre id="kept"></pre>
+<script>
+'use strict';
+const SECTIONS = [
+  ['feature_name', 'Proposed feature name'], ['problem', 'Problem'], ['proposed_value', 'Proposed value'],
+  ['personas', 'Personas involved'], ['goals_success', 'Goals and success definition'], ['rough_scope', 'Rough scope'],
+  ['open_questions', 'Open questions'], ['out_of_scope', 'Out of scope'],
+];
+const UNAVAILABLE = 'The side pane is not available here; edit in this view or through the chat.';
+const $ = (id) => document.getElementById(id);
+let doc = null;          // { repo, kind, ref, revision, read_only, document }
+let dirty = false;       // the author has typed since the last save
+let saving = false;
+let nextId = 1;
+const pending = new Map();
+let saveTimer = null;
+
+function request(method, params) {
+  const id = nextId++;
+  window.parent.postMessage({ jsonrpc: '2.0', id, method, params }, '*');
+  return new Promise((resolve, reject) => {
+    pending.set(id, { resolve, reject });
+    setTimeout(() => { if (pending.delete(id)) reject(new Error(`${method}: no answer`)); }, 20000);
+  });
+}
+const notify = (method, params) => window.parent.postMessage({ jsonrpc: '2.0', method, params }, '*');
+async function callTool(name, args) {
+  const r = await request('tools/call', { name, arguments: args });
+  let payload = r?.structuredContent ?? null;
+  if (!payload) { try { payload = JSON.parse(r?.content?.[0]?.text ?? 'null'); } catch { payload = null; } }
+  if (r?.isError) { const e = new Error(payload?.reason ?? 'refused'); e.code = payload?.code; throw e; }
+  return payload;
+}
+const status = (text) => { $('status').textContent = text; };
+const notice = (text) => { const n = $('notice'); n.textContent = text; n.style.display = text ? 'block' : 'none'; };
+
+function render(next) {
+  doc = next;
+  const readOnly = Boolean(doc.read_only);
+  $('title').textContent = doc.kind === 'spec' ? `Spec for proposal #${doc.ref}` : (doc.document.sections.feature_name || 'New proposal');
+  const editors = $('editors');
+  const outline = $('outline');
+  editors.textContent = '';
+  outline.textContent = '';
+  if (doc.kind === 'spec') {
+    for (const f of doc.document.files) {
+      const label = document.createElement('label');
+      label.textContent = f.path;
+      const area = document.createElement('textarea');
+      area.className = 'file';
+      area.dataset.path = f.path;
+      area.value = f.content;
+      area.readOnly = readOnly;
+      area.addEventListener('input', edited);
+      editors.append(label, area);
+      if (f.path === 'spec.md') {
+        for (const line of f.content.split('\n').filter((l) => /^##\s/.test(l))) {
+          const a = document.createElement('a');
+          a.textContent = line.replace(/^#+\s*/, '');
+          a.href = '#';
+          a.addEventListener('click', (ev) => { ev.preventDefault(); const i = area.value.indexOf(line); area.focus(); area.setSelectionRange(i, i); });
+          outline.append(a);
+        }
+      }
+    }
+  } else {
+    for (const [id, text] of SECTIONS) {
+      const label = document.createElement('label');
+      label.textContent = text;
+      const area = document.createElement('textarea');
+      area.dataset.section = id;
+      area.value = doc.document.sections[id] ?? '';
+      area.readOnly = readOnly;
+      area.addEventListener('input', edited);
+      editors.append(label, area);
+    }
+    const label = document.createElement('label');
+    label.textContent = 'Priority';
+    const select = document.createElement('select');
+    select.id = 'priority';
+    for (const p of ['', 'p1', 'p2', 'p3']) { const o = document.createElement('option'); o.value = p; o.textContent = p || '(not set)'; select.append(o); }
+    select.value = doc.document.priority ?? '';
+    select.disabled = readOnly;
+    select.addEventListener('change', edited);
+    editors.append(label, select);
+  }
+  $('save').disabled = readOnly;
+  status(readOnly ? 'Read-only: this document can no longer be changed here.' : 'Up to date.');
+}
+
+function edited() {
+  dirty = true;
+  status('Unsaved changes…');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(save, 1500);
+}
+
+async function save() {
+  if (!doc || doc.read_only || !dirty || saving) return;
+  saving = true;
+  try {
+    if (doc.kind === 'spec') {
+      for (const area of document.querySelectorAll('textarea[data-path]')) {
+        const before = doc.document.files.find((f) => f.path === area.dataset.path)?.content;
+        if (area.value === before) continue;
+        const r = await callTool('save_pane_edit', { repo: doc.repo, kind: 'spec', ref: String(doc.ref), base_revision: doc.revision, path: area.dataset.path, content: area.value });
+        doc.revision = r.revision;
+        doc.document.files = doc.document.files.map((f) => (f.path === area.dataset.path ? { ...f, content: area.value } : f));
+      }
+    } else {
+      const sections = {};
+      for (const area of document.querySelectorAll('textarea[data-section]')) sections[area.dataset.section] = area.value;
+      const priority = $('priority').value || undefined;
+      const r = await callTool('save_pane_edit', { repo: doc.repo, kind: 'proposal', ref: String(doc.ref), base_revision: doc.revision, sections, ...(priority && { priority }) });
+      doc.revision = r.revision;
+      doc.document = { sections, priority: priority ?? null };
+    }
+    dirty = false;
+    notice('');
+    status('Saved. The session takes your edit in before its next change.');
+  } catch (e) {
+    if (e.code === 'pane_edit_pending') {
+      // The document changed in the chat while the author typed: keep their text where they can copy it, then reload.
+      $('kept').textContent = [...document.querySelectorAll('textarea')].map((a) => `${a.dataset.path ?? a.dataset.section}:\n${a.value}`).join('\n\n');
+      $('kept').style.display = 'block';
+      notice('This document changed in the chat while you were typing. Your text is kept below; the latest version is loaded above.');
+      dirty = false;
+      await poll(true);
+    } else {
+      notice(`Your edit was not saved: ${e.message}`);
+      status('Not saved.');
+    }
+  } finally {
+    saving = false;
+  }
+}
+
+async function poll(force = false) {
+  if (!doc) return;
+  if (dirty) return; // never overwrite what the author is typing
+  try {
+    const latest = await callTool('read_pane_document', { repo: doc.repo, kind: doc.kind, ref: String(doc.ref) });
+    if (force || latest.revision !== doc.revision || latest.read_only !== doc.read_only) render({ ...doc, ...latest });
+  } catch (e) {
+    status(`Could not refresh: ${e.message}`);
+  }
+}
+
+window.addEventListener('message', (ev) => {
+  const m = ev.data;
+  if (!m || m.jsonrpc !== '2.0') return;
+  if (m.id !== undefined && pending.has(m.id) && (m.result !== undefined || m.error !== undefined)) {
+    const p = pending.get(m.id);
+    pending.delete(m.id);
+    if (m.error) p.reject(new Error(m.error.message ?? 'error')); else p.resolve(m.result);
+    return;
+  }
+  if (m.method === 'ui/notifications/tool-result') {
+    const payload = m.params?.structuredContent;
+    if (payload?.document) render(payload);
+  }
+  if (m.method === 'ui/notifications/host-context-changed' && m.params?.displayMode === 'inline' && doc) {
+    status('Shown in the conversation. Ask for the side pane again, or keep editing here.');
+  }
+  if (m.id !== undefined && m.method) window.parent.postMessage({ jsonrpc: '2.0', id: m.id, result: {} }, '*');
+});
+
+$('save').addEventListener('click', () => { clearTimeout(saveTimer); save(); });
+
+(async () => {
+  try {
+    const init = await request('ui/initialize', {
+      protocolVersion: '2026-01-26',
+      appInfo: { name: 'pdlc-document-pane', version: '0.2.0' },
+      appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] },
+    });
+    notify('ui/notifications/initialized', {});
+    const modes = init?.hostContext?.availableDisplayModes ?? [];
+    if (modes.includes('fullscreen')) {
+      await request('ui/request-display-mode', { mode: 'fullscreen' }).catch(() => notice(UNAVAILABLE));
+    } else {
+      notice(UNAVAILABLE);
+    }
+  } catch {
+    notice(UNAVAILABLE);
+  }
+  setInterval(poll, 2000);
+})();
+</script>
+</body>
+</html>

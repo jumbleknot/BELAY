@@ -36,6 +36,14 @@ const revision = z.string().regex(/^[0-9a-f]{64}$/).describe('The revision get_s
 const specPath = z.string().min(1).max(200).describe('spec.md or checklists/<name>.md, relative to the spec folder');
 const specContent = z.string().refine((s) => byteLength(s) <= MAX_SPEC_FILE_BYTES, { message: `at most ${MAX_SPEC_FILE_BYTES} bytes` });
 
+// The right-hand pane (feature 016, research R9). The page is an MCP App resource; show_document opens it, and the page
+// reads and writes through two tools only it may call (`_meta.ui.visibility: ["app"]`).
+export const PANE_URI = 'ui://pdlc/document-pane.html';
+const kind = z.enum(['proposal', 'spec']);
+const draftId = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).describe('A proposal draft not yet filed, from show_document');
+const paneRef = z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).describe('The proposal or spec issue number, or a draft id');
+const appOnly = { ui: { visibility: ['app'] } };
+
 export const TOOLS = Object.freeze({
   list_repos: {
     description: 'List the repositories under the configured owner, with description, default branch and whether a local proposal copy exists.',
@@ -68,7 +76,9 @@ export const TOOLS = Object.freeze({
   },
   create_proposal: {
     description: 'File a new proposal with the title "Proposal: <feature name>", the given sections, one priority label and the draft or ready status. Refuses when an open proposal has the same title.',
-    input: strict({ repo, title, sections: strict(sectionShape(true)), priority, status: writeStatus }),
+    input: strict({ repo, title, sections: strict(sectionShape(true)), priority, status: writeStatus,
+      // Feature 016: the pane's draft for this new proposal, if one is open; refused pane_edit_pending unless current.
+      draft_id: draftId.optional(), draft_revision: revision.optional() }),
   },
   update_proposal: {
     description: 'Edit a proposal: replace only the given sections, and optionally the title, priority or status. Refuses as stale when the issue changed since expected_updated_at. Returns the new updated_at.',
@@ -79,6 +89,8 @@ export const TOOLS = Object.freeze({
       sections: strict(sectionShape(false)).optional(),
       priority: priority.optional(),
       status: writeStatus.optional(),
+      // Feature 016: when the pane holds a draft of this proposal, its current revision (pane_edit_pending otherwise).
+      draft_revision: revision.optional(),
     }),
   },
   add_comment: {
@@ -113,6 +125,25 @@ export const TOOLS = Object.freeze({
     description: "Withdraw a spec in progress or ready to plan, until planning starts: the proposal goes back to the stage the author chooses (ready or draft), with a comment naming the branch, which is kept and never reused. Deletes nothing.",
     input: strict({ repo, number, to: writeStatus }),
   },
+  show_document: {
+    description: "Open the right-hand pane on a proposal (by number, or a new draft, refreshed from the chat with sections and priority) or a spec in progress (by number). Returns the document, its revision and whether it is read-only. Call it again after each chat edit of an unsaved proposal so the pane shows it.",
+    input: strict({ repo, kind, number: number.optional(), draft_id: draftId.optional(), sections: strict(sectionShape(false)).optional(), priority: priority.optional(), base_revision: revision.optional() }),
+    _meta: { ui: { resourceUri: PANE_URI } },
+  },
+  get_proposal_draft: {
+    description: "Read the pane's draft of a proposal: its sections, priority and revision, and pane_changes, the sections the author edited in the pane since you last read it.",
+    input: strict({ repo, draft_id: draftId.optional(), number: number.optional() }),
+  },
+  save_pane_edit: {
+    description: 'App only: the pane page saves what the author typed, against the revision it last read.',
+    input: strict({ repo, kind, ref: paneRef, base_revision: revision, path: specPath.optional(), content: specContent.optional(), sections: strict(sectionShape(false)).optional(), priority: priority.optional() }),
+    _meta: appOnly,
+  },
+  read_pane_document: {
+    description: 'App only: the pane page reads the document and its revision (it polls every 2 seconds).',
+    input: strict({ repo, kind, ref: paneRef }),
+    _meta: appOnly,
+  },
   take_latest_spec: {
     description: "When the feature branch changed on the forge, bring the published branch into the spec in progress: back up first, keep the author's edits by a three-way merge per file, and list any conflicts for the author to resolve. Publishes nothing and changes no stage.",
     input: strict({ repo, number }),
@@ -120,6 +151,8 @@ export const TOOLS = Object.freeze({
 });
 
 export const TOOL_NAMES = Object.freeze(Object.keys(TOOLS));
+/** The tools only the pane page calls; the model and the skill never do (research R9). */
+export const APP_ONLY_TOOLS = Object.freeze(TOOL_NAMES.filter((n) => TOOLS[n]._meta?.ui?.visibility?.includes('app') && !TOOLS[n]._meta.ui.visibility.includes('model')));
 
 /** The JSON Schema announced in tools/list, generated from the same zod schema that validates. */
 export function inputJsonSchema(name) {

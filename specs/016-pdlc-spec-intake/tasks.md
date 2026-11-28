@@ -770,7 +770,7 @@ FR-036.
 
 **Independent Test**: spec.md User Story 9 "Independent Test".
 
-- [ ] T059 [P] [US9] Test: the pane module (R9). In `mcp-servers/pdlc/tests/unit/document-pane.test.mjs`:
+- [X] T059 [P] [US9] Test: the pane module (R9). In `mcp-servers/pdlc/tests/unit/document-pane.test.mjs`:
   - `show_document` attaches `_meta.ui.resourceUri` `ui://pdlc/document-pane.html` and returns `revision` and
     `read_only` (data-model.md `Pane document.read_only`);
   - `save_pane_edit` and `read_pane_document` are announced with `_meta.ui.visibility: ["app"]`;
@@ -783,7 +783,7 @@ FR-036.
   - **Scenarios covered**: US9-AC1, US9-AC3, US9-AC4, FR-035 to FR-037
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/document-pane.test.mjs` → expected: failing —
     `Cannot find module '../../src/document-pane.mjs'`
-- [ ] T060 [P] [US9] Test: no pane edit is lost. In `proposals-refine.test.mjs` and `tools.test.mjs`:
+- [X] T060 [P] [US9] Test: no pane edit is lost. In `proposals-refine.test.mjs` and `tools.test.mjs`:
   - `create_proposal`, `update_proposal` and `write_spec_file` refuse `pane_edit_pending` when the draft or spec
     revision moved past the base;
   - `get_spec` and `get_proposal_draft` return `pane_changes`;
@@ -791,7 +791,7 @@ FR-036.
   - **Scenarios covered**: US9-AC2, US9-AC3, FR-036
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/proposals-refine.test.mjs` → expected: failing —
     `expected refusal pane_edit_pending`
-- [ ] T061 [P] [US9] Test: the page. In `mcp-servers/pdlc/tests/unit/document-pane-page.test.mjs`, check
+- [X] T061 [P] [US9] Test: the page. In `mcp-servers/pdlc/tests/unit/document-pane-page.test.mjs`, check
   `ui/document-pane.html` statically:
   - one file;
   - no external `src` or `href`;
@@ -805,22 +805,35 @@ FR-036.
   - **Scenarios covered**: US9-AC4, M7
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/document-pane-page.test.mjs` → expected: failing —
     `ENOENT ui/document-pane.html`
-- [ ] T062 [US9] Implement `mcp-servers/pdlc/src/document-pane.mjs` (data-model.md `Pane document.kind`: `proposal` or
+- [X] T062 [US9] Implement `mcp-servers/pdlc/src/document-pane.mjs` (data-model.md `Pane document.kind`: `proposal` or
   `spec` only; any other value is refused by the zod schema), the resource registration in `src/server.mjs`,
   `show_document`, `get_proposal_draft`, `save_pane_edit` and `read_pane_document` in the contract and manifest, and `draft_revision` on
   `create_proposal` and `update_proposal` (prerequisite: T059, T060 RED)
   - **Verify GREEN**: same commands as T059 and T060 → expected: 0 failures
-- [ ] T063 [US9] Write `mcp-servers/pdlc/ui/document-pane.html` (M7), and include `ui/` in `scripts/pack.mjs`'s stage
+- [X] T063 [US9] Write `mcp-servers/pdlc/ui/document-pane.html` (M7), and include `ui/` in `scripts/pack.mjs`'s stage
   (prerequisite: T061 RED)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/document-pane-page.test.mjs` → expected: 0 failures;
     then `pnpm nx run pdlc:pack` produces a bundle containing `ui/document-pane.html`
-- [ ] T064 [US9] Skill: open the pane with `show_document` when reviewing or editing; take in `pane_changes` and say
+- [X] T064 [US9] Skill: open the pane with `show_document` when reviewing or editing; take in `pane_changes` and say
   what was taken in; fall back to the chat when the pane is unavailable (FR-037). Extend `skill-master.test.mjs`.
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/skill-master.test.mjs` → expected: failing —
     `skill does not name show_document`
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/skill-master.test.mjs` → expected: 0 failures
 
 ---
+
+- **Phase 10 as built (2026-11-28)**:
+  - The server now declares `resources` and serves the page from `ui/document-pane.html`, and `tools/list` carries
+    each tool's `_meta` (`show_document`: `ui.resourceUri`; `save_pane_edit` and `read_pane_document`:
+    `ui.visibility: ["app"]`). The bundle carries `ui/` (`pdlc:pack`, checked: `ui/document-pane.html` in
+    `pdlc-0.2.0.mcpb`).
+  - Contract additions, recorded in contracts/tools.md: `show_document` also takes `sections`, `priority` and
+    `base_revision` for a proposal, because an unsaved proposal's chat edits can reach the pane no other way (FR-035);
+    `create_proposal` takes an optional `draft_id` with `draft_revision`, so it knows which draft it saves.
+  - T059/T060 are one file, `tests/unit/document-pane.test.mjs`, over the protocol, with a second, independent server
+    over the same clone root standing in for the two processes T003 measured; `get_spec`'s `pane_changes` and the
+    draft guards on `create_proposal`/`update_proposal` are tested there.
+  - The skill tests now check the MODEL-visible tools only, and that the skill never names the page's app-only ones.
 
 ## Phase 11: User Story 6 - Withdraw a spec in progress (Priority: P3)
 

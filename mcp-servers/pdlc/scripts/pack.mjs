@@ -19,7 +19,7 @@ const stage = join(out, 'stage');
 const { version } = JSON.parse(readFileSync(join(project, 'package.json'), 'utf8'));
 
 /** What the bundle carries; everything else the deploy copied is development-only. */
-const KEEP = new Set(['src', 'contract', 'skill', 'manifest.json', 'package.json', 'node_modules']);
+const KEEP = new Set(['src', 'ui', 'contract', 'skill', 'manifest.json', 'package.json', 'node_modules']);
 
 const run = (cmd, args, cwd) => {
   const r = spawnSync(cmd, args, { cwd, stdio: 'inherit', shell: false });

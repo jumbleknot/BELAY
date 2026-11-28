@@ -9,7 +9,7 @@
  * @returns {Record<string, (args: object, ctx: {correlation_id: unknown}) => Promise<object>>} one handler per contract tool
  */
 export function createToolHandlers(deps = {}) {
-  const { allowlist, proposals, localCopy, setupCheck, specs, log } = deps;
+  const { allowlist, proposals, localCopy, setupCheck, specs, pane, log } = deps;
   const wrote = (tool, msg, fields, ctx) => log?.info(msg, { correlation_id: ctx?.correlation_id ?? null, tool, ...fields });
 
   return {
@@ -24,12 +24,17 @@ export function createToolHandlers(deps = {}) {
     list_proposals: async (args) => proposals.list(args),
     get_proposal: async (args) => proposals.get(args),
     create_proposal: async (args, ctx) => {
+      // Feature 016 (FR-036): a pane draft of this new proposal is saved only at its current revision, then deleted.
+      const done = pane ? await pane.guardDraft({ repo: args.repo, ref: args.draft_id, draft_revision: args.draft_revision }) : null;
       const result = await proposals.create(args);
+      done?.();
       wrote('create_proposal', 'proposal created', { repo: args.repo, number: result.number }, ctx);
       return result;
     },
     update_proposal: async (args, ctx) => {
+      const done = pane ? await pane.guardDraft({ repo: args.repo, ref: String(args.number), draft_revision: args.draft_revision }) : null;
       const result = await proposals.update(args);
+      done?.();
       if (result.changed.length) wrote('update_proposal', `proposal updated: ${result.changed.join(', ')}`, { repo: args.repo, number: result.number }, ctx);
       return result;
     },
@@ -61,6 +66,15 @@ export function createToolHandlers(deps = {}) {
       wrote('withdraw_spec', `spec withdrawn to ${result.stage}`, { repo: result.repo, number: result.number, branch: result.branch }, ctx);
       return result;
     },
+    // Feature 016: the right-hand pane (document-pane.mjs). save_pane_edit and read_pane_document are the page's only.
+    show_document: async (args) => pane.show(args),
+    get_proposal_draft: async (args) => pane.getDraft(args),
+    save_pane_edit: async (args, ctx) => {
+      const result = await pane.save(args);
+      wrote('save_pane_edit', `pane edit saved (${args.kind})`, { repo: result.repo, ...(Number.isInteger(result.ref) && { number: result.ref }) }, ctx);
+      return result;
+    },
+    read_pane_document: async (args) => pane.read(args),
     take_latest_spec: async (args, ctx) => {
       const result = await specs.takeLatest(args);
       wrote('take_latest_spec', `took the latest: ${result.merged.length} merged, ${result.conflicts.length} conflict(s)`, { repo: result.repo, number: result.number, branch: result.branch }, ctx);
