@@ -8,7 +8,7 @@
 // never skips (AGENTS.md: a skip is not a pass).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cpSync, existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createLocalCopy } from '../../src/local-copy.mjs';
 import { createGitRunner } from '../../src/git-runner.mjs';
@@ -34,12 +34,6 @@ function seedRepo() {
   const src = forge.createRepo('target', { files: { 'README.md': '# target\n', 'specs/001-first-thing/spec.md': '# Feature Specification: first\n' } });
   // BELAY's own Spec Kit: its scripts, templates, init-options and extensions.yml, and the two prompts.
   cpSync(join(BELAY, '.specify'), join(src.work, '.specify'), { recursive: true, filter: (p) => !p.includes(`${join('.specify', 'memory')}`) });
-  // Until T040 replaces BELAY's after_specify close-proposal hook with spec-stage (which the server handles natively),
-  // BELAY's own extensions.yml would be refused spec_hook_unsupported: correctly. Seed it as it will be after T040.
-  // T040 removes this rewrite (its task says so).
-  const ext = join(src.work, '.specify', 'extensions.yml');
-  const extText = readFileSync(ext, 'utf8');
-  if (extText.includes('speckit.belay.close-proposal')) writeFileSync(ext, extText.replaceAll('speckit.belay.close-proposal', 'speckit.belay.spec-stage'));
   for (const skill of ['speckit-specify', 'speckit-clarify']) {
     cpSync(join(BELAY, '.claude', 'skills', skill), join(src.work, '.claude', 'skills', skill), { recursive: true });
   }

@@ -538,32 +538,37 @@ test('empty registries skip extension checks', () => {
   assert.deepEqual(codes(checkSpeckitOverrides({ root, extensions: [], extensionHooks: [] })), []);
 });
 
-// ── feature 014: the hand-added close-proposal hook and its project-owned skill ──────────────────
-const CLOSE_HOOK = { event: 'after_specify', extension: 'belay', command: 'speckit.belay.close-proposal' };
-const CLOSE_SKILL = '.claude/skills/speckit-belay-close-proposal/SKILL.md';
-const isCloseHook = (h) => h.event === CLOSE_HOOK.event && h.extension === CLOSE_HOOK.extension && h.command === CLOSE_HOOK.command;
+// ── feature 016: the hand-added spec-stage hooks (replacing 014's close-proposal) and their project-owned skill ──────
+const STAGE_HOOKS = ['after_specify', 'after_plan'].map((event) => ({ event, extension: 'belay', command: 'speckit.belay.spec-stage' }));
+const STAGE_SKILL = '.claude/skills/speckit-belay-spec-stage/SKILL.md';
+const isStageHook = (want) => (h) => h.event === want.event && h.extension === want.extension && h.command === want.command;
 
-test('close-proposal: EXTENSION_HOOKS registers the after_specify belay hook, mandatory and hand-added', () => {
-  const h = EXTENSION_HOOKS.find(isCloseHook);
-  assert.ok(h, 'the close-proposal hook is not registered');
-  assert.equal(h.optional, false);
-  assert.equal(h.local, true);
+for (const want of STAGE_HOOKS) {
+  test(`spec-stage: EXTENSION_HOOKS registers the ${want.event} belay hook, mandatory and hand-added`, () => {
+    const h = EXTENSION_HOOKS.find(isStageHook(want));
+    assert.ok(h, `the ${want.event} spec-stage hook is not registered`);
+    assert.equal(h.optional, false);
+    assert.equal(h.local, true);
+  });
+
+  test(`spec-stage: a tree whose extensions.yml lost the ${want.event} hook reports hook-lost`, () => {
+    assert.ok(EXTENSION_HOOKS.some(isStageHook(want)), 'precondition: the hook is registered');
+    const yml = extensionFixtureFiles({ extensions: EXTENSIONS, hooks: EXTENSION_HOOKS.filter((h) => !isStageHook(want)(h)) })[EXTENSIONS_YML];
+    const r = checkSpeckitOverrides({ root: fixture({ files: { [EXTENSIONS_YML]: yml } }) });
+    assert.ok(codes(r).includes('hook-lost'), JSON.stringify(r.failures));
+    assert.ok(r.failures.some((f) => /speckit\.belay\.spec-stage/.test(f.message) && f.message.includes(want.event)), JSON.stringify(r.failures));
+  });
+}
+
+test('spec-stage: the hook skill is PROJECT_OWNED, and the 014 close-proposal hook and skill are gone', () => {
+  assert.ok(PROJECT_OWNED.some((e) => e.file === STAGE_SKILL), `${STAGE_SKILL} is not in PROJECT_OWNED`);
+  assert.ok(!PROJECT_OWNED.some((e) => /close-proposal/.test(e.file)));
+  assert.ok(!EXTENSION_HOOKS.some((h) => h.command === 'speckit.belay.close-proposal'));
 });
 
-test('close-proposal: the hook skill is PROJECT_OWNED', () => {
-  assert.ok(PROJECT_OWNED.some((e) => e.file === CLOSE_SKILL), `${CLOSE_SKILL} is not in PROJECT_OWNED`);
-});
-
-test('close-proposal: a tree whose extensions.yml lost the hook reports hook-lost', () => {
-  assert.ok(EXTENSION_HOOKS.some(isCloseHook), 'precondition: the hook is registered');
-  const yml = extensionFixtureFiles({ extensions: EXTENSIONS, hooks: EXTENSION_HOOKS.filter((h) => !isCloseHook(h)) })[EXTENSIONS_YML];
-  const r = checkSpeckitOverrides({ root: fixture({ files: { [EXTENSIONS_YML]: yml } }) });
-  assert.ok(codes(r).includes('hook-lost'), JSON.stringify(r.failures));
-  assert.ok(r.failures.some((f) => /speckit\.belay\.close-proposal/.test(f.message)));
-});
-
-test('close-proposal: a tree missing the hook skill fails project-file-lost', () => {
-  assert.ok(PROJECT_OWNED.some((e) => e.file === CLOSE_SKILL), 'precondition: the skill is project-owned');
-  const r = checkSpeckitOverrides({ root: fixture({ files: { [CLOSE_SKILL]: null } }) });
+test('spec-stage: a tree missing the hook skill fails project-file-lost', () => {
+  assert.ok(PROJECT_OWNED.some((e) => e.file === STAGE_SKILL), 'precondition: the skill is project-owned');
+  const r = checkSpeckitOverrides({ root: fixture({ files: { [STAGE_SKILL]: null } }) });
   assert.ok(codes(r).includes('project-file-lost'), JSON.stringify(r.failures));
 });
+

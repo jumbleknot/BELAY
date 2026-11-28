@@ -1,11 +1,11 @@
 ---
 type: Runbook
 title: "Spec Kit: this repository's customisations, and upgrading it"
-description: The one inventory of every way BELAY changes or adds to GitHub Spec Kit — the tasks-template override (doc-impact sweep, required RED/GREEN tests, the Open the PR task), the registered local edits to /speckit-tasks and /speckit-converge, the git and agent-context extensions and their hooks, the project-owned /speckit-taskstoissues and the after_specify close-proposal hook and skill — with who owns which file, the gate and its failure codes, and the upgrade procedure.
+description: The one inventory of every way BELAY changes or adds to GitHub Spec Kit — the tasks-template override (doc-impact sweep, required RED/GREEN tests, the Open the PR task), the registered local edits to /speckit-tasks and /speckit-converge, the git and agent-context extensions and their hooks, the project-owned /speckit-taskstoissues and the after_specify and after_plan spec-stage hooks and skill — with who owns which file, the gate and its failure codes, and the upgrade procedure.
 tags: [spec-kit, sdd, gates, upgrade, runbook]
 resource: docs/runbooks/spec-kit.md
-resource-sha256: 8f8200c28aaac051156ce12b5ee26ff8f5704439d118e9036e8232f5773dad14
-timestamp: 2026-11-25T04:06:27.771Z
+resource-sha256: a6142702d019f4d1b8f24e5737a6aa3a979ade392432f93ab94c3803228cf1de
+timestamp: 2026-11-28T01:17:41.859Z
 ---
 
 # Spec Kit: this repository's customisations, and upgrading it
@@ -38,12 +38,14 @@ owns `.specify/templates/overrides/` and the constitution. In order of preferenc
 - **The override is a fork.** Its first line records the fork point's hash and Spec Kit version.
   After an upgrade, merge the core template's change into it, then run `--record`. Never hand-type
   the hash, and `--record` refuses an override that lost the sweep or the TDD sample.
-- **An extension reinstall drops the three hand-added hooks.** Expect `hook-lost` for
-  `before_converge`, `after_converge` and the mandatory `after_specify` → `belay`
-  `speckit.belay.close-proposal`, and re-add them.
-- **The close-proposal hook closes the proposal a new spec came from** (feature 014). Its skill,
-  `.claude/skills/speckit-belay-close-proposal/`, is project-owned. It finds one `Proposal #<n>` in the
-  spec's Input line and runs `backlog.mjs close-proposal`; no marker means nothing to close.
+- **An extension reinstall drops the four hand-added hooks.** Expect `hook-lost` for
+  `before_converge`, `after_converge` and the two mandatory `belay` `speckit.belay.spec-stage` hooks
+  (`after_specify` and `after_plan`), and re-add them.
+- **The spec-stage hooks move the proposal a spec came from through its stages** (feature 016, replacing
+  014's close-proposal hook). Its skill, `.claude/skills/speckit-belay-spec-stage/`, is project-owned. It
+  finds one `Proposal #<n>` in the spec's Input line, picks `in-engineering` when `plan.md` exists and
+  `spec-in-progress` otherwise, and runs `backlog.mjs stage`. It never closes the proposal (CI does, on
+  merge); no marker means nothing to record, and that is not a failure.
 - **agent-context writes to `AGENTS.md`, never `CLAUDE.md`** (`context_file: AGENTS.md`). Leave
   `context_files: []`, because it takes precedence and the gate checks only the marker.
 - **The CLI version is pinned in two places:** `speckit_version` in `.specify/init-options.json` and

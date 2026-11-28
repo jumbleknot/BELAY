@@ -15,6 +15,55 @@
 // Nothing here depends on it (feature 014 FR-035): both copies are fed the same fixtures
 // (scripts/__tests__/fixtures/stage-trailer/), so they cannot drift.
 
+// ── The stages and their transitions (contracts/stages.md). The server enforces the same table; both are tested
+//    against scripts/__tests__/fixtures/stage-trailer/transitions.json. ───────────────────────────────────────────────
+
+/** Stage id → its status label, in lifecycle order. */
+export const STAGE_LABELS = Object.freeze({
+  draft: 'status/proposal-draft',
+  ready: 'status/needs-spec',
+  'spec-in-progress': 'status/spec-in-progress',
+  'ready-to-plan': 'status/ready-to-plan',
+  'in-engineering': 'status/in-engineering',
+  merged: 'status/merged',
+});
+const STAGE_IDS = Object.keys(STAGE_LABELS);
+const OPEN_STAGES = STAGE_IDS.filter((s) => s !== 'merged');
+const TRANSITIONS = Object.freeze([
+  { from: ['ready'], to: 'spec-in-progress', by: ['start_spec', 'backlog.mjs'] },
+  { from: ['spec-in-progress'], to: 'ready-to-plan', by: ['approve_spec'] },
+  { from: ['ready-to-plan'], to: 'spec-in-progress', by: ['reopen_spec'] },
+  { from: ['spec-in-progress', 'ready-to-plan'], to: 'ready', by: ['withdraw_spec'] },
+  { from: ['spec-in-progress', 'ready-to-plan'], to: 'draft', by: ['withdraw_spec'] },
+  { from: ['spec-in-progress', 'ready-to-plan'], to: 'in-engineering', by: ['backlog.mjs'] },
+  { from: OPEN_STAGES, to: 'merged', by: ['feature-merged'] },
+  { from: ['draft'], to: 'ready', by: ['update_proposal'] },
+  { from: ['ready'], to: 'draft', by: ['update_proposal'] },
+]);
+
+/** A refused stage operation; `code` is stage_ambiguous or stage_transition_refused. */
+export class StageError extends Error {
+  constructor(code, message) {
+    super(`${code}: ${message}`);
+    this.name = 'StageError';
+    this.code = code;
+  }
+}
+
+/** The one stage an issue's label names say it is at; none or two is stage_ambiguous. */
+export function stageFromLabels(names) {
+  const held = STAGE_IDS.filter((s) => names.includes(STAGE_LABELS[s]));
+  if (held.length !== 1) throw new StageError('stage_ambiguous', held.length ? `the issue carries two or more stage labels (${held.map((s) => STAGE_LABELS[s]).join(', ')})` : 'the issue carries no stage label');
+  return held[0];
+}
+
+/** Throws stage_transition_refused unless `by` may move an issue from `from` to `to`. */
+export function checkTransition(from, to, by) {
+  if (!TRANSITIONS.some((t) => t.to === to && t.from.includes(from) && t.by.includes(by))) {
+    throw new StageError('stage_transition_refused', `a proposal at stage "${from}" cannot move to "${to}" this way (${by})`);
+  }
+}
+
 /** Stage ids a trailer may carry: every stage after `ready` (contracts/stages.md "Stages"), plus `withdrawn`. */
 export const TRAILER_STAGES = Object.freeze(['spec-in-progress', 'ready-to-plan', 'in-engineering', 'merged', 'withdrawn']);
 

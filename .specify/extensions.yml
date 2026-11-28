@@ -112,12 +112,12 @@ hooks:
     description: Refresh agent context after specification
     condition: null
   - extension: belay
-    command: speckit.belay.close-proposal
+    command: speckit.belay.spec-stage
     enabled: true
     optional: false
     priority: 20
-    prompt: Close the proposal this spec came from?
-    description: Close the source proposal with a link to the new spec (feature 014)
+    prompt: Move the source proposal to "spec in progress"?
+    description: Record the spec's stage on the proposal it came from (feature 016)
     condition: null
   after_clarify:
   - extension: git
@@ -144,6 +144,14 @@ hooks:
     priority: 10
     prompt: Execute speckit.agent-context.update?
     description: Refresh agent context after planning
+    condition: null
+  - extension: belay
+    command: speckit.belay.spec-stage
+    enabled: true
+    optional: false
+    priority: 20
+    prompt: Move the source proposal to "in engineering"?
+    description: Record that planning started on the proposal it came from (feature 016)
     condition: null
   after_tasks:
   - extension: git

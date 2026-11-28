@@ -19,12 +19,12 @@
 //   - `labels=<unknown-name>` is SILENTLY IGNORED and returns the UNFILTERED set — so a typo reads as
 //     "matched everything". Every label and milestone name is resolved locally first, and refused here.
 
-import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { redactForPublication } from './ci-digest-redact.mjs';
 import { forgeEndpoint, stripControlChars } from './ci-status.mjs';
+import { STAGE_LABELS, StageError, TrailerError, checkTransition, readTrailers, renderTrailer, stageFromLabels } from './lib/stage-trailer.mjs';
 
 /** Exit codes, so a caller (or CI) can branch without parsing prose. */
 export const EXIT = { ok: 0, unexpected: 1, usage: 2, credential: 3, authorization: 4, transport: 5 };
@@ -89,10 +89,17 @@ export const BOT_MANAGED_LABEL = 'status/bot-managed';
 export const PROPOSAL_LABEL = 'type/proposal';
 export const PROPOSAL_DRAFT_LABEL = 'status/proposal-draft';
 
+/** Feature 016: a spec being written, and a feature being built, are not ready work (contracts/stages.md). */
+export const SPEC_IN_PROGRESS_LABEL = STAGE_LABELS['spec-in-progress'];
+export const IN_ENGINEERING_LABEL = STAGE_LABELS['in-engineering'];
+export const READY_TO_PLAN_LABEL = STAGE_LABELS['ready-to-plan'];
+
 /** What `ready` deliberately leaves out, in the order the note reports it. */
 const EXCLUDED_REASONS = [
   { label: BOT_MANAGED_LABEL, note: (n) => `(${n} bot-managed item(s) not listed)` },
   { label: PROPOSAL_DRAFT_LABEL, note: (n) => `(${n} draft proposal(s) not listed)` },
+  { label: SPEC_IN_PROGRESS_LABEL, note: (n) => `(${n} spec(s) in progress not listed)` },
+  { label: IN_ENGINEERING_LABEL, note: (n) => `(${n} item(s) in engineering not listed)` },
 ];
 
 /** How many items `ready` left out, per reason. */
@@ -365,6 +372,9 @@ export function selectReadyItems(items, blockers = {}) {
     // A draft proposal is still being shaped; a ready one (status/needs-spec) is listed like any item
     // (feature 014, FR-031).
     if (names.includes(PROPOSAL_DRAFT_LABEL)) { excluded.push({ number: item.number, reason: PROPOSAL_DRAFT_LABEL }); continue; }
+    // Feature 016 (FR-016): a spec in progress is not ready to plan yet, and an item in engineering is already taken.
+    const inFlight = [SPEC_IN_PROGRESS_LABEL, IN_ENGINEERING_LABEL].find((l) => names.includes(l));
+    if (inFlight) { excluded.push({ number: item.number, reason: inFlight }); continue; }
     const labelled = names.includes('status/blocked');
     const consulted = Object.prototype.hasOwnProperty.call(blockers, item.number);
     const openBlockers = consulted
@@ -543,7 +553,7 @@ const HELP = `backlog.mjs — the agent-driven backlog on this repository's forg
     dep <n> (--blocked-by <m> | --blocks <m>) [--remove]
     setup-labels [--dry-run]
     setup-milestone <name> [--description D]
-    close-proposal <n> --spec specs/NNN-slug [--json]
+    stage <n> <spec-in-progress|in-engineering> --spec specs/NNN-slug --branch <branch> [--json]
 
   Exit codes: 0 ok · 1 unexpected · 2 usage/validation · 3 missing credential · 4 authorization · 5 transport
 
@@ -552,9 +562,9 @@ const HELP = `backlog.mjs — the agent-driven backlog on this repository's forg
     - a page caps at 50 rows (default 30); totals come from x-total-count, never from the row count
     - labels=<unknown> is SILENTLY IGNORED and returns the unfiltered set, so unknown names are
       refused locally instead of being sent
-    - closing is a state change on update. close-proposal is the one exception: it closes a
-      proposal whose spec now exists, posting a comment that links the spec FIRST, and is idempotent
-      (exit 0 "already closed" when this flow closed it; exit 2 when someone else did)
+    - closing is a state change on update. A proposal is never closed here: it moves through stage
+      labels (stage, posting a comment with a machine-readable trailer FIRST, idempotent) and closes
+      only when its feature branch merges, in CI (feature 016)
     - a blocked item cannot be closed until it is unblocked
     - issue and pull-request numbers share ONE sequence — write "item #N" when you mean a backlog item
     - Projects boards expose no API in this build: labels are the shared truth, the board is not
@@ -589,6 +599,7 @@ function parseArgs(argv) {
     else if (a === '--description') out.description = val();
     else if (a === '--repo') out.repo = val();
     else if (a === '--spec') out.spec = val();
+    else if (a === '--branch') out.branch = val();
     else if (a === '--json') out.json = true;
     else if (a === '--dry-run') out.dryRun = true;
     else if (a === '--remove') out.remove = true;
@@ -649,7 +660,7 @@ const priorityOf = (item) => labelNames(item).find((n) => PRIORITY_ORDER.include
 /** The item's single type: the one label it carries from the taxonomy's type family, or '—'. */
 export const typeOf = (item) => labelNames(item).find((n) => TYPE_LABELS.includes(n)) ?? '—';
 
-function renderTable(items) {
+function renderTable(items, extraLine = () => null) {
   if (!items.length) {
     emit('(no matching backlog items)');
     return;
@@ -660,6 +671,8 @@ function renderTable(items) {
       `#${String(i.number).padEnd(w)}  ${priorityOf(i).padEnd(12)} ${typeOf(i).padEnd(15)} ` +
         `${i.state.padEnd(6)} ${i.milestone?.title ? `[${i.milestone.title}] ` : ''}${i.title}`,
     );
+    const extra = extraLine(i);
+    if (extra) emit(`${' '.repeat(w + 3)}${extra}`);
   }
 }
 
@@ -711,11 +724,22 @@ const COMMANDS = {
     // exactly the question where a silently partial answer is worse than no answer.
     const truncated = describeTruncation(total, items.length);
     // The label is the cheap pre-filter; only the survivors cost a dependency call.
-    const preFiltered = items.filter((i) => !['status/blocked', BOT_MANAGED_LABEL, PROPOSAL_DRAFT_LABEL].some((l) => labelNames(i).includes(l)));
+    const preFiltered = items.filter((i) => !['status/blocked', BOT_MANAGED_LABEL, PROPOSAL_DRAFT_LABEL, SPEC_IN_PROGRESS_LABEL, IN_ENGINEERING_LABEL].some((l) => labelNames(i).includes(l)));
     const blockers = await blockersFor(c, preFiltered);
     const { ready, warnings, excluded } = selectReadyItems(items, blockers);
+    // Feature 016 (FR-016): a ready-to-plan item names its feature branch and spec folder, from its latest stage
+    // trailer. Only those items cost a comments call.
+    const records = {};
+    for (const i of ready.filter((x) => labelNames(x).includes(READY_TO_PLAN_LABEL))) {
+      const { latest, warnings: bad } = readTrailers(await allComments(c, i.number));
+      records[i.number] = latest;
+      bad.forEach((w) => warnings.push(`⚠ item #${i.number}: ${w}`));
+    }
+    const where = (i) => (Object.hasOwn(records, i.number)
+      ? { branch: records[i.number]?.branch ?? null, spec: records[i.number]?.spec ?? null }
+      : null);
     if (opts.json) {
-      return void emit(JSON.stringify({ truncated: truncated ?? null, ready: ready.map((i) => distillItem(i)), excluded, excludedCount: excludedCounts(excluded) }, null, 2));
+      return void emit(JSON.stringify({ truncated: truncated ?? null, ready: ready.map((i) => ({ ...distillItem(i), ...(where(i) ?? {}) })), excluded, excludedCount: excludedCounts(excluded) }, null, 2));
     }
     if (truncated) {
       emit(`${truncated}  ⚠ this answer is drawn from those rows only — the top priority may be outside it.`);
@@ -723,7 +747,11 @@ const COMMANDS = {
     }
     warnings.forEach(emit);
     if (warnings.length) emit('');
-    renderTable(ready);
+    renderTable(ready, (i) => {
+      const w = where(i);
+      if (!w) return null;
+      return w.branch ? `branch: ${w.branch}  spec: ${w.spec}` : 'branch: (unknown: no stage record on the issue)';
+    });
     const note = excludedNote(excluded);
     if (note) emit(note);
   },
@@ -905,41 +933,55 @@ const COMMANDS = {
   },
 
   /**
-   * Close a proposal once its spec exists (feature 014, FR-033; contracts/close-proposal-cli.md). The
-   * comment is posted BEFORE the close, so a close that fails after the comment is completed by a
-   * re-run, which sees the comment. Labels are never touched (FR-008).
+   * Move a proposal to `spec-in-progress` (the after_specify hook) or `in-engineering` (the after_plan hook) (feature
+   * 016; contracts/backlog-stage-cli.md). Replaces feature 014's close-proposal: a proposal now closes only at merged,
+   * in CI. The comment, with its stage trailer, is posted BEFORE the label swap; only the stage label changes, and the
+   * issue is never closed or edited here. Re-run at the same stage on the same branch, it is a no-op that says so.
    */
-  async 'close-proposal'(opts) {
+  async stage(opts) {
     const n = itemNumber(opts._[0]);
+    const target = opts._[1];
+    if (!['spec-in-progress', 'in-engineering'].includes(target)) {
+      throw new BacklogError(`stage moves a proposal to spec-in-progress or in-engineering only (got ${JSON.stringify(target ?? '')}); nothing was written`, EXIT.usage);
+    }
     const spec = normalizeSpecDir(opts.spec);
+    if (!opts.branch) throw new BacklogError('stage needs --branch <feature branch>; nothing was written', EXIT.usage);
+    let trailer;
+    try { trailer = renderTrailer({ stage: target, branch: opts.branch, spec: `${spec}/` }); } catch (e) {
+      if (e instanceof TrailerError) throw new BacklogError(`${e.message}; nothing was written`, EXIT.usage);
+      throw e;
+    }
     if (!existsSync(join(spec, 'spec.md'))) {
-      throw new BacklogError(`${spec}/spec.md does not exist in this working tree — run close-proposal from the feature branch after /speckit-specify; nothing was written`, EXIT.usage);
+      throw new BacklogError(`${spec}/spec.md does not exist in this working tree; run stage from the feature branch; nothing was written`, EXIT.usage);
     }
     const c = connect({ write: true, intendedRepo: opts.repo });
     const item = (await c.call(`${c.R}/issues/${n}`)).data;
     const names = labelNames(item);
     if (item.pull_request) throw new BacklogError(`#${n} is a pull request, not a proposal; nothing was written`, EXIT.usage);
-    if (!names.includes(PROPOSAL_LABEL)) throw new BacklogError(`item #${n} is not labelled ${PROPOSAL_LABEL}; close-proposal closes proposals only; nothing was written`, EXIT.usage);
+    if (!names.includes(PROPOSAL_LABEL)) throw new BacklogError(`item #${n} is not labelled ${PROPOSAL_LABEL}; stage moves proposals only; nothing was written`, EXIT.usage);
     if (names.includes(BOT_MANAGED_LABEL)) throw new BacklogError(`item #${n} carries ${BOT_MANAGED_LABEL}; it belongs to the dependency bot; nothing was written`, EXIT.usage);
+    if (item.state !== 'open') throw new BacklogError(`proposal #${n} is closed; stage moves open proposals only; nothing was written`, EXIT.usage);
 
-    const marker = `${spec}/`;
-    const comments = await allComments(c, n);
-    const commented = comments.some((cm) => String(cm.body ?? '').includes(marker));
-    const done = (status) => (opts.json ? emit(JSON.stringify({ number: n, spec: marker, status })) : emit(`proposal #${n} ${status} (superseded by ${marker})`));
-    if (item.state === 'closed') {
-      if (commented) return void done('already closed');
-      throw new BacklogError(`proposal #${n} was closed without this flow's comment (someone else closed it); reopen it in the web UI first if it should be superseded by ${marker}`, EXIT.usage);
-    }
-    if (!commented) {
-      const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).trim();
-      await c.call(`${c.R}/issues/${n}/comments`, { method: 'POST', body: { body: `Superseded by spec \`${marker}\` (branch \`${branch}\`).` } });
-    }
+    const done = (status) => (opts.json ? emit(JSON.stringify({ number: n, stage: target, branch: opts.branch, spec: `${spec}/`, status })) : emit(`proposal #${n} ${status} (branch ${opts.branch}, ${spec}/)`));
+    let from;
     try {
-      await c.call(`${c.R}/issues/${n}`, { method: 'PATCH', body: { state: 'closed' } });
+      from = stageFromLabels(names);
+      const { latest } = readTrailers(await allComments(c, n));
+      if (from === target && latest?.stage === target && latest.branch === opts.branch) return void done(`already ${target}`);
+      checkTransition(from, target, 'backlog.mjs');
     } catch (e) {
-      throw classifyUpdateFailure(e, n);
+      if (e instanceof StageError) throw new BacklogError(`${e.message}; nothing was written`, EXIT.usage);
+      throw e;
     }
-    done('closed');
+    const text = target === 'spec-in-progress'
+      ? `Spec started on branch \`${opts.branch}\` in \`${spec}/\` (Claude Code).`
+      : `Planning started on branch \`${opts.branch}\`. The spec is locked from Claude Desktop.`;
+    await c.call(`${c.R}/issues/${n}/comments`, { method: 'POST', body: { body: `${text}\n\n${trailer}` } });
+    const labels = await fetchLabels(c);
+    const idOf = (name) => resolveNames([name], labels, 'label')[0].id;
+    await c.call(`${c.R}/issues/${n}/labels/${idOf(STAGE_LABELS[from])}`, { method: 'DELETE' });
+    await c.call(`${c.R}/issues/${n}/labels`, { method: 'POST', body: { labels: [idOf(STAGE_LABELS[target])] } });
+    done(`moved to ${target}`);
   },
 
   async 'validate-form'() {
@@ -956,7 +998,7 @@ const COMMANDS = {
 export function normalizeSpecDir(raw) {
   const spec = String(raw ?? '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
   if (!/^specs\/\d{3}-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(spec)) {
-    throw new BacklogError(`close-proposal needs --spec specs/NNN-slug (got ${raw === undefined ? 'nothing' : JSON.stringify(String(raw))})`, EXIT.usage);
+    throw new BacklogError(`stage needs --spec specs/NNN-slug (got ${raw === undefined ? 'nothing' : JSON.stringify(String(raw))})`, EXIT.usage);
   }
   return spec;
 }

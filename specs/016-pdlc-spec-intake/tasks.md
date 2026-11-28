@@ -428,7 +428,7 @@ the spec.
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T036 [P] [US3] Test: `backlog.mjs ready` and `stage` ([contracts/stages.md](contracts/stages.md) "Ready
+- [X] T036 [P] [US3] Test: `backlog.mjs ready` and `stage` ([contracts/stages.md](contracts/stages.md) "Ready
   listing"; [contracts/backlog-stage-cli.md](contracts/backlog-stage-cli.md)). In `scripts/__tests__/backlog.test.mjs`,
   with the existing fake forge:
   - `ready` lists `ready-to-plan` items with `branch:` and `spec:` from the latest trailer;
@@ -439,7 +439,7 @@ the spec.
   - comment before the label swap.
   - **Scenarios covered**: US3-AC1, US3-AC3, US4-AC4, SC-003
   - **Verify RED**: `node --test scripts/__tests__/backlog.test.mjs` → expected: failing — `unknown command stage`
-- [ ] T037 [P] [US3] Test: the hooks and the gate.
+- [X] T037 [P] [US3] Test: the hooks and the gate.
   - In `scripts/__tests__/extensions-yml.test.mjs`: `after_specify` and `after_plan` each carry the
     `belay` `speckit.belay.spec-stage` mandatory entry, and `speckit.belay.close-proposal` is gone.
   - In `scripts/__tests__/check-speckit-overrides.test.mjs`: the gate reports both as registered
@@ -458,17 +458,23 @@ the spec.
 
 ### Implementation for User Story 3
 
-- [ ] T039 [US3] Implement the `stage` verb and the `ready` changes in `scripts/backlog.mjs`, using
+- [X] T039 [US3] Implement the `stage` verb and the `ready` changes in `scripts/backlog.mjs`, using
   `scripts/lib/stage-trailer.mjs`. `stage` never closes an issue (data-model.md `Proposal issue.state`: closed only at
   merged). Remove the `close-proposal` verb and its `--help` text (prerequisite: T036 RED)
   - **Verify GREEN**: `node --test scripts/__tests__/backlog.test.mjs` → expected: 0 failures
-- [ ] T040 [US3] Replace `.claude/skills/speckit-belay-close-proposal/` with
+- [X] T040 [US3] Replace `.claude/skills/speckit-belay-close-proposal/` with
   `.claude/skills/speckit-belay-spec-stage/SKILL.md`, per contracts/backlog-stage-cli.md "Hook". The `plan.md`
   presence picks the stage. Update `.specify/extensions.yml` (both hook entries) and
   `scripts/check-speckit-overrides.mjs` (`EXTENSION_HOOKS`, `PROJECT_OWNED`) (prerequisite: T037 RED)
   - **Verify GREEN**: same commands as T037 → expected: 0 failures; then `node scripts/check-speckit-overrides.mjs`
     exits 0
-  - **Also (from T027)**: remove the `close-proposal` → `spec-stage` rewrite in
+  - **Done 2026-11-28**: the transition table also lives in `scripts/lib/stage-trailer.mjs` (production code cannot read
+    the test fixture), cross-checked against the same `transitions.json` as the server's. 014's `close-proposal` tests
+    were removed with the verb; their credential, authorisation, transport, same-repository and `--help` guards were
+    ported to `stage`. T036's first RED was `Unknown flag: --branch` (the parser rejects it before the command). The gate
+    needed `docs/runbooks/spec-kit.md` rows 5a and 7, the PROJECT_OWNED sentence and the reinstall steps updated now
+    (part of T074), and `openwiki/runbooks/spec-kit.md` was refreshed with them
+  - **Also (from T027), done**: removed the `close-proposal` → `spec-stage` rewrite in
     `mcp-servers/pdlc/tests/integration/spec-lifecycle.integration.test.mjs`'s seed, which BELAY's own `extensions.yml` then
     no longer needs
 - [ ] T041 [US3] Enforce the lock in `mcp-servers/pdlc/src/tools.mjs`: read the stage before every spec write
@@ -828,7 +834,7 @@ FR-036.
   - the file table (lines 170 to 171);
   - the hand-off lines (193, 204), with T070.
   - **Done when**: every hit in T002 for this file is resolved
-- [ ] T074 [P] Update `docs/runbooks/spec-kit.md`: rows 5a and 7 (the hooks and the skill), line 79, the reinstall
+- [ ] T074 [P] (rows 5a, 7, line 79 and the reinstall steps done with T040; the count tasks remain) Update `docs/runbooks/spec-kit.md`: rows 5a and 7 (the hooks and the skill), line 79, the reinstall
   steps (lines 158 to 160), and the tasks-template override's two new required count tasks (FR-040)
   - **Done when**: `node scripts/check-speckit-overrides.mjs` passes and the runbook rows match its inventory
 - [ ] T075 [P] Update `mcp-servers/pdlc/README.md` (lines 6 and 17)

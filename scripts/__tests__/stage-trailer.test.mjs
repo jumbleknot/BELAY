@@ -54,3 +54,29 @@ test('a warning names the issue comment position and never echoes more than the 
   assert.match(got.warnings[0], /comment 1/);
   assert.ok(got.warnings[0].length < 300, got.warnings[0]);
 });
+
+// ── The stage labels and the transition table (contracts/stages.md), backlog.mjs's copy. The same transitions.json the
+//    server's stages tests read, so the two enforcing copies cannot drift (FR-023). ────────────────────────────────────
+import { STAGE_LABELS, stageFromLabels, checkTransition, StageError } from '../lib/stage-trailer.mjs';
+
+const transitions = fixture('transitions.json');
+const allowed016 = new Set(transitions.allowed.flatMap((r) => r.by.map((by) => `${r.from}>${r.to}>${by}`)));
+
+test('the stage labels are contracts/stages.md\'s, in lifecycle order', () => {
+  assert.deepEqual(Object.keys(STAGE_LABELS), transitions.stages);
+  assert.equal(STAGE_LABELS['ready-to-plan'], 'status/ready-to-plan');
+});
+
+test('stageFromLabels reads exactly one stage label; none or two is stage_ambiguous', () => {
+  assert.equal(stageFromLabels(['type/proposal', 'status/needs-spec']), 'ready');
+  assert.throws(() => stageFromLabels(['type/proposal']), (e) => e instanceof StageError && e.code === 'stage_ambiguous');
+  assert.throws(() => stageFromLabels(['status/needs-spec', 'status/ready-to-plan']), (e) => e instanceof StageError && e.code === 'stage_ambiguous');
+});
+
+test('cross-check: every allowed transition passes and every other (from, to, by) is stage_transition_refused', () => {
+  for (const from of transitions.stages) for (const to of transitions.stages) for (const by of transitions.callers) {
+    const key = `${from}>${to}>${by}`;
+    if (allowed016.has(key)) assert.doesNotThrow(() => checkTransition(from, to, by), key);
+    else assert.throws(() => checkTransition(from, to, by), (e) => e instanceof StageError && e.code === 'stage_transition_refused' && e.message.includes(from) && e.message.includes(to), key);
+  }
+});

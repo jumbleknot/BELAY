@@ -781,7 +781,6 @@ test('bot-managed: an ordinary item is still listed, and nothing is excluded', (
 // The labels come from the pdlc server's shared CONTRACT file (never its code: FR-035), `ready` hides
 // draft proposals, and `close-proposal` is the one close path for a proposal (contracts/close-proposal-cli.md).
 import * as backlog014 from '../backlog.mjs';
-import { execFileSync as execFileSync014 } from 'node:child_process';
 import { parse as parseYaml014 } from 'yaml';
 
 const REPO_ROOT_014 = join(HERE, '..', '..');
@@ -906,125 +905,6 @@ test('ready.*draft: the --json output carries the excluded count', async () => {
   assert.deepEqual(json.ready.map((i) => i.number), [10]);
 });
 
-// close-proposal: comment, then close; idempotent; refuses anything that is not an open proposal.
-const SPEC_DIR = 'specs/014-pdlc-proposal-intake';
-const BRANCH = execFileSync014('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { encoding: 'utf8' }).trim();
-const COMMENT = `Superseded by spec \`${SPEC_DIR}/\` (branch \`${BRANCH}\`).`;
-
-function proposalForge(issue, { comments = [], failClose = false, status } = {}) {
-  const state = { issue: { ...issue }, comments: [...comments] };
-  const route = (method, path, u, body) => {
-    if (status) return status;
-    if (method === 'GET' && /\/issues\/\d+$/.test(path)) return { data: state.issue };
-    if (method === 'GET' && /\/issues\/\d+\/comments$/.test(path)) return { data: state.comments };
-    if (method === 'POST' && /\/issues\/\d+\/comments$/.test(path)) { state.comments.push({ body: body.body }); return { status: 201, data: { id: 1 } }; }
-    if (method === 'PATCH' && /\/issues\/\d+$/.test(path)) {
-      if (failClose) return { status: 500, data: { message: 'boom' } };
-      state.issue.state = body.state; return { status: 201, data: state.issue };
-    }
-    return { status: 404, data: {} };
-  };
-  return { state, route };
-}
-
-const openProposal = (labels = ['type/proposal', 'status/needs-spec', 'priority/p2']) => issue014(42, labels, { title: 'Proposal: Import' });
-
-test('close-proposal: an open proposal whose spec.md exists gets one comment, then a close, and exits 0; no label request', async () => {
-  const f = proposalForge(openProposal());
-  const r = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], f.route);
-  assert.equal(r.code, 0, r.out);
-  assert.deepEqual(r.writes.map((w) => `${w.method} ${w.path.replace(/^\/repos\/[^/]+\/[^/]+/, '')}`), ['POST /issues/42/comments', 'PATCH /issues/42']);
-  assert.deepEqual(r.writes[1].body, { state: 'closed' });
-  assert.ok(r.calls.every((c) => !c.path.includes('/labels')), 'labels are left unchanged (FR-008)');
-});
-
-test('close-proposal: the comment text is exact, with the branch read from git', async () => {
-  const f = proposalForge(openProposal());
-  const r = await runCmd014(['close-proposal', '42', '--spec', `${SPEC_DIR}/`], f.route);
-  assert.equal(r.writes[0].body.body, COMMENT);
-});
-
-test('close-proposal: a re-run after a failed close sees the comment and completes the close', async () => {
-  const f = proposalForge(openProposal(), { failClose: true });
-  const first = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], f.route);
-  assert.notEqual(first.code, 0);
-  assert.equal(f.state.comments.length, 1);
-  const g = proposalForge(f.state.issue, { comments: f.state.comments });
-  const second = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], g.route);
-  assert.equal(second.code, 0, second.out);
-  assert.deepEqual(second.writes.map((w) => w.method), ['PATCH']);
-  assert.equal(g.state.comments.length, 1, 'no second comment');
-});
-
-test('close-proposal: already closed with the comment exits 0 with "already closed" and writes nothing', async () => {
-  const f = proposalForge({ ...openProposal(), state: 'closed' }, { comments: [{ body: COMMENT }] });
-  const r = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], f.route);
-  assert.equal(r.code, 0);
-  assert.match(r.out, /already closed/);
-  assert.deepEqual(r.writes, []);
-});
-
-test('close-proposal: closed WITHOUT the comment exits 2 (someone else closed it), writing nothing', async () => {
-  const f = proposalForge({ ...openProposal(), state: 'closed' });
-  const r = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], f.route);
-  assert.equal(r.code, 2);
-  assert.doesNotMatch(r.out, /Unknown command/);
-  assert.match(r.out, /closed without/i);
-  assert.deepEqual(r.writes, []);
-});
-
-test('close-proposal: a missing spec.md, no type/proposal, or status/bot-managed exits 2 with nothing written', async () => {
-  const missing = await runCmd014(['close-proposal', '42', '--spec', 'specs/999-not-a-feature'], proposalForge(openProposal()).route);
-  assert.equal(missing.code, 2);
-  assert.match(missing.out, /spec\.md/);
-  assert.deepEqual(missing.calls, [], 'refused before any forge request');
-  const notProposal = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], proposalForge(openProposal(['type/feature'])).route);
-  assert.equal(notProposal.code, 2);
-  assert.deepEqual(notProposal.writes, []);
-  const bot = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], proposalForge(openProposal(['type/proposal', 'status/bot-managed'])).route);
-  assert.equal(bot.code, 2);
-  assert.deepEqual(bot.writes, []);
-  const pr = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], proposalForge({ ...openProposal(), pull_request: {} }).route);
-  assert.equal(pr.code, 2);
-});
-
-test('close-proposal: a malformed --spec, or none, or no item number exits 2 before any request', async () => {
-  for (const argv of [['close-proposal', '42'], ['close-proposal', '--spec', SPEC_DIR], ['close-proposal', '42', '--spec', '../etc'], ['close-proposal', '42', '--spec', 'docs/proposals']]) {
-    const r = await runCmd014(argv, proposalForge(openProposal()).route);
-    assert.equal(r.code, 2, argv.join(' '));
-    assert.doesNotMatch(r.out, /Unknown command/, argv.join(' '));
-    assert.deepEqual(r.calls, [], argv.join(' '));
-  }
-});
-
-test('close-proposal: credential, authorisation and transport failures exit 3, 4 and 5', async () => {
-  const realIssue = process.env.FORGE_ISSUE_TOKEN;
-  delete process.env.FORGE_ISSUE_TOKEN;
-  const { main: m } = await import('../backlog.mjs');
-  const realLog = console.log; console.log = () => {};
-  const noCred = await m(['close-proposal', '42', '--spec', SPEC_DIR]).catch((e) => e.code);
-  console.log = realLog;
-  if (realIssue !== undefined) process.env.FORGE_ISSUE_TOKEN = realIssue;
-  assert.equal(noCred, 3);
-  assert.equal((await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], proposalForge(openProposal(), { status: { status: 403, data: {} } }).route)).code, 4);
-  assert.equal((await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR], proposalForge(openProposal(), { status: { transport: true } }).route)).code, 5);
-});
-
-test('close-proposal: the same-repository write guard refuses --repo naming another repository', async () => {
-  const r = await runCmd014(['close-proposal', '42', '--spec', SPEC_DIR, '--repo', 'someone/elsewhere'], proposalForge(openProposal()).route);
-  assert.equal(r.code, 2);
-  assert.doesNotMatch(r.out, /Unknown command/);
-  assert.match(r.out, /someone\/elsewhere|origin/);
-  assert.deepEqual(r.writes, []);
-});
-
-test('close-proposal: --help documents it as the named exception to "no close verb"', async () => {
-  const r = await runCmd014(['--help'], () => ({}));
-  assert.match(r.out, /close-proposal <n> --spec specs\/NNN-slug/);
-  assert.match(r.out, /the one exception/i);
-  assert.doesNotMatch(r.out, /there is no close verb\b(?! except)/);
-});
-
 // form copies: BELAY's two forms both validate, and the proposal form files proposals as drafts.
 const formTemplate014 = (file) => {
   const y = parseYaml014(readFileSync(join(REPO_ROOT_014, '.forgejo', 'issue_template', file), 'utf8'));
@@ -1066,4 +946,176 @@ test('stage labels: TAXONOMY holds the four stage labels with their contract col
     assert.ok(mine, `missing label ${want.name}`);
     assert.deepEqual({ name: mine.name, color: mine.color, description: mine.description }, want, want.name);
   }
+});
+
+// ── Feature 016: `stage` and the stage-aware `ready` (contracts/stages.md "Ready listing";
+//    contracts/backlog-stage-cli.md). `close-proposal` is gone: a proposal now closes only at merged, in CI. ─────
+
+const names016 = (i) => i.labels.map((l) => l.name);
+const STAGE_LABEL_IDS = { 'status/needs-spec': 11, 'status/spec-in-progress': 12, 'status/ready-to-plan': 13, 'status/in-engineering': 14,
+  'status/proposal-draft': 15, 'type/proposal': 16, 'priority/p2': 17, 'status/merged': 18, 'status/bot-managed': 19 };
+const trailer016 = (stage, branch) => `Text.\n\n<!-- pdlc-stage: stage=${stage} branch=${branch} spec=specs/${branch}/ -->`;
+const SPEC_016 = 'specs/014-pdlc-proposal-intake'; // a spec.md that exists in this working tree
+const BRANCH_016 = '014-pdlc-proposal-intake';
+
+function stageForge(issue, { comments = [] } = {}) {
+  const state = { issue: structuredClone(issue), comments: comments.map((body) => ({ body })), order: [] };
+  const route = (method, path, u, body) => {
+    if (method === 'GET' && /\/labels$/.test(path)) return { data: Object.entries(STAGE_LABEL_IDS).map(([name, id]) => ({ id, name })) };
+    if (method === 'GET' && /\/issues\/\d+$/.test(path)) return { data: state.issue };
+    if (method === 'GET' && /\/issues\/\d+\/comments$/.test(path)) return { data: state.comments };
+    if (method === 'POST' && /\/issues\/\d+\/comments$/.test(path)) { state.order.push('comment'); state.comments.push({ body: body.body }); return { status: 201, data: { id: 1 } }; }
+    if (method === 'DELETE' && /\/issues\/\d+\/labels\/\d+$/.test(path)) {
+      state.order.push('remove'); const id = Number(path.split('/').pop());
+      state.issue.labels = state.issue.labels.filter((l) => STAGE_LABEL_IDS[l.name] !== id); return { status: 204, data: null };
+    }
+    if (method === 'POST' && /\/issues\/\d+\/labels$/.test(path)) {
+      state.order.push('add');
+      for (const id of body.labels) state.issue.labels.push({ name: Object.keys(STAGE_LABEL_IDS).find((n) => STAGE_LABEL_IDS[n] === id) });
+      return { data: state.issue.labels };
+    }
+    if (method === 'PATCH') { state.order.push('PATCH'); return { status: 500, data: {} }; }
+    return { status: 404, data: {} };
+  };
+  return { state, route };
+}
+const proposal016 = (stageLabel, extra = {}) => issue014(42, ['type/proposal', stageLabel, 'priority/p2'], { title: 'Proposal: Import', ...extra });
+
+test('016 stage: ready → spec-in-progress posts the comment with its trailer FIRST, then swaps only the stage label', async () => {
+  const f = stageForge(proposal016('status/needs-spec'));
+  const r = await runCmd014(['stage', '42', 'spec-in-progress', '--spec', SPEC_016, '--branch', BRANCH_016], f.route);
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(f.state.order, ['comment', 'remove', 'add']);
+  assert.equal(f.state.comments.at(-1).body, `Spec started on branch \`${BRANCH_016}\` in \`${SPEC_016}/\` (Claude Code).\n\n<!-- pdlc-stage: stage=spec-in-progress branch=${BRANCH_016} spec=${SPEC_016}/ -->`);
+  assert.deepEqual(names016(f.state.issue).sort(), ['priority/p2', 'status/spec-in-progress', 'type/proposal']);
+  assert.match(r.out, /spec-in-progress/);
+});
+
+test('016 stage: spec-in-progress or ready-to-plan → in-engineering, with the planning comment; the issue is never closed', async () => {
+  for (const from of ['status/spec-in-progress', 'status/ready-to-plan']) {
+    const f = stageForge(proposal016(from), { comments: [trailer016(from.slice(7), BRANCH_016)] });
+    const r = await runCmd014(['stage', '42', 'in-engineering', '--spec', SPEC_016, '--branch', BRANCH_016], f.route);
+    assert.equal(r.code, 0, r.out);
+    assert.equal(f.state.comments.at(-1).body, `Planning started on branch \`${BRANCH_016}\`. The spec is locked from Claude Desktop.\n\n<!-- pdlc-stage: stage=in-engineering branch=${BRANCH_016} spec=${SPEC_016}/ -->`);
+    assert.ok(names016(f.state.issue).includes('status/in-engineering'));
+    assert.ok(!f.state.order.includes('PATCH'), 'stage never closes or edits the issue');
+  }
+});
+
+test('016 stage: idempotent: already at that stage on that branch prints "already <stage>", exits 0 and writes nothing', async () => {
+  const f = stageForge(proposal016('status/in-engineering'), { comments: [trailer016('in-engineering', BRANCH_016)] });
+  const r = await runCmd014(['stage', '42', 'in-engineering', '--spec', SPEC_016, '--branch', BRANCH_016], f.route);
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /already in-engineering/);
+  assert.deepEqual(r.writes, []);
+});
+
+test('016 stage refusals exit 2 and write nothing: not a proposal, bot-managed, closed, missing spec.md, a move the table does not allow, an unknown stage', async () => {
+  const cases = [
+    [issue014(42, ['type/bug', 'status/needs-spec']), ['stage', '42', 'spec-in-progress', '--spec', SPEC_016, '--branch', BRANCH_016]],
+    [proposal016('status/needs-spec', { labels: [{ name: 'type/proposal' }, { name: 'status/needs-spec' }, { name: 'status/bot-managed' }] }), ['stage', '42', 'spec-in-progress', '--spec', SPEC_016, '--branch', BRANCH_016]],
+    [proposal016('status/needs-spec', { state: 'closed' }), ['stage', '42', 'spec-in-progress', '--spec', SPEC_016, '--branch', BRANCH_016]],
+    [proposal016('status/needs-spec'), ['stage', '42', 'spec-in-progress', '--spec', 'specs/999-not-here', '--branch', '999-not-here']],
+    [proposal016('status/proposal-draft'), ['stage', '42', 'spec-in-progress', '--spec', SPEC_016, '--branch', BRANCH_016]],
+    [proposal016('status/needs-spec'), ['stage', '42', 'in-engineering', '--spec', SPEC_016, '--branch', BRANCH_016]],
+    [proposal016('status/in-engineering'), ['stage', '42', 'spec-in-progress', '--spec', SPEC_016, '--branch', BRANCH_016]],
+    [proposal016('status/needs-spec'), ['stage', '42', 'merged', '--spec', SPEC_016, '--branch', BRANCH_016]],
+    [proposal016('status/needs-spec'), ['stage', '42', 'spec-in-progress', '--spec', SPEC_016, '--branch', 'bad branch']],
+    [proposal016('status/needs-spec'), ['stage', '42', 'spec-in-progress', '--spec', SPEC_016]],
+  ];
+  for (const [issue, argv] of cases) {
+    const f = stageForge(issue);
+    const r = await runCmd014(argv, f.route);
+    assert.equal(r.code, 2, `${argv.join(' ')}: ${r.out}`);
+    assert.deepEqual(r.writes, [], argv.join(' '));
+  }
+});
+
+test('016 stage: the transition refusal names stage_transition_refused and both stages', async () => {
+  const f = stageForge(proposal016('status/needs-spec'));
+  const r = await runCmd014(['stage', '42', 'in-engineering', '--spec', SPEC_016, '--branch', BRANCH_016], f.route);
+  assert.match(r.out, /stage_transition_refused/);
+  assert.match(r.out, /ready/);
+  assert.match(r.out, /in-engineering/);
+});
+
+test('016: close-proposal is gone (a proposal closes only at merged, in CI)', async () => {
+  const r = await runCmd014(['close-proposal', '42', '--spec', SPEC_016], () => ({ data: {} }));
+  assert.equal(r.code, 2);
+  assert.match(r.out, /Unknown command: close-proposal/);
+});
+
+// `ready` (FR-016, SC-003)
+async function runReady016(items, commentsByNumber = {}, argv = []) {
+  return runCmd014(['ready', ...argv], (method, path) => {
+    if (/\/issues$/.test(path)) return { data: items, headers: { 'x-total-count': String(items.length) } };
+    const m = /\/issues\/(\d+)\/comments$/.exec(path);
+    if (m) return { data: (commentsByNumber[m[1]] ?? []).map((body) => ({ body })) };
+    if (/\/dependencies$/.test(path)) return { data: [] };
+    return { data: [] };
+  });
+}
+
+test('016 ready lists ready-to-plan items with branch: and spec: from the latest trailer, and hides the two in-flight stages, counting them', async () => {
+  const items = [
+    issue014(1, ['type/proposal', 'status/ready-to-plan', 'priority/p1']),
+    issue014(2, ['type/proposal', 'status/spec-in-progress', 'priority/p1']),
+    issue014(3, ['type/proposal', 'status/in-engineering', 'priority/p1']),
+    issue014(4, ['type/proposal', 'status/in-engineering', 'priority/p2']),
+    issue014(5, ['type/proposal', 'status/needs-spec', 'priority/p2']),
+    issue014(6, ['type/proposal', 'status/proposal-draft', 'priority/p2']),
+    issue014(7, ['type/feature', 'priority/p3']),
+  ];
+  const r = await runReady016(items, { 1: [trailer016('spec-in-progress', '016-old'), trailer016('ready-to-plan', '017-ready-one')] });
+  assert.equal(r.code, 0, r.out);
+  for (const n of [1, 5, 7]) assert.match(r.out, new RegExp(`#${n} `), `#${n} listed`);
+  for (const n of [2, 3, 4, 6]) assert.doesNotMatch(r.out, new RegExp(`#${n} `), `#${n} hidden`);
+  assert.match(r.out, /branch: 017-ready-one\s+spec: specs\/017-ready-one\//);
+  assert.match(r.out, /\(1 spec\(s\) in progress not listed\)/);
+  assert.match(r.out, /\(2 item\(s\) in engineering not listed\)/);
+  assert.match(r.out, /\(1 draft proposal\(s\) not listed\)/);
+});
+
+test('016 ready --json carries branch and spec for a ready-to-plan item, and the hidden counts', async () => {
+  const r = await runReady016([issue014(1, ['type/proposal', 'status/ready-to-plan', 'priority/p1']), issue014(2, ['type/proposal', 'status/spec-in-progress'])],
+    { 1: [trailer016('ready-to-plan', '017-ready-one')] }, ['--json']);
+  const json = JSON.parse(r.out);
+  assert.deepEqual(json.ready.map((i) => [i.number, i.branch, i.spec]), [[1, '017-ready-one', 'specs/017-ready-one/']]);
+  assert.deepEqual(json.excludedCount, { 'status/spec-in-progress': 1 });
+});
+
+test('016 ready: a ready-to-plan item with no trailer is still listed, saying the branch is unknown rather than guessing', async () => {
+  const r = await runReady016([issue014(1, ['type/proposal', 'status/ready-to-plan', 'priority/p1'])], { 1: ['no trailer here'] });
+  assert.match(r.out, /#1 /);
+  assert.match(r.out, /branch: \(unknown: no stage record on the issue\)/);
+});
+
+// Ported from 014's close-proposal tests: the write verb's credential, authorisation, transport and same-repository
+// guards, now on `stage`, the verb that replaces it.
+test('016 stage: credential, authorisation and transport failures exit 3, 4 and 5', async () => {
+  const realIssue = process.env.FORGE_ISSUE_TOKEN;
+  delete process.env.FORGE_ISSUE_TOKEN;
+  const realLog = console.log; console.log = () => {};
+  const noCred = await backlogMain(['stage', '42', 'spec-in-progress', '--spec', SPEC_016, '--branch', BRANCH_016]).catch((e) => e.code);
+  console.log = realLog;
+  if (realIssue !== undefined) process.env.FORGE_ISSUE_TOKEN = realIssue;
+  assert.equal(noCred, 3);
+  const argv = ['stage', '42', 'spec-in-progress', '--spec', SPEC_016, '--branch', BRANCH_016];
+  assert.equal((await runCmd014(argv, () => ({ status: 403, data: {} }))).code, 4);
+  assert.equal((await runCmd014(argv, () => ({ transport: true }))).code, 5);
+});
+
+test('016 stage: the same-repository write guard refuses --repo naming another repository', async () => {
+  const f = stageForge(proposal016('status/needs-spec'));
+  const r = await runCmd014(['stage', '42', 'spec-in-progress', '--spec', SPEC_016, '--branch', BRANCH_016, '--repo', 'someone/elsewhere'], f.route);
+  assert.equal(r.code, 2);
+  assert.match(r.out, /someone\/elsewhere|origin/);
+  assert.deepEqual(r.writes, []);
+});
+
+test('016 --help documents stage, and that a proposal closes only when its feature branch merges', async () => {
+  const r = await runCmd014(['--help'], () => ({}));
+  assert.match(r.out, /stage <n> <spec-in-progress\|in-engineering> --spec specs\/NNN-slug --branch <branch>/);
+  assert.match(r.out, /closes\s+only when its feature branch merges/);
+  assert.doesNotMatch(r.out, /close-proposal/);
 });

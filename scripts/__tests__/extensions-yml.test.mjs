@@ -94,12 +94,20 @@ test('empty hooks', () => {
   assert.deepEqual(parseExtensionsYml('installed: []\nhooks: {}\n'), { installed: [], hooks: {} });
 });
 
-// Feature 014: the real file carries the hand-added close-proposal hook, mandatory.
+// Feature 016 (replacing 014's close-proposal hook): the real file carries the hand-added spec-stage hook, mandatory,
+// on both after_specify (→ spec in progress) and after_plan (→ in engineering). contracts/backlog-stage-cli.md "Hook".
 import { readFileSync as readFileSync014 } from 'node:fs';
-test('close-proposal: the real .specify/extensions.yml has after_specify → belay speckit.belay.close-proposal, optional false', () => {
-  const real = parseExtensionsYml(readFileSync014(new URL('../../.specify/extensions.yml', import.meta.url), 'utf8'));
-  const h = (real.hooks.after_specify ?? []).find((x) => x.extension === 'belay' && x.command === 'speckit.belay.close-proposal');
-  assert.ok(h, 'the close-proposal hook is missing');
-  assert.equal(h.optional, false);
-  assert.equal(h.enabled, true);
+const real016 = () => parseExtensionsYml(readFileSync014(new URL('../../.specify/extensions.yml', import.meta.url), 'utf8'));
+for (const event of ['after_specify', 'after_plan']) {
+  test(`spec-stage: the real .specify/extensions.yml has ${event} → belay speckit.belay.spec-stage, optional false`, () => {
+    const h = (real016().hooks[event] ?? []).find((x) => x.extension === 'belay' && x.command === 'speckit.belay.spec-stage');
+    assert.ok(h, `expected speckit.belay.spec-stage under ${event}`);
+    assert.equal(h.optional, false);
+    assert.equal(h.enabled, true);
+  });
+}
+test('spec-stage: speckit.belay.close-proposal is gone from every hook point', () => {
+  for (const [event, hooks] of Object.entries(real016().hooks)) {
+    assert.ok(!hooks.some((h) => h.command === 'speckit.belay.close-proposal'), `close-proposal still under ${event}`);
+  }
 });
