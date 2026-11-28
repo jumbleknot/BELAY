@@ -17,7 +17,7 @@
 #
 # Guarded by scripts/__tests__/toolchain-dockerfile.guard.test.mjs.
 
-FROM node:26-bookworm@sha256:b7087bc4d973034b30854b378ba107f9fab622b47514cb7e2592e41b8bab8d49
+FROM node:26-bookworm@sha256:893ea48106e988a5f91e69629d6472600daa9d0494adf7db87eb0b886ce82255
 
 # --- apt base -----------------------------------------------------------------------------------
 # build-essential + pkg-config + libssl-dev let the personal layer's `cargo install` of RTK compile
@@ -40,7 +40,8 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
 # with a FIXABLE Critical. When the pinned upstream base carries one and no newer base digest exists,
 # the fixed package is upgraded here. DELETE this layer once a re-pin of the FROM line above carries the
 # fix (security/images/allowlist.yaml's matching entry then goes UNMATCHED, which is the signal).
-#   CVE-2026-99083: linux-libc-dev 6.1.190-1 → 6.1.192-1 (measured 2026-11-24, sweep run 8290)
+#   CVE-2026-99362: linux-libc-dev 6.1.192-2 → 6.1.192-3 (measured 2026-11-28, sweep run 8667; item #97)
+#   (CVE-2026-99083, 6.1.190-1 → 6.1.192-1, was discharged by the 2026-11-28 re-pin, which ships 6.1.192-2.)
 RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get install -y --no-install-recommends --only-upgrade linux-libc-dev \
     && rm -rf /var/lib/apt/lists/*

@@ -16,12 +16,12 @@
 #
 # Re-key an entry whenever its image's pin changes: an entry keyed to the old pin matches nothing,
 # and the gate reports it UNMATCHED while the finding blocks again. That is the intended discharge.
-- image: 'node:26-bookworm@sha256:b7087bc4d973034b30854b378ba107f9fab622b47514cb7e2592e41b8bab8d49'
-  id: 'CVE-2026-99083'
+- image: 'node:26-bookworm@sha256:893ea48106e988a5f91e69629d6472600daa9d0494adf7db87eb0b886ce82255'
+  id: 'CVE-2026-99362'
   justification: >-
-    linux-libc-dev 6.1.190-1 in the pinned base; Debian ships 6.1.192-1, but Docker Hub has not rebuilt
-    node:26-bookworm (its current digest IS this pin, checked 2026-11-24), so a re-pin cannot clear it yet.
+    linux-libc-dev 6.1.192-2 in the pinned base; the fix is 6.1.192-3, and Docker Hub's current
+    node:26-bookworm digest IS this pin (checked 2026-11-28, item #97), so a re-pin cannot clear it yet.
     The image BELAY builds is not affected: toolchain.Dockerfile upgrades the package. Re-pin the FROM line
     when upstream rebuilds; this entry then goes UNMATCHED, so delete it then.
-  addedBy: 'claude (feature 010, T018)'
-  expiry: '2026-12-24'
+  addedBy: 'claude (item #97)'
+  expiry: '2026-12-28'

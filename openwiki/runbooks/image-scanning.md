@@ -4,8 +4,8 @@ title: Image CVE scanning — the builder gate and the scheduled sweep
 description: How BELAY scans container images with a pinned, sha256-verified Trivy — the dev-container build scans before push and publishes nothing on a fixable Critical, a Tuesday and Friday sweep covers every third-party image the tree names, the verdict line always counts the images scanned, the sweep/verdict status is the only readable record of a green run, and allowlist entries must be version- or digest-keyed and expiring so a re-pin discharges them.
 tags: [security, trivy, images, cve, ci, runbook]
 resource: docs/runbooks/image-scanning.md
-resource-sha256: aa8f823daa1f04afecd34a5606665f5f73f3c343854157acc8bd9e88f8a4f8f9
-timestamp: 2026-11-24T11:26:01.561Z
+resource-sha256: 6cc35b73fbd568c9b3e589911aa6be71d2678e0c6e5cde5ee276108ed4d398ce
+timestamp: 2026-11-28T13:37:00.275Z
 ---
 
 # Image CVE scanning
@@ -27,6 +27,9 @@ procedure is in [the runbook](../../docs/runbooks/image-scanning.md).
   job's bundle.
 - **An allowlist key must carry a version or a digest.** A bare name would match every future version and never end.
   A re-pin makes the entry `UNMATCHED`, which is the discharge.
+- **A re-pin can clear one advisory and expose the next on the same package.** The 2026-11-28 base re-pin fixed
+  CVE-2026-99083 in `linux-libc-dev` but still carried CVE-2026-99362, which needed a new entry (item #97). Scan the
+  candidate digest before deleting a Dockerfile upgrade layer.
 - **For an image BELAY builds, an allowlist entry cannot help** (its tag is a commit sha). Upgrade the package in the
   Dockerfile instead.
 - **Trivy forwards `GITHUB_TOKEN` to ghcr.** On the runner it is a Forgejo token, which ghcr refuses (`DENIED`), so
