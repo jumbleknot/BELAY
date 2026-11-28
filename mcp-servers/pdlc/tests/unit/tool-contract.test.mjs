@@ -15,7 +15,7 @@ const CONTRACT = {
   sync_repo: { props: ['repo'], required: ['repo'] },
   check_setup: { props: ['repo'], required: ['repo'] },
   list_proposals: { props: ['repo', 'status', 'query', 'state'], required: ['repo', 'status'],
-    enums: { status: ['draft', 'ready', 'all'], state: ['open', 'closed', 'all'] } },
+    enums: { status: ['draft', 'ready', 'spec-in-progress', 'ready-to-plan', 'in-engineering', 'merged', 'all'], state: ['open', 'closed', 'all'] } },
   get_proposal: { props: ['repo', 'number'], required: ['repo', 'number'] },
   create_proposal: { props: ['repo', 'title', 'sections', 'priority', 'status', 'draft_id', 'draft_revision'], required: ['repo', 'title', 'sections', 'priority', 'status'],
     enums: { priority: ['p1', 'p2', 'p3'], status: ['draft', 'ready'] }, sections: { required: ['feature_name'] } },
@@ -154,5 +154,14 @@ test('016: start_spec.short_name is 2 to 4 kebab words of [a-z0-9], at most 40 c
     assert.equal(w.base_revision.pattern, '^[0-9a-f]{64}$');
     assert.equal(w.path.maxLength, 200);
     assert.equal(w.number.type, 'integer');
+  } finally { await c.close(); }
+});
+
+test('016: list_proposals.status takes the four stage ids too', async () => {
+  const c = await connect();
+  try {
+    const { tools } = await c.client.listTools();
+    const status = tools.find((t) => t.name === 'list_proposals').inputSchema.properties.status;
+    assert.deepEqual([...status.enum].sort(), ['all', 'draft', 'in-engineering', 'merged', 'ready', 'ready-to-plan', 'spec-in-progress'].sort());
   } finally { await c.close(); }
 });

@@ -62,10 +62,10 @@ export const TOOLS = Object.freeze({
     input: strict({ repo }),
   },
   list_proposals: {
-    description: 'List proposals (issues labelled type/proposal) by status (draft, ready or all), optional search query, and issue state (default open).',
+    description: 'List proposals (issues labelled type/proposal) by status (draft, ready, a later stage such as ready-to-plan, or all), optional search query, and issue state (default open).',
     input: strict({
       repo,
-      status: z.enum(['draft', 'ready', 'all']),
+      status: z.enum(['draft', 'ready', 'spec-in-progress', 'ready-to-plan', 'in-engineering', 'merged', 'all']),
       query: z.string().max(200).optional(),
       state: z.enum(['open', 'closed', 'all']).default('open'),
     }),

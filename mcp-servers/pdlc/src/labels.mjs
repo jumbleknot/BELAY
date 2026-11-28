@@ -47,8 +47,18 @@ export function planPrioritySwap(current, target, labels) {
   return { remove, add };
 }
 
+/** Feature 016: the stages after ready (contracts/stages.md). A proposal at one of them reports that stage id as its status. */
+export const STAGE_STATUS_LABELS = Object.freeze({
+  'spec-in-progress': 'status/spec-in-progress', 'ready-to-plan': 'status/ready-to-plan',
+  'in-engineering': 'status/in-engineering', merged: 'status/merged',
+});
+
 /** draft ⇔ status/proposal-draft, ready ⇔ status/needs-spec; neither or both is unknown (data-model Proposal.status). */
 export function statusFromLabels(names) {
+  const staged = Object.entries(STAGE_STATUS_LABELS).filter(([, l]) => names.includes(l)).map(([id]) => id);
+  const legacy = ['status/proposal-draft', 'status/needs-spec'].filter((l) => names.includes(l));
+  if (staged.length === 1 && legacy.length === 0) return { status: staged[0], warning: null };
+  if (staged.length > 0) return { status: 'unknown', warning: 'more than one stage label is present' };
   const draft = names.includes(STATUS_LABELS.draft);
   const ready = names.includes(STATUS_LABELS.ready);
   if (draft !== ready) return { status: draft ? 'draft' : 'ready', warning: null };

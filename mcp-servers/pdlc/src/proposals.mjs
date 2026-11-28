@@ -11,7 +11,7 @@ import { Refusal } from './refusal.mjs';
 import { MAX_BODY_BYTES, MAX_TITLE_CHARS, SECTION_IDS } from './tool-contract.mjs';
 import { renderBody, parseBody } from './proposal-body.mjs';
 import {
-  BOT_MANAGED_LABEL, PROPOSAL_LABEL, STATUS_LABELS, loadLabels, planPrioritySwap, planStatusSwap, priorityFromLabels,
+  BOT_MANAGED_LABEL, PROPOSAL_LABEL, STAGE_STATUS_LABELS, STATUS_LABELS, loadLabels, planPrioritySwap, planStatusSwap, priorityFromLabels,
   priorityLabel, statusFromLabels,
 } from './labels.mjs';
 
@@ -124,7 +124,7 @@ export function createProposals({ forge, allowlist, config }) {
     async list({ repo: repoArg, status, query, state = 'open' }, { maxPages = 10 } = {}) {
       const repo = await allowlist.resolve(repoArg);
       const path = repoPath(repo.name);
-      const wanted = status === 'all' ? [PROPOSAL_LABEL] : [PROPOSAL_LABEL, STATUS_LABELS[status]];
+      const wanted = status === 'all' ? [PROPOSAL_LABEL] : [PROPOSAL_LABEL, STATUS_LABELS[status] ?? STAGE_STATUS_LABELS[status]];
       (await loadLabels(forge, path)).resolve(wanted);   // guard 3: an unknown name would be IGNORED by the forge
       const r = await forge.getAll(`${path}/issues`, {
         query: { state, type: 'issues', labels: wanted.join(','), ...(query ? { q: query } : {}) },

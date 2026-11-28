@@ -858,7 +858,7 @@ FR-036.
 
 ## Phase 12: Polish & Cross-Cutting Concerns
 
-- [ ] T067 Bump `mcp-servers/pdlc/manifest.json` and `package.json` to **0.2.0**. Update `long_description` and the
+- [X] T067 Bump `mcp-servers/pdlc/manifest.json` and `package.json` to **0.2.0**. Update `long_description` and the
   `forge_token` description (`write:issue` + `write:repository`, R6). Extend `check_setup` with the stage labels and
   `default_branch_protected`, test first in `setup-check.test.mjs` (RED: `expected missing_labels to include
   status/ready-to-plan`). Also, test first in `proposals.test.mjs`, `list_proposals` and `get_proposal` take the
@@ -867,13 +867,17 @@ FR-036.
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/setup-check.test.mjs`,
     `node --test mcp-servers/pdlc/tests/unit/proposals.test.mjs` and
     `node --test mcp-servers/pdlc/tests/unit/manifest.test.mjs` → expected: 0 failures; then `pnpm nx run pdlc:lint`
+  - **Done 2026-11-28, as built**: the version moved to 0.2.0 with T026. `check_setup` already required the stage labels
+    (it reads the shared label contract, extended in T010), so that RED could not occur; the test asserts it anyway.
+    `default_branch_protected` is `true`/`false` from `GET …/branch_protections` and `unknown` on 403/404, never
+    changing `ok`. `get_proposal` and `list_proposals` report and filter by stage id
 - [ ] T068 [P] Extend `pdlc:integration-forge` (`mcp-servers/pdlc/tests/integration-forge/`) with the full lifecycle
   against `ci-smoke`, including a push to its protected `main` refused by the forge (quickstart §1). Test branches are
   named `pdlc-it-<run id>-…`, and the helper removes them after the operator agrees in the runbook. The test prints
   how long `start_spec` took, against the plan's 30 s target (finding P1).
   - **Done when**: `pnpm nx run pdlc:integration-forge` passes with 0 skipped, run by the operator, and the
     `start_spec` time is recorded in `docs/runbooks/pdlc.md`
-- [ ] T069 [P] Guard test: nothing in BELAY's tooling references the server (014's independence guard). Extend `scripts/__tests__/pdlc-independence.guard.test.mjs` to
+- [X] T069 [P] Guard test: nothing in BELAY's tooling references the server (014's independence guard). Extend `scripts/__tests__/pdlc-independence.guard.test.mjs` to
   `scripts/feature-merged.mjs`, `scripts/lib/*`, `.forgejo/workflows/feature-merged.yml` and
   `.claude/skills/speckit-belay-spec-stage/` (FR-031). RED by naming a new file before it exists, then GREEN.
   - **Verify GREEN**: `node --test scripts/__tests__/pdlc-independence.guard.test.mjs` → expected: 0 failures

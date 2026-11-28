@@ -145,3 +145,26 @@ test('get and create refuse unknown_repo for another owner before any issue requ
   await refused(w.proposals.create(createArgs({ repo: 'nope' })), 'unknown_repo');
   assert.ok(w.forge.calls.every((c) => c.path === '/repos/search'));
 });
+
+// Feature 016 (contracts/tools.md "Changed 014 tools"; finding U5): a proposal's status is its stage, and the list
+// filter takes the four stage ids.
+const STAGED = ['type/proposal', 'status/proposal-draft', 'status/needs-spec', 'status/spec-in-progress', 'status/ready-to-plan',
+  'status/in-engineering', 'status/merged', 'priority/p1', 'priority/p2', 'priority/p3', 'status/bot-managed'];
+test('016: get reports a proposal past ready by its stage id', async () => {
+  const w = world({ labels: STAGED });
+  for (const [label, status] of [['status/spec-in-progress', 'spec-in-progress'], ['status/ready-to-plan', 'ready-to-plan'], ['status/in-engineering', 'in-engineering'], ['status/merged', 'merged']]) {
+    const i = w.forge.addIssue('BELAY', { title: `Proposal: ${status}`, body: renderBody({ ...sections, feature_name: status }), labels: ['type/proposal', label, 'priority/p2'] });
+    const r = await w.proposals.get({ repo: 'BELAY', number: i.number });
+    assert.equal(r.status, status);
+    assert.deepEqual(r.warnings, []);
+  }
+});
+test('016: list_proposals filters by a stage id and reports it as the status', async () => {
+  const w = world({ labels: STAGED });
+  w.forge.addIssue('BELAY', { title: 'Proposal: A', labels: ['type/proposal', 'status/ready-to-plan', 'priority/p1'] });
+  w.forge.addIssue('BELAY', { title: 'Proposal: B', labels: ['type/proposal', 'status/spec-in-progress', 'priority/p2'] });
+  const r = await w.proposals.list({ repo: 'BELAY', status: 'ready-to-plan' });
+  assert.deepEqual(r.proposals.map((p) => [p.title, p.status]), [['Proposal: A', 'ready-to-plan']]);
+  const all = await w.proposals.list({ repo: 'BELAY', status: 'all' });
+  assert.deepEqual(all.proposals.map((p) => p.status).sort(), ['ready-to-plan', 'spec-in-progress']);
+});

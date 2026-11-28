@@ -46,6 +46,8 @@ export function fakeForge({ owner = 'operator', repos = ['BELAY'], labels = LABE
       const r = page(state.repos, query); return { ...r, body: { ok: true, data: r.body } };
     }],
     ['GET', /^\/repos\/([^/]+)\/([^/]+)\/labels$/, ({ m, query }) => page(state.labels[m[2].toLowerCase()] ?? [], query)],
+    // Feature 016: branch protections (report-only in check_setup); a test sets state.protections, else 404.
+    ['GET', /^\/repos\/([^/]+)\/([^/]+)\/branch_protections$/, () => state.protections ?? { status: 404, body: { message: 'not set' } }],
     ['GET', /^\/repos\/([^/]+)\/([^/]+)\/issue_templates$/, ({ m }) => ({ status: 200, body: state.templates[m[2].toLowerCase()] ?? [] })],
     ['GET', /^\/repos\/([^/]+)\/([^/]+)\/raw\/(.+)$/, ({ m }) => {
       const t = state.files[`${m[2].toLowerCase()}:${decodeURIComponent(m[3])}`];

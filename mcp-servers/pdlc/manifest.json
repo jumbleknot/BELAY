@@ -4,7 +4,7 @@
   "display_name": "pdlc proposal intake",
   "version": "0.2.0",
   "description": "File and refine feature proposals as forge issues, and keep read-only local copies of the repositories, for the proposal-intake skill.",
-  "long_description": "An operator-tool MCP server for one operator (BELAY constitution 1.1.0, ADR-0005). It reads and writes only issues labelled type/proposal in repositories under the configured owner, and fast-forwards read-only local copies. It never closes, deletes or relabels arbitrary issues, and never commits, branches or pushes.",
+  "long_description": "An operator-tool MCP server for one operator (BELAY constitution 1.1.0, ADR-0005, ADR-0006). It reads and writes only issues labelled type/proposal in repositories under the configured owner, and keeps a local copy of each repository whose default branch is read-only and fast-forward only. From a ready proposal it writes a spec with the repository's own Spec Kit, in a worktree on that feature's own branch, and on the author's approval commits the spec folder and publishes that feature branch only: never the default branch, never a force push. It moves the proposal through its stage labels, and shows the proposal or spec in a pane beside the chat. It never closes, deletes or relabels arbitrary issues.",
   "author": {
     "name": "BELAY"
   },
@@ -43,7 +43,7 @@
     },
     {
       "name": "list_proposals",
-      "description": "List proposals (issues labelled type/proposal) by status (draft, ready or all), optional search query, and issue state (default open)."
+      "description": "List proposals (issues labelled type/proposal) by status (draft, ready, a later stage such as ready-to-plan, or all), optional search query, and issue state (default open)."
     },
     {
       "name": "get_proposal",
@@ -126,7 +126,7 @@
     "forge_token": {
       "type": "string",
       "title": "Forge token (pdlc)",
-      "description": "A dedicated forge token named pdlc, with write:issue and read:repository only, used by nothing else.",
+      "description": "A dedicated forge token named pdlc, with write:issue and write:repository only (write:repository publishes a spec's own feature branch; the server never pushes anything else), used by nothing else.",
       "sensitive": true,
       "required": true
     },

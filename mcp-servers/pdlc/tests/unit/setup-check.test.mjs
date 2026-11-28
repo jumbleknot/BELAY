@@ -29,7 +29,7 @@ function rig({ labels, form, inEffect = true, branch = 'main' }) {
 test('nothing set up: every required label is missing, the form is missing, ok false, and nothing is created', async () => {
   const r = rig({ labels: ['type/bug'], form: undefined, inEffect: false });
   const res = await r.check.check({ repo: 'belay' });
-  assert.deepEqual(res, { repo: 'BELAY', ok: false, default_branch: 'main', missing_labels: REQUIRED, form: 'missing', fix_hint: FIX_HINT });
+  assert.deepEqual(res, { repo: 'BELAY', ok: false, default_branch: 'main', missing_labels: REQUIRED, form: 'missing', fix_hint: FIX_HINT, default_branch_protected: 'unknown' });
   assert.deepEqual(r.forge.writes(), []);
 });
 
@@ -70,7 +70,7 @@ test('bytes that differ from the master are out_of_step; CRLF-only differences a
 
 test('all set up: ok true, fix_hint null', async () => {
   const r = rig({ labels: [...REQUIRED, 'type/bug'], form: MASTER });
-  assert.deepEqual(await r.check.check({ repo: 'BELAY' }), { repo: 'BELAY', ok: true, default_branch: 'main', missing_labels: [], form: 'ok', fix_hint: null });
+  assert.deepEqual(await r.check.check({ repo: 'BELAY' }), { repo: 'BELAY', ok: true, default_branch: 'main', missing_labels: [], form: 'ok', fix_hint: null, default_branch_protected: 'unknown' });
 });
 
 test('over the protocol, ok:false is a normal result, not isError', async () => {
@@ -94,4 +94,24 @@ test('a proposal form elsewhere (another folder\'s proposal.yaml) does not count
   const r = rig({ labels: REQUIRED, form: MASTER, inEffect: false });
   r.forge.state.templates.belay.push({ name: 'Proposal', file_name: '.gitea/issue_template/proposal.yaml' });
   assert.equal((await r.check.check({ repo: 'BELAY' })).form, 'not_in_effect');
+});
+
+// Feature 016 (R6, R16; measured T005): the four stage labels are required, and a report-only default_branch_protected.
+test('016: a repository with the 014 labels but not the stage labels reports each stage label missing', async () => {
+  const r = rig({ labels: REQUIRED.filter((n) => !n.startsWith('status/') || ['status/proposal-draft', 'status/needs-spec'].includes(n)), form: MASTER });
+  const res = await r.check.check({ repo: 'BELAY' });
+  assert.equal(res.ok, false);
+  for (const n of ['status/spec-in-progress', 'status/ready-to-plan', 'status/in-engineering', 'status/merged']) {
+    assert.ok(res.missing_labels.includes(n), `expected missing_labels to include ${n}`);
+  }
+});
+test('016: default_branch_protected is true or false from the forge\'s branch protections, and unknown when it cannot read them; it never changes ok', async () => {
+  for (const [answer, want] of [[{ status: 200, body: [{ branch_name: 'main', rule_name: 'main' }] }, true], [{ status: 200, body: [{ branch_name: 'other' }] }, false],
+    [{ status: 403, body: {} }, 'unknown'], [{ status: 404, body: {} }, 'unknown']]) {
+    const r = rig({ labels: REQUIRED, form: MASTER });
+    r.forge.state.protections = answer;
+    const res = await r.check.check({ repo: 'BELAY' });
+    assert.equal(res.default_branch_protected, want, JSON.stringify(answer));
+    assert.equal(res.ok, true, 'report-only');
+  }
 });

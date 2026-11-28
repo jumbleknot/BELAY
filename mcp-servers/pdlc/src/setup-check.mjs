@@ -45,7 +45,15 @@ export function createSetupCheck({ forge, allowlist, config, masterForm = readCo
       }
 
       const ok = missing_labels.length === 0 && form === 'ok';
-      return { repo: repo.name, ok, default_branch: repo.default_branch, missing_labels, form, fix_hint: ok ? null : FIX_HINT };
+      // Feature 016 (R6): report-only. The pdlc token's write:repository is bounded by the server's push guard and by
+      // branch protection on the default branch; an owner's token can read it (measured, T005: HTTP 200), others get
+      // 403, which is `unknown`, never false. It never changes `ok`.
+      let default_branch_protected = 'unknown';
+      try {
+        const rules = await forge.get(`${path}/branch_protections`, { capability: 'read branch protection' });
+        if (Array.isArray(rules)) default_branch_protected = rules.some((r) => r?.branch_name === repo.default_branch || r?.rule_name === repo.default_branch);
+      } catch { /* 403 or 404: unknown */ }
+      return { repo: repo.name, ok, default_branch: repo.default_branch, missing_labels, form, fix_hint: ok ? null : FIX_HINT, default_branch_protected };
     },
   };
 }

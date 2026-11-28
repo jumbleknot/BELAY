@@ -36,9 +36,10 @@ export function scannedFiles(root) {
     }
   };
   try {
-    for (const f of readdirSync(join(root, 'scripts'))) if (f.endsWith('.mjs') && statSync(join(root, 'scripts', f)).isFile()) out.push(`scripts/${f}`);
+    for (const f of readdirSync(join(root, 'scripts'))) if (/\.(mjs|json)$/.test(f) && statSync(join(root, 'scripts', f)).isFile()) out.push(`scripts/${f}`);
   } catch { /* no scripts/ */ }
-  for (const dir of ['scripts/lib', '.specify', '.claude/skills', '.forgejo/issue_template']) walk(dir);
+  // Feature 016: .forgejo/workflows (the feature-merged workflow and guardrails' outcomes step) and scripts/*.json too.
+  for (const dir of ['scripts/lib', '.specify', '.claude/skills', '.forgejo/issue_template', '.forgejo/workflows']) walk(dir);
   return out.sort();
 }
 
@@ -76,4 +77,16 @@ test('the matcher catches a planted import, tool call and presence check, naming
     assert.deepEqual([...new Set(hits.map((h) => h.file))].sort(), ['.claude/skills/x/SKILL.md', '.specify/scripts/check.sh', 'scripts/backlog.mjs', 'scripts/lib/probe.mjs']);
     assert.ok(hits.some((h) => h.file === 'scripts/backlog.mjs' && /code/.test(h.why)));
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+// Feature 016 (FR-031): the stage hooks, the merge workflow and its script, the feature-dir hook and the shared libs are
+// BELAY's own tooling, which must work with the server absent; the guard scans each of them.
+test('016: the guard scans the files feature 016 added to BELAY\'s tooling', () => {
+  const files = scannedFiles(ROOT);
+  for (const f of ['scripts/feature-merged.mjs', 'scripts/feature-dir.mjs', 'scripts/lib/stage-trailer.mjs', 'scripts/lib/proposal-marker.mjs',
+    'scripts/lib/collect-test-results.mjs', 'scripts/lib/node-test-with-results.mjs', 'scripts/feature-merged.config.json',
+    '.forgejo/workflows/feature-merged.yml', '.forgejo/workflows/guardrails.yml',
+    '.claude/skills/speckit-belay-spec-stage/SKILL.md', '.claude/skills/speckit-belay-feature-dir/SKILL.md']) {
+    assert.ok(files.includes(f), `the guard does not scan ${f}`);
+  }
 });
