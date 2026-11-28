@@ -363,7 +363,7 @@ plan.
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T030 [P] [US2] Test: approval checks and order (R15). In `mcp-servers/pdlc/tests/unit/spec-approval.test.mjs`:
+- [X] T030 [P] [US2] Test: approval checks and order (R15). In `mcp-servers/pdlc/tests/unit/spec-approval.test.mjs`:
   - `spec_has_markers` lists each marker;
   - `spec_not_clarified` unless `spec.md` has more `### Session` headings under `## Clarifications` than
     data-model.md `Spec in progress.sessions_at_start_or_reopen`, including on a same-day reopen;
@@ -394,7 +394,7 @@ plan.
 
 ### Implementation for User Story 2
 
-- [ ] T033 [US2] Implement `mcp-servers/pdlc/src/spec-approval.mjs` (prerequisite: T030 RED)
+- [X] T033 [US2] Implement `mcp-servers/pdlc/src/spec-approval.mjs` (prerequisite: T030 RED)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/spec-approval.test.mjs` → expected: 0 failures
 - [ ] T034 [US2] Add `approve_spec` to the contract, the handlers and the manifest (prerequisite: T031, T032 RED;
   T033 GREEN)

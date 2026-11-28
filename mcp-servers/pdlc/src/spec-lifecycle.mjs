@@ -11,6 +11,7 @@ import { existsSync } from 'node:fs';
 import { Refusal } from './refusal.mjs';
 import { loadLabels } from './labels.mjs';
 import { checkTransition, planStageSwap, readTrailers, renderTrailer, stageFromLabels } from './stages.mjs';
+import { countClarifySessions, findMarkers } from './spec-approval.mjs';
 
 /** Stages at which the spec is locked from Claude Desktop (FR-018). */
 const LOCKED = new Set(['in-engineering', 'merged']);
@@ -18,24 +19,6 @@ const IN_PROGRESS = new Set(['spec-in-progress', 'ready-to-plan']);
 
 const names = (issue) => (issue.labels ?? []).map((l) => l.name);
 const day = (d) => d.toISOString().slice(0, 10);
-
-/** The [NEEDS CLARIFICATION …] markers in a spec, in order (R15). */
-export function findMarkers(text) {
-  return [...String(text).matchAll(/\[NEEDS CLARIFICATION[^\]]*\]/g)].map((m) => m[0]);
-}
-
-/** How many `### Session` headings the spec's `## Clarifications` section holds (R15). */
-export function countClarifySessions(text) {
-  const lines = String(text).split(/\r?\n/);
-  const start = lines.findIndex((l) => /^## Clarifications\s*$/.test(l));
-  if (start < 0) return 0;
-  let n = 0;
-  for (const l of lines.slice(start + 1)) {
-    if (/^## /.test(l)) break;
-    if (/^### Session\b/.test(l)) n += 1;
-  }
-  return n;
-}
 
 /**
  * The repository's spec template with what the specify step would fill at once: the Input line (FR-003, the VS Code
