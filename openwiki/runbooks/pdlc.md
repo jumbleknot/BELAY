@@ -4,8 +4,8 @@ title: The pdlc server — proposal intake from Claude Desktop
 description: How the pdlc operator-tool MCP server lets a Claude Desktop session on the workstation file and refine feature proposals as forge issues, write each one's spec with the repository's own Spec Kit and publish it on a feature branch, and show a proposal or spec in the right-hand pane — the default branch read-only, building and installing the .mcpb with its four settings, the dedicated pdlc token and its two scopes (write:repository since feature 016), the measured host facts, the skill update rule, the audit trail in the host's stderr log joined to the forge timeline by correlation_id, the refusal codes, and the hand-off that makes another repository (MCM) accept proposals and specs.
 tags: [pdlc, mcp, claude-desktop, proposals, runbook]
 resource: docs/runbooks/pdlc.md
-resource-sha256: bf49694a3024d59d5241cb8b09814857bdc06533dc7234c729cda7e2dfce21dc
-timestamp: 2026-11-28T02:14:56.721Z
+resource-sha256: 1bc29968266ec92ae12721e1ba391770be32c05bf1da1c4e66463f206f322e3e
+timestamp: 2026-11-28T03:32:08.370Z
 ---
 
 # The pdlc server — proposal intake from Claude Desktop
@@ -55,6 +55,9 @@ Full detail is in [docs/runbooks/pdlc.md](../../docs/runbooks/pdlc.md).
   project type's threads do not get the installed extension, so the skill finds no tools and stops. Nothing is
   connected in advance; the plain chat asks for access to the clone folder when the skill first reads it, and the
   operator approves.
+- **The live-forge tier needs a 016-scoped token.** `pdlc:integration-forge` publishes a spec branch on `ci-smoke`, so
+  it takes an operator-made `write:issue` + `write:repository` token as `PDLC_IT_TOKEN`; the dev container's
+  `FORGE_ISSUE_TOKEN` cannot push. Its published branches stay until the operator agrees to delete them.
 - **Rebuild and re-upload after every merge** that changes the server or the master skill. Nothing updates itself.
 - **A contract change is breaking.** A tool, parameter, enum, heading or section-id change moves the skill, the
   manifest and every target's form copy in the same PR; `check_setup` reports a target's copy as `out_of_step`.

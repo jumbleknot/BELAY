@@ -158,7 +158,8 @@ const published = (over = {}) => ({ repo: 'BELAY', number: 91, branch: BRANCH, s
 test('remoteCheck: unchanged when the forge tip is the recorded one, or when neither exists yet', async () => {
   for (const [recorded, remote] of [[TIP, TIP], [null, null]]) {
     const s = setup({
-      [`fetch origin +refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}`]: {},
+      // real git: fetching a branch the forge does not have exits 128 "couldn't find remote ref" (measured, T068)
+      [`fetch origin +refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}`]: remote ? {} : { code: 128, stderr: `fatal: couldn't find remote ref refs/heads/${BRANCH}\n` },
       [`rev-parse --verify --quiet refs/remotes/origin/${BRANCH}`]: remote ? { stdout: `${remote}\n` } : { code: 1 },
     });
     try {

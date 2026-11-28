@@ -78,6 +78,9 @@ test('start a spec for real: the repository\'s own dry run numbers past the forg
   assert.equal(sh(state.worktree_path, 'symbolic-ref', '--short', 'HEAD'), '003-int-probe');
   assert.match(readFileSync(join(state.worktree_path, 'specs', '003-int-probe', 'spec.md'), 'utf8'), /Proposal #91: Proposal: Int probe/);
   assert.match(sh(state.worktree_path, 'status', '--porcelain'), /\?\? specs\/003-int-probe\//);
+  // get_spec's branch check on a spec never published: real git refuses the fetch of a missing ref (exit 128), and
+  // that means "nothing published", never an error (found by the live tier, T068)
+  assert.deepEqual(await worktree.remoteCheck({ repo, copyPath, state }), { changed: false });
 
   // SC-007: the copy is still on main, clean, at the same commit; the branch exists only locally, unpublished
   const after = copyState(copyPath);

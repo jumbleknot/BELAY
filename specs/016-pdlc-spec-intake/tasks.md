@@ -871,12 +871,19 @@ FR-036.
     (it reads the shared label contract, extended in T010), so that RED could not occur; the test asserts it anyway.
     `default_branch_protected` is `true`/`false` from `GET …/branch_protections` and `unknown` on 403/404, never
     changing `ok`. `get_proposal` and `list_proposals` report and filter by stage id
-- [ ] T068 [P] Extend `pdlc:integration-forge` (`mcp-servers/pdlc/tests/integration-forge/`) with the full lifecycle
+- [X] T068 [P] Extend `pdlc:integration-forge` (`mcp-servers/pdlc/tests/integration-forge/`) with the full lifecycle
   against `ci-smoke`, including a push to its protected `main` refused by the forge (quickstart §1). Test branches are
   named `pdlc-it-<run id>-…`, and the helper removes them after the operator agrees in the runbook. The test prints
   how long `start_spec` took, against the plan's 30 s target (finding P1).
   - **Done when**: `pnpm nx run pdlc:integration-forge` passes with 0 skipped, run by the operator, and the
     `start_spec` time is recorded in `docs/runbooks/pdlc.md`
+  - **Done 2026-11-28, as built**: 8 passed, 0 failed, 0 skipped, with an operator-made test token as `PDLC_IT_TOKEN`
+    (run.mjs prefers it to `FORGE_ISSUE_TOKEN`, whose 014 scope cannot push). `ci-smoke` got Spec Kit through its PR
+    #18, merged by the operator. The first runs found a defect: `get_spec` failed on an unpublished spec (fetch exit
+    128, research R8); fixed in `spec-worktree.mjs` with a RED/GREEN pair in the unit and integration tiers.
+    `start_spec` 2.5 to 3.0 s. Deviation: the branch is `NNN-pdlc-it-<run id>-life`, since Spec Kit puts the number
+    first. Left on `ci-smoke` for the operator: `001-pdlc-it-mwzurjfp-life`, `002-pdlc-it-mwzurxjf-life`,
+    `pdlc-it-setup-spec-kit`
 - [X] T069 [P] Guard test: nothing in BELAY's tooling references the server (014's independence guard). Extend `scripts/__tests__/pdlc-independence.guard.test.mjs` to
   `scripts/feature-merged.mjs`, `scripts/lib/*`, `.forgejo/workflows/feature-merged.yml` and
   `.claude/skills/speckit-belay-spec-stage/` (FR-031). RED by naming a new file before it exists, then GREEN.
@@ -951,6 +958,10 @@ FR-036.
     `start_spec` time (§2 step 1), the `feature-merged` run time and the `guardrails` run time on `main` (§4) against
     the plan's performance goals
     (finding P1)
+  - **Finding 2026-11-28 (§2, workstation)**: "Work on an existing proposal" opened #87 (the only draft) without
+    asking; #88 (ready) never showed. The master skill said "offer to list drafts", and nothing said to let the user
+    pick from one. Fixed in the skill (list with `status: "all"`, show the stage, always ask), with a RED/GREEN test in
+    `skill-master.test.mjs`. Contract and manifest unchanged. Re-run §2 with the rebuilt skill zip
 - [ ] T082a **Record the test count**: `node scripts/backlog.mjs record-tests --spec specs/016-pdlc-spec-intake --point close-out`
   after the last code commit. Expected: counts printed, "not an open proposal (#91 is closed); nothing posted", exit 0.
   - **Done when**: the counts, the delta and the exit code are recorded in this task

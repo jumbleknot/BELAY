@@ -134,6 +134,7 @@ Measured on 2026-11-27 for feature 016 (research R1, R6, R9, R10, R11):
 | Does the pane render, and where (T003) | Inline in the conversation first; the page then asks for the `fullscreen` display mode, which Claude Desktop shows as the **right-hand pane**. `pip` is not offered |
 | Who serves the pane's calls (T003) | A **different server process** from the model's calls (two pids, same Node v24.22.3), sharing the workstation's disk. So the server keeps no state in memory: revisions, drafts and snapshots are files under the clone folder |
 | How a pane sees a chat edit (T003) | Nothing is pushed to an open page: it polls `read_pane_document` every 2 seconds. `ui/update-model-context` is accepted but the model never sees it, so a pane edit reaches the model only through a re-read (`pane_edit_pending`) |
+| How long `start_spec` takes (T068, live forge, dev container, 2026-11-28) | 2.5 to 3.0 s over four runs against `ci-smoke` (sync, scratch clone, dry run, template, worktree, stage move), against the plan's 30 s target. Not yet measured from the workstation |
 | Can CI's run token comment on and close an issue on `push` (T006) | Yes. `feature-merged` uses it; `CI_DIGEST_TOKEN` is only a fallback for a 401/403 |
 
 ## Specs from a proposal
@@ -202,6 +203,20 @@ together with **the forge's issue timeline** for writes. The server never opens 
   after about five weeks at the measured volume.
 - **Integrity**: the server has no file-write tool and never touches the log folder. The logged-in OS user can edit
   the file; that is accepted for a one-operator workstation (constitution 1.1.0).
+
+## The live-forge tier (`pdlc:integration-forge`, operator-run)
+
+It runs against `ci-smoke`, which needs Spec Kit 1.4.x on a **protected** `main`, the proposal form and labels (the
+tier creates missing labels). The spec lifecycle publishes a branch, so it needs a token with `write:issue` +
+`write:repository`: give it as `PDLC_IT_TOKEN` for the run (for example read from a mode-600 file), never in a tracked
+file. Without it the tier falls back to `FORGE_ISSUE_TOKEN`, and the lifecycle test fails at its first push.
+
+```bash
+PDLC_IT_TOKEN="$(cat ~/.config/belay/pdlc-test-token)" pnpm nx run pdlc:integration-forge
+```
+
+It closes every issue it creates. The feature branches it publishes (`NNN-pdlc-it-<run id>-life`) stay on `ci-smoke`
+until the operator agrees to delete them.
 
 ## Troubleshooting by refusal code
 

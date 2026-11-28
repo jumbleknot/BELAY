@@ -53,7 +53,7 @@ It is built from feature 014 ([spec](../../specs/014-pdlc-proposal-intake/spec.m
 pnpm nx run pdlc:lint                # syntax + mcpb validate
 pnpm nx run pdlc:test                # unit + contract, 70% coverage floor
 pnpm nx run pdlc:integration         # real git
-pnpm nx run pdlc:integration-forge   # real forge; needs FORGE_ISSUE_TOKEN, fails without it
+pnpm nx run pdlc:integration-forge   # real forge, ci-smoke; PDLC_IT_TOKEN (write:issue + write:repository), fails without a token
 pnpm nx run pdlc:pack                # target/pdlc/pdlc-<version>.mcpb + proposal-intake.zip
 ```
 

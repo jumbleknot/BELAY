@@ -136,7 +136,7 @@ test('the full lifecycle on the real forge: start, write, approve (publish), for
 
   // SC-007: the server refuses a push to main, and so does the forge (a protected branch), through the helper's own git
   const ctxWorktree = g.worktree_path;
-  await refused(git.run(['push', 'origin', `refs/heads/${started.branch}:refs/heads/${repo.default_branch}`], {
+  await refused(git.run(['push', 'origin', `refs/heads/${repo.default_branch}:refs/heads/${repo.default_branch}`], {
     cwd: ctxWorktree, spec: { cloneRoot, repo: repo.name, copyPath, defaultBranch: repo.default_branch, featureBranch: started.branch,
       specDir: started.spec_dir.replace(/\/$/, ''), recordedRemoteTip: a1.commit } }), 'push_target_refused');
   const mainBefore = (await forge.get(`${R}/branches/${repo.default_branch}`)).commit.id;

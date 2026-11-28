@@ -331,6 +331,18 @@ and plans (spec FR-031). The merge workflow accepts any open stage, so a feature
 
 No published commit is rewritten: the only `reset` is of an unpublished commit, onto the published tip.
 
+**Measured on the live forge, 2026-11-28 (T068)**, `ci-smoke` with Spec Kit 1.4.2 and a protected `main`, from the dev
+container, git 2.39.5, a `write:issue` + `write:repository` test token:
+- `git fetch origin +refs/heads/<branch>:refs/remotes/origin/<branch>` for a branch **not published yet** exits
+  **128** with `fatal: couldn't find remote ref refs/heads/<branch>`. `remoteCheck` (called by `get_spec`) let that
+  error escape, so `get_spec` failed on every spec before its first approval. The unit double had modelled a
+  successful fetch. Fixed: that exit means "nothing published", `{ changed: false }`; any other fetch failure still
+  propagates. The integration tier now asserts it with real git.
+- `start_spec` took 3015, 2626, 2471 and 2671 ms over four runs (plan target 30 s).
+- The forge refused a push to `main` (`protected branch` / `pre-receive hook declined`), and `main` did not move.
+  `branch_changed`, `take_latest_spec` with no conflict, and re-approval on top of another session's commit behaved as
+  designed.
+
 ## R9: The right-hand pane: an MCP App served by `pdlc` (FR-035 to FR-037; M7)
 
 **Background**: MCP Apps (the MCP extension for interactive UI) let a server declare a `ui://` HTML resource and attach

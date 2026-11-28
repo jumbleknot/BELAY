@@ -71,7 +71,14 @@ export function createSpecWorktree({ cloneRoot, git, now = () => new Date() }) {
    */
   const remoteCheck = async ({ repo, copyPath, state }) => {
     const out = async (args, cwd) => (await git.run(args, { cwd })).stdout;
-    await git.run(['fetch', 'origin', `+refs/heads/${state.branch}:refs/remotes/origin/${state.branch}`], { cwd: copyPath });
+    try {
+      await git.run(['fetch', 'origin', `+refs/heads/${state.branch}:refs/remotes/origin/${state.branch}`], { cwd: copyPath });
+    } catch (e) {
+      // Measured (T068): fetching a branch the forge does not have (never published, or deleted there) exits 128
+      // "couldn't find remote ref". There is nothing to take; any other failure is real and propagates.
+      if (/couldn't find remote ref/.test(String(e?.stderr ?? e?.message ?? ''))) return { changed: false };
+      throw e;
+    }
     let remote = null;
     try { remote = (await out(['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${state.branch}`], copyPath)).trim() || null; } catch { remote = null; }
     const recorded = state.recorded_remote_tip ?? null;
