@@ -109,7 +109,7 @@ The master skill is `mcp-servers/pdlc/skill/proposal-intake/SKILL.md`. A change 
 merges with a pull request; after it merges, rebuild with `pdlc:pack` and re-upload `proposal-intake-<version>.zip`
 (and reinstall the `.mcpb` if the server changed). Nothing updates itself.
 
-**Rebuild after feature 016** (server 0.2.1): reinstall the `.mcpb`, re-upload the skill, and replace the token
+**Rebuild after feature 016** (server 0.2.2): reinstall the `.mcpb`, re-upload the skill, and replace the token
 (above). Run `check_setup` on BELAY: `ok: true`, and `default_branch_protected: true`.
 
 ### Measured on the host
@@ -172,8 +172,14 @@ conversation, which still works.
 The page has one tab per document that exists: the proposal, and once it has a spec (`has_spec` in the result), one
 tab per spec file, `spec.md` first. Opening either one loads the other beside it, and the tab chosen survives the 2 s
 refresh. When `start_spec` runs while the proposal is open, the spec's tabs appear and `spec.md` is chosen. The page asks
-to move beside the chat when it loads; when it is shown in the conversation instead, an **Open beside the chat** button
-asks again.
+to move beside the chat when it loads, and once more when the first document arrives; when it is still shown in the
+conversation, an **Open beside the chat** button asks again (measured 2026-11-28: the request on load is ignored, the
+button works).
+
+A spec file opens as a rendered **Preview**, with a switch to the **Markdown** source; each file keeps its own choice
+across the refresh. Headings, paragraphs, lists (checklist boxes click) and quotes are edited in the preview, with H2,
+H3, paragraph, bold, italic and bullet-list buttons. Tables, code and comments are edited in the Markdown view. Only
+the blocks the author edited are turned back into Markdown; every other line of the file is kept byte for byte.
 
 Drafts live in `<clone folder>\.pdlc-drafts\<Repo>\` until the proposal is saved; a saved proposal's draft is
 deleted.
@@ -293,7 +299,7 @@ FR-026, 016 FR-033). It states what the target must do. BELAY's own adoption is 
 ### Before starting in the target
 
 1. Features 014 and 016 have merged in BELAY, so the master form, labels and trailer are final.
-2. The `pdlc` server 0.2.1 or later is installed (above), with the `write:repository` token, and the full loop has been proven
+2. The `pdlc` server 0.2.2 or later is installed (above), with the `write:repository` token, and the full loop has been proven
    on BELAY ([016 quickstart](../../specs/016-pdlc-spec-intake/quickstart.md) §2 to §4).
 3. The target's default branch is protected (no direct push): `check_setup` reports `default_branch_protected: true`.
    The server relies on the forge to refuse a push to it.

@@ -27,9 +27,38 @@
   textarea.file { min-height: 60vh; }
   textarea[readonly] { opacity: 0.75; }
   button { font: inherit; padding: 4px 12px; }
-  .tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid #8886; margin: 4px 0 8px; }
-  .tabs button { border: 1px solid transparent; border-bottom: none; border-radius: 6px 6px 0 0; background: none; color: inherit; opacity: 0.7; font: 12px ui-monospace, monospace; padding: 5px 10px; cursor: pointer; }
-  .tabs button[aria-selected="true"] { border-color: #8886; background: #8881; opacity: 1; font-weight: 600; margin-bottom: -1px; }
+  :root { --accent: #2f6fde; --line: #8888; --soft: #8882; }
+  @media (prefers-color-scheme: dark) { :root { --accent: #6fa3ff; } }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 2px solid var(--line); margin: 6px 0 10px; }
+  .tabs button { border: 1px solid var(--line); border-bottom: none; border-radius: 8px 8px 0 0; background: var(--soft); color: inherit;
+    font: 600 14px/1.2 system-ui, sans-serif; padding: 9px 16px; cursor: pointer; opacity: 0.8; margin-bottom: -2px; }
+  .tabs button:hover { opacity: 1; }
+  .tabs button[aria-selected="true"] { opacity: 1; background: Canvas; border-color: var(--accent); border-width: 2px; border-bottom: 2px solid Canvas;
+    box-shadow: inset 0 3px 0 var(--accent); color: var(--accent); }
+  .toolbar { position: sticky; top: 0; z-index: 1; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 6px 0; background: Canvas; }
+  .toolbar .switch { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .toolbar .switch button { border: none; border-radius: 0; background: none; color: inherit; padding: 5px 12px; cursor: pointer; }
+  .toolbar .switch button[aria-pressed="true"] { background: var(--accent); color: Canvas; font-weight: 600; }
+  .toolbar .format { display: inline-flex; gap: 4px; }
+  .toolbar .format button { min-width: 34px; padding: 4px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--soft); color: inherit; cursor: pointer; }
+  .toolbar .format button[data-cmd="bold"] { font-weight: 700; }
+  .toolbar .format button[data-cmd="italic"] { font-style: italic; }
+  .preview { font: 14px/1.6 system-ui, sans-serif; border: 1px solid var(--line); border-radius: 6px; padding: 6px 16px 24px; min-height: 60vh; }
+  .preview [data-block] { border-radius: 4px; padding: 0 6px; margin: 0 -6px; }
+  .preview [data-block][contenteditable="true"]:hover { outline: 1px dashed var(--line); }
+  .preview [data-block][contenteditable="true"]:focus { outline: 2px solid var(--accent); }
+  .preview [data-block][contenteditable="false"] { cursor: default; }
+  .preview h1 { font-size: 22px; margin: 18px 0 8px; } .preview h2 { font-size: 18px; margin: 18px 0 6px; } .preview h3 { font-size: 15px; margin: 14px 0 4px; }
+  .preview p, .preview ul, .preview ol, .preview blockquote { margin: 6px 0; }
+  .preview blockquote { border-left: 3px solid var(--line); padding-left: 10px; opacity: 0.85; }
+  .preview code { font: 12.5px ui-monospace, monospace; background: var(--soft); padding: 1px 4px; border-radius: 3px; }
+  .preview pre { font: 12.5px/1.45 ui-monospace, monospace; background: var(--soft); padding: 8px; border-radius: 4px; white-space: pre-wrap; }
+  .preview pre.comment { opacity: 0.6; }
+  .preview table { border-collapse: collapse; margin: 8px 0; font-size: 13px; }
+  .preview th, .preview td { border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top; }
+  .preview a { color: var(--accent); text-decoration: underline; cursor: default; }
+  .preview li.task { list-style: none; margin-left: -18px; }
+  .preview [data-ui="task"] { cursor: pointer; user-select: none; }
   [hidden] { display: none !important; }
   #kept { display: none; white-space: pre-wrap; font: 12px ui-monospace, monospace; border: 1px dashed #8888; padding: 8px; }
 </style>
@@ -101,7 +130,9 @@ async function moveBeside() {
 
 // ── what the page shows ──────────────────────────────────────────────────────────────────────────────────────────
 /** Open on a document the model showed (a show_document result): its tab is chosen, and the other document loads. */
+let retriedBeside = false;
 async function open(payload) {
+  if (canBeside && !$('beside').hidden && !retriedBeside) { retriedBeside = true; moveBeside(); }
   const same = view && view.repo === payload.repo && String(view.ref) === String(payload.ref);
   const ref = payload.ref;
   view = { repo: payload.repo, ref, proposal: same ? view.proposal : null, spec: same ? view.spec : null };
@@ -124,6 +155,288 @@ async function loadCompanion() {
   } catch (e) {
     status(`Could not load everything: ${e.message}`);
   }
+}
+
+// ── Markdown: the block model, the preview and its way back (FR-036a) ────────────────────────────────────────────
+// A file is split into blocks by lines. Only a block the author edited in the preview is turned back into Markdown, and
+// it replaces only its own lines, so every other byte of the file is kept. Tables, code and comments are read-only in
+// the preview. No HTML from the file is ever parsed: the preview is built node by node, and links never navigate.
+const LIST_ITEM = /^(\s*)([-*+]|\d+[.)])\s+/;
+const BLOCK_START = /^(#{1,6}\s|```|~~~|>|\s*\||<!--)/;
+const EDITABLE = new Set(['heading', 'para', 'list', 'quote']);
+function parseBlocks(text) {
+  const lines = String(text).split('\n');
+  const blocks = [];
+  let i = 0;
+  while (i < lines.length) {
+    const l = lines[i];
+    if (/^\s*$/.test(l)) { i += 1; continue; }
+    const start = i;
+    let kind;
+    if (/^(```|~~~)/.test(l)) {
+      const fence = l.slice(0, 3);
+      i += 1;
+      while (i < lines.length && !lines[i].startsWith(fence)) i += 1;
+      i = Math.min(i + 1, lines.length);
+      kind = 'code';
+    } else if (/^<!--/.test(l)) {
+      while (i < lines.length && !lines[i].includes('-->')) i += 1;
+      i = Math.min(i + 1, lines.length);
+      kind = 'comment';
+    } else if (/^#{1,6}\s/.test(l)) { i += 1; kind = 'heading'; }
+    else if (/^ {0,3}([-*_])(\s*\1){2,}\s*$/.test(l)) { i += 1; kind = 'rule'; }
+    else if (/^\s*\|/.test(l)) { while (i < lines.length && /^\s*\|/.test(lines[i])) i += 1; kind = 'table'; }
+    else if (/^>/.test(l)) { while (i < lines.length && /^>/.test(lines[i])) i += 1; kind = 'quote'; }
+    else if (LIST_ITEM.test(l)) {
+      i += 1;
+      while (i < lines.length && (LIST_ITEM.test(lines[i]) || /^\s+\S/.test(lines[i]))) i += 1;
+      kind = 'list';
+    } else {
+      i += 1;
+      while (i < lines.length && !/^\s*$/.test(lines[i]) && !BLOCK_START.test(lines[i]) && !LIST_ITEM.test(lines[i])) i += 1;
+      kind = 'para';
+    }
+    blocks.push({ kind, start, end: i, text: lines.slice(start, i).join('\n') });
+  }
+  return { lines, blocks };
+}
+/** The file with each edited block's lines replaced by its new Markdown (index → text); everything else as it was. */
+function rebuild(model, replaced) {
+  const out = [...model.lines];
+  for (const [i, text] of [...replaced].sort((a, b) => b[0] - a[0])) {
+    const b = model.blocks[i];
+    out.splice(b.start, b.end - b.start, ...String(text).split('\n'));
+  }
+  return out.join('\n');
+}
+
+const el = (tag) => document.createElement(tag);
+function addText(parent, text) {
+  text.split('\n').forEach((part, i) => { if (i) parent.append(el('br')); if (part) parent.append(document.createTextNode(part)); });
+}
+const INLINE = /(`+)([^`]+?)\1|\*\*(.+?)\*\*|\*([^*\s](?:[^*]*?[^*\s])?)\*|\[([^\]]+)\]\(([^)\s]+)\)/g;
+function inline(parent, text) {
+  let last = 0;
+  for (const m of text.matchAll(INLINE)) {
+    if (m.index > last) addText(parent, text.slice(last, m.index));
+    if (m[1]) { const c = el('code'); c.textContent = m[2]; parent.append(c); }
+    else if (m[3] !== undefined) { const b = el('strong'); inline(b, m[3]); parent.append(b); }
+    else if (m[4] !== undefined) { const e = el('em'); inline(e, m[4]); parent.append(e); }
+    else { const a = el('a'); a.dataset.href = m[6]; a.setAttribute('title', m[6]); inline(a, m[5]); parent.append(a); }
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) addText(parent, text.slice(last));
+}
+function renderList(parent, lines, editable, onToggle) {
+  const items = [];
+  for (const l of lines) {
+    const m = l.match(/^(\s*)([-*+]|\d+[.)])\s+(?:\[([ xX])\]\s+)?(.*)$/);
+    if (m) items.push({ indent: m[1].length, ordered: /\d/.test(m[2]), task: m[3], text: m[4] });
+    else if (items.length) items[items.length - 1].text += `\n${l.trim()}`;
+  }
+  const stack = [{ indent: -1, list: null, li: null }];
+  for (const it of items) {
+    while (stack.length > 1 && it.indent < stack[stack.length - 1].indent) stack.pop();
+    let top = stack[stack.length - 1];
+    if (it.indent > top.indent) {
+      const list = el(it.ordered ? 'ol' : 'ul');
+      (top.li ?? parent).append(list);
+      top = { indent: it.indent, list, li: null };
+      stack.push(top);
+    }
+    const li = el('li');
+    if (it.task !== undefined) {
+      li.dataset.task = it.task.toLowerCase() === 'x' ? 'x' : ' ';
+      li.className = 'task';
+      const box = el('span');
+      box.dataset.ui = 'task';
+      box.contentEditable = 'false';
+      box.textContent = li.dataset.task === 'x' ? '☑ ' : '☐ ';
+      if (editable) box.addEventListener('click', () => { li.dataset.task = li.dataset.task === 'x' ? ' ' : 'x'; box.textContent = li.dataset.task === 'x' ? '☑ ' : '☐ '; onToggle?.(); });
+      li.append(box);
+    }
+    inline(li, it.text);
+    top.list.append(li);
+    top.li = li;
+  }
+}
+/** One block of the preview: a container holding the rendered block, editable only when its kind is. */
+function renderBlock(block, editable, onToggle) {
+  const box = el('div');
+  box.dataset.block = '';
+  box.dataset.kind = block.kind;
+  const lines = block.text.split('\n');
+  if (block.kind === 'heading') {
+    const [, hashes, text] = block.text.match(/^(#{1,6})\s+(.*)$/);
+    const h = el(`h${hashes.length}`);
+    inline(h, text);
+    box.append(h);
+  } else if (block.kind === 'para') {
+    const p = el('p');
+    inline(p, block.text);
+    box.append(p);
+  } else if (block.kind === 'quote') {
+    const q = el('blockquote');
+    inline(q, lines.map((l) => l.replace(/^>\s?/, '')).join('\n'));
+    box.append(q);
+  } else if (block.kind === 'list') {
+    renderList(box, lines, editable, onToggle);
+  } else if (block.kind === 'table') {
+    const t = el('table');
+    lines.filter((l) => !/^\s*\|?\s*:?-{2,}/.test(l)).forEach((l, r) => {
+      const tr = el('tr');
+      for (const cell of l.trim().replace(/^\|/, '').replace(/\|$/, '').split('|')) { const c = el(r ? 'td' : 'th'); inline(c, cell.trim()); tr.append(c); }
+      t.append(tr);
+    });
+    box.append(t);
+  } else if (block.kind === 'rule') {
+    box.append(el('hr'));
+  } else {
+    const pre = el('pre');
+    pre.className = block.kind;
+    pre.textContent = block.text;
+    box.append(pre);
+  }
+  box.contentEditable = editable && EDITABLE.has(block.kind) ? 'true' : 'false';
+  if (!EDITABLE.has(block.kind)) box.setAttribute('title', 'Edit this in the Markdown view');
+  return box;
+}
+
+const isList = (n) => n.nodeType === 1 && (n.nodeName === 'UL' || n.nodeName === 'OL');
+const BLOCK_TAGS = /^(H[1-6]|P|DIV|UL|OL|BLOCKQUOTE|HR|PRE|TABLE)$/;
+function mdInline(node) {
+  let out = '';
+  for (const n of node.childNodes) {
+    if (n.nodeType === 3) { out += n.nodeValue.replace(/ /g, ' '); continue; }
+    if (n.nodeType !== 1 || n.dataset?.ui !== undefined || isList(n)) continue;
+    const tag = n.nodeName;
+    const wrap = (mark) => { const [, a, mid, b] = mdInline(n).match(/^(\s*)([\s\S]*?)(\s*)$/); return mid ? `${a}${mark}${mid}${mark}${b}` : a + b; };
+    if (tag === 'BR') out += '\n';
+    else if (tag === 'STRONG' || tag === 'B') out += wrap('**');
+    else if (tag === 'EM' || tag === 'I') out += wrap('*');
+    else if (tag === 'CODE') out += `\`${n.textContent}\``;
+    else if (tag === 'A' && n.dataset?.href) out += `[${mdInline(n)}](${n.dataset.href})`;
+    else out += mdInline(n);
+  }
+  return out;
+}
+function mdList(list, depth) {
+  const out = [];
+  let k = 0;
+  for (const li of list.childNodes) {
+    if (isList(li)) { out.push(mdList(li, depth + 1)); continue; }
+    if (li.nodeType !== 1 || li.nodeName !== 'LI') continue;
+    k += 1;
+    const marker = list.nodeName === 'OL' ? `${k}.` : '-';
+    const task = li.dataset?.task !== undefined ? `[${li.dataset.task}] ` : '';
+    const pad = ' '.repeat(depth * 2 + marker.length + 1);
+    out.push(`${'  '.repeat(depth)}${marker} ${task}${mdInline(li).trim().replace(/\n/g, `\n${pad}`)}`);
+    for (const sub of li.childNodes) if (isList(sub)) out.push(mdList(sub, depth + 1));
+  }
+  return out.join('\n');
+}
+/** The Markdown for an edited block's container: what the author typed, and what the toolbar made of it. */
+function mdBlocks(container) {
+  const parts = [];
+  let loose = [];
+  const flush = () => { const t = mdInline({ childNodes: loose }).replace(/^\n+|\n+$/g, ''); if (t.trim()) parts.push(t); loose = []; };
+  for (const n of [...container.childNodes]) {
+    const tag = n.nodeType === 1 ? n.nodeName : '';
+    if (!BLOCK_TAGS.test(tag)) { loose.push(n); continue; }
+    flush();
+    if (/^H[1-6]$/.test(tag)) parts.push(`${'#'.repeat(Number(tag[1]))} ${mdInline(n).replace(/\n/g, ' ').trim()}`);
+    else if (tag === 'UL' || tag === 'OL') parts.push(mdList(n, 0));
+    else if (tag === 'BLOCKQUOTE') { const t = mdInline(n).trim(); if (t) parts.push(t.split('\n').map((l) => `> ${l}`).join('\n')); }
+    else if (tag === 'HR') parts.push('---');
+    else if ([...n.childNodes].some((c) => c.nodeType === 1 && BLOCK_TAGS.test(c.nodeName))) { const t = mdBlocks(n); if (t) parts.push(t); }
+    else { const t = mdInline(n).replace(/^\n+|\n+$/g, ''); if (t.trim()) parts.push(t); }
+  }
+  flush();
+  return parts.join('\n\n');
+}
+
+const TOOLBAR = [['formatBlock:h2', 'H2', 'Heading'], ['formatBlock:h3', 'H3', 'Subheading'], ['formatBlock:p', '¶', 'Paragraph'],
+  ['bold', 'B', 'Bold'], ['italic', 'I', 'Italic'], ['insertUnorderedList', '• List', 'Bulleted list']];
+const modes = {};         // the spec file path → 'preview' | 'markdown' (Preview by default), kept across a refresh
+
+/** A spec file's tab: the Preview | Markdown switch, the formatting controls, the outline, the preview and the source. */
+function fileEditor(panel, f, readOnly) {
+  const mode = () => modes[f.path] ?? 'preview';
+  const area = el('textarea');
+  area.className = 'file';
+  area.dataset.path = f.path;
+  area.value = f.content;
+  area.readOnly = readOnly;
+  area.addEventListener('input', edited);
+  const bar = el('div');
+  bar.className = 'toolbar';
+  const switcher = el('span');
+  switcher.className = 'switch';
+  const fmt = el('span');
+  fmt.className = 'format';
+  const preview = el('div');
+  preview.className = 'preview';
+  bar.append(switcher, fmt);
+  let model = null;
+  const replaced = new Map();
+  const blockEdited = (i, box) => { replaced.set(i, mdBlocks(box)); area.value = rebuild(model, replaced); edited(); };
+  const draw = () => {
+    preview.textContent = '';
+    model = parseBlocks(area.value);
+    replaced.clear();
+    model.blocks.forEach((b, i) => {
+      const box = renderBlock(b, !readOnly, () => blockEdited(i, box));
+      box.addEventListener('input', () => blockEdited(i, box));
+      preview.append(box);
+    });
+  };
+  const show = () => {
+    const m = mode();
+    preview.hidden = m !== 'preview';
+    area.hidden = m !== 'markdown';
+    fmt.hidden = m !== 'preview' || readOnly;
+    for (const b of switcher.children) b.setAttribute('aria-pressed', String(b.dataset.mode === m));
+  };
+  for (const [m, text] of [['preview', 'Preview'], ['markdown', 'Markdown']]) {
+    const b = el('button');
+    b.type = 'button';
+    b.dataset.mode = m;
+    b.textContent = text;
+    b.addEventListener('click', () => { if (m === 'preview' && mode() !== 'preview') draw(); modes[f.path] = m; show(); });
+    switcher.append(b);
+  }
+  for (const [cmd, text, title] of TOOLBAR) {
+    const b = el('button');
+    b.type = 'button';
+    b.dataset.cmd = cmd;
+    b.textContent = text;
+    b.setAttribute('title', title);
+    b.addEventListener('mousedown', (ev) => ev.preventDefault()); // keep the selection in the block being edited
+    b.addEventListener('click', () => { const [c, v] = cmd.split(':'); document.execCommand?.(c, false, v); });
+    fmt.append(b);
+  }
+  panel.append(bar);
+  if (f.path === 'spec.md') {
+    // The section outline, above the text: it jumps to the heading in either view.
+    const nav = el('nav');
+    for (const line of f.content.split('\n').filter((l) => /^##\s/.test(l))) {
+      const a = el('a');
+      a.textContent = line.replace(/^#+\s*/, '');
+      a.href = '#';
+      a.addEventListener('click', (ev) => {
+        ev.preventDefault();
+        if (mode() === 'preview') {
+          const i = model.blocks.findIndex((b) => b.kind === 'heading' && b.text === line);
+          preview.children[i]?.scrollIntoView?.({ block: 'start' });
+        } else { const i = area.value.indexOf(line); area.focus(); area.setSelectionRange(i, i); }
+      });
+      nav.append(a);
+    }
+    panel.append(nav);
+  }
+  panel.append(preview, area);
+  draw();
+  show();
 }
 
 function render() {
@@ -187,28 +500,7 @@ function render() {
   if (s) {
     const readOnly = Boolean(s.read_only);
     // spec.md first, then the checklists in the order the server lists them
-    for (const f of [...s.document.files].sort((a, b) => (b.path === 'spec.md') - (a.path === 'spec.md'))) {
-      const panel = addTab(f.path, f.path);
-      const area = document.createElement('textarea');
-      area.className = 'file';
-      area.dataset.path = f.path;
-      area.value = f.content;
-      area.readOnly = readOnly;
-      area.addEventListener('input', edited);
-      if (f.path === 'spec.md') {
-        // The section outline belongs to spec.md's tab, above its text.
-        const nav = document.createElement('nav');
-        panel.append(nav);
-        for (const line of f.content.split('\n').filter((l) => /^##\s/.test(l))) {
-          const a = document.createElement('a');
-          a.textContent = line.replace(/^#+\s*/, '');
-          a.href = '#';
-          a.addEventListener('click', (ev) => { ev.preventDefault(); const i = area.value.indexOf(line); area.focus(); area.setSelectionRange(i, i); });
-          nav.append(a);
-        }
-      }
-      panel.append(area);
-    }
+    for (const f of [...s.document.files].sort((a, b) => (b.path === 'spec.md') - (a.path === 'spec.md'))) fileEditor(addTab(f.path, f.path), f, readOnly);
   }
   show();
   const readOnly = (!p || p.read_only) && (!s || s.read_only);
@@ -325,7 +617,7 @@ $('beside').addEventListener('click', () => { moveBeside(); });
   try {
     const init = await request('ui/initialize', {
       protocolVersion: '2026-01-26',
-      appInfo: { name: 'pdlc-document-pane', version: '0.2.1' },
+      appInfo: { name: 'pdlc-document-pane', version: '0.2.2' },
       appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] },
     });
     notify('ui/notifications/initialized', {});

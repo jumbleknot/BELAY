@@ -4,8 +4,8 @@ title: The pdlc server — proposal intake from Claude Desktop
 description: How the pdlc operator-tool MCP server lets a Claude Desktop session on the workstation file and refine feature proposals as forge issues, write each one's spec with the repository's own Spec Kit and publish it on a feature branch, and show a proposal or spec in the right-hand pane — the default branch read-only, building and installing the .mcpb with its four settings, the dedicated pdlc token and its two scopes (write:repository since feature 016), the measured host facts, the skill update rule, the audit trail in the host's stderr log joined to the forge timeline by correlation_id, the refusal codes, and the hand-off that makes another repository (MCM) accept proposals and specs.
 tags: [pdlc, mcp, claude-desktop, proposals, runbook]
 resource: docs/runbooks/pdlc.md
-resource-sha256: 0e8b0c3c556e205df9c1a97783b23d763b7d8dfa1a2bfcfb704c3fedbb3037d8
-timestamp: 2026-11-28T16:12:45.473Z
+resource-sha256: 1d056a9108484591cc2fbd99d2e81773b55394fd41b6460e5c9a21737e0e1442
+timestamp: 2026-11-28T16:55:06.739Z
 ---
 
 # The pdlc server — proposal intake from Claude Desktop
@@ -41,7 +41,8 @@ Full detail is in [docs/runbooks/pdlc.md](../../docs/runbooks/pdlc.md).
   state in memory: revisions are hashes of files on disk. The page asks for the `fullscreen` display mode, shown as
   the right-hand pane, and polls every 2 seconds; a save against an old revision is refused `pane_edit_pending`, and
   the author's text is kept, so no edit is lost. A saved proposal and its spec share one page as tabs (the proposal,
-  then each spec file), and an **Open beside the chat** button asks again when the page is shown inline.
+  then each spec file), and an **Open beside the chat** button asks again when the page is shown inline. A spec file
+  opens as an editable Preview (with a switch to the Markdown source); only the blocks the author edited are rewritten.
 - **The audit log is the host's capture of stderr**, one `audit` line per call, allowed or refused, joined to the
   forge's issue timeline by `correlation_id`. Measured: it lands in Claude Desktop's general
   `%LOCALAPPDATA%\Claude\logs\main.log`, which rolls at about 10 MiB through five files, so retention is by

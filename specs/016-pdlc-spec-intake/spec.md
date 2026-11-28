@@ -372,6 +372,11 @@ changes in the saved proposal or the committed spec.
 - **FR-036**: The author MUST be able to edit an in-progress proposal or spec directly in the right-hand pane. The
   session MUST take each direct edit in before its next change or save, tell the author what it took in, and save or
   commit it with the rest. A direct edit MUST NOT be lost or silently overwritten by a chat edit.
+- **FR-036a** (added 2026-11-28 from T082, at the author's request): In the pane, a spec's Markdown files MUST open as a
+  rendered preview by default, with a switch to the Markdown source. The author MUST be able to edit in the preview,
+  with controls for headings, bold, italics and bullet lists. An edit in the preview MUST change only the parts of the
+  file the author edited, leaving every other line byte-identical; what the preview cannot edit (tables, code, comments)
+  is edited in the Markdown view.
 - **FR-037**: A document that is not in progress (a spec at **in engineering** or later, a closed proposal) MUST be
   read-only in the pane. Where the pane is unavailable, the session MUST fall back to showing the document in the chat
   and say so.

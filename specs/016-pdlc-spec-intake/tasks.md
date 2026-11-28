@@ -835,6 +835,24 @@ FR-036.
     draft guards on `create_proposal`/`update_proposal` are tested there.
   - The skill tests now check the MODEL-visible tools only, and that the skill never names the page's app-only ones.
 
+- [X] T084 [US9] **Preview and edit Markdown in the pane (FR-036a)**, in `mcp-servers/pdlc/ui/document-pane.html`, still
+  one self-contained file with no dependency (M7):
+  - each spec file's tab has a **Preview | Markdown** switch, Preview by default and kept across the 2 s refresh;
+  - the preview is rendered block by block (headings, paragraphs, lists with checkboxes, quotes, tables, code, rules,
+    comments). Headings, paragraphs, lists and quotes are editable; tables, code and comments are read-only there;
+  - an edited block is turned back into Markdown and replaces only its own lines, so untouched blocks stay
+    byte-identical;
+  - a toolbar (H2, H3, paragraph, bold, italic, bullet list) acts on the block being edited;
+  - the tabs are made more prominent.
+  - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/document-pane-behaviour.test.mjs` → expected: the new
+    preview tests fail (no Preview/Markdown switch, no block model)
+  - **Verify GREEN**: the same → expected: 0 failures, and an unedited round trip of this feature's own `spec.md` is
+    byte-identical
+  - **Done 2026-11-28**: RED 6 of 12 failing (the 7th, read-only, passed vacuously and was tightened), then GREEN 13/0/0
+    with a 13th test: when the host keeps the page inline on load, it asks once more when the first document arrives
+    (fails without that retry). Server 0.2.2. The fake DOM cannot run `document.execCommand`, so the toolbar is tested
+    on the markup Chromium produces for it; how it looks and behaves in Claude Desktop is checked by eye (T082)
+
 ## Phase 11: User Story 6 - Withdraw a spec in progress (Priority: P3)
 
 **Goal**: withdraw back to a proposal stage, deleting nothing and never reusing the branch.
