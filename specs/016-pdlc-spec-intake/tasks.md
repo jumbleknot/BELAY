@@ -970,6 +970,15 @@ FR-036.
     `start_spec`. Fixed: a saved draft leaves a pointer to its issue number, a saved proposal with no draft is read
     from the forge, the page follows a changed `ref`, and the skill calls `show_document` on the spec after
     `start_spec`. RED/GREEN in `document-pane.test.mjs` and `skill-master.test.mjs`
+  - **Observed 2026-11-28 (§2 on `ci-smoke`, steps 1–5)**: proposal item #39 was filed ready, specified, clarified (both
+    markers resolved) and approved. Its branch `001-smoke-test-summary` holds exactly one commit, adding only
+    `specs/001-smoke-test-summary/spec.md` and `checklists/requirements.md`. #39 is open with `status/ready-to-plan`
+    and two trailer comments (`spec-in-progress`, then `ready-to-plan` with the link). This ran on the build from
+    before the pane fix, so the pane fix still needs a re-check after reinstall
+  - **Finding 2026-11-28 (§2 pane, `ci-smoke`)**: a spec's files were stacked one above the other in the pane. Changed
+    to one tab per file, one file at a time; the chosen tab survives the 2 s refresh, and the section outline sits in
+    `spec.md`'s tab. RED/GREEN in `document-pane-page.test.mjs` (static only: no DOM runtime in the repo, so the tabs
+    are checked by eye in Claude Desktop)
 - [ ] T082a **Record the test count**: `node scripts/backlog.mjs record-tests --spec specs/016-pdlc-spec-intake --point close-out`
   after the last code commit. Expected: counts printed, "not an open proposal (#91 is closed); nothing posted", exit 0.
   - **Done when**: the counts, the delta and the exit code are recorded in this task
