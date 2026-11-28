@@ -30,6 +30,7 @@ const CONTRACT = {
   approve_spec: { props: ['repo', 'number', 'base_revision'], required: ['repo', 'number', 'base_revision'] },
   take_latest_spec: { props: ['repo', 'number'], required: ['repo', 'number'] },
   reopen_spec: { props: ['repo', 'number'], required: ['repo', 'number'] },
+  withdraw_spec: { props: ['repo', 'number', 'to'], required: ['repo', 'number', 'to'], enums: { to: ['ready', 'draft'] } },
 };
 
 const sorted = (a) => [...a].sort();

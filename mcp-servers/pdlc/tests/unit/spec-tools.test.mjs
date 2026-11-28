@@ -515,3 +515,52 @@ test('US7 start_spec with no local copy yet refuses spec_kit_unavailable, saying
     assert.ok(!w.calls.some((c) => c.args[0] === 'clone'));
   } finally { await w.close(); }
 });
+
+// ── withdraw_spec (US6; FR-019) ─────────────────────────────────────────────────────────────────────────────────
+
+for (const [to, label] of [['ready', 'status/needs-spec'], ['draft', 'status/proposal-draft']]) {
+  test(`US6-AC1 withdraw_spec to ${to}: the stage the author chose, a withdrawn trailer naming the branch, and NOTHING deleted`, async () => {
+    const { w, p } = await started();
+    try {
+      const r = await w.c.call('withdraw_spec', { repo: 'BELAY', number: p.number, to });
+      ok(r);
+      assert.equal(r.payload.stage, to);
+      assert.ok(w.labelsOf(p.number).includes(label));
+      assert.ok(!w.labelsOf(p.number).includes('status/spec-in-progress'));
+      assert.equal(w.forge.issue('BELAY', p.number).comments.at(-1).body,
+        `Spec withdrawn by its author. Branch \`${BRANCH}\` is kept and will not be reused.\n\n<!-- pdlc-stage: stage=withdrawn branch=${BRANCH} spec=${SPEC_DIR} -->`);
+      assert.ok(existsSync(join(w.worktreePath, 'specs', BRANCH, 'spec.md')), 'the worktree and its files stay');
+      const state = JSON.parse(readFileSync(join(w.cloneRoot, '.pdlc-specs', 'BELAY', `${BRANCH}.state.json`), 'utf8'));
+      assert.equal(state.withdrawn, true);
+      assert.ok(!w.calls.some((c) => ['push', 'reset'].includes(c.args[0]) || (c.args[0] === 'worktree' && c.args[1] !== 'list') && c.args[1] !== 'add'), 'no git write');
+      assert.ok(!w.forge.writes().some((c) => c.method === 'PATCH'), 'the issue is not closed');
+      refused(await w.c.call('get_spec', { repo: 'BELAY', number: p.number }), 'no_spec_for_proposal');
+    } finally { await w.close(); }
+  });
+}
+
+test('US6-AC2 after a withdrawal, a new start creates a NEW feature; the withdrawn branch is never reused', async () => {
+  const { w, p } = await started();
+  try {
+    ok(await w.c.call('withdraw_spec', { repo: 'BELAY', number: p.number, to: 'ready' }));
+    // the repository's own numbering would offer the same number again only if it could not see the branch: refused
+    refused(await w.c.call('start_spec', { repo: 'BELAY', number: p.number, short_name: 'pane-probe' }), 'branch_exists');
+    w.scripts.branch = '018-pane-probe-two';
+    const r = await w.c.call('start_spec', { repo: 'BELAY', number: p.number, short_name: 'pane-probe-two' });
+    ok(r);
+    assert.equal(r.payload.branch, '018-pane-probe-two');
+    assert.ok(w.labelsOf(p.number).includes('status/spec-in-progress'));
+  } finally { await w.close(); }
+});
+
+test('US6-AC3 FR-018 withdraw_spec refuses document_locked at in-engineering', async () => {
+  const { w, p } = await started();
+  try {
+    const issue = w.forge.issue('BELAY', p.number);
+    const label = (name) => w.forge.state.labels.belay.find((l) => l.name === name);
+    issue.labels = issue.labels.filter((l) => l.name !== 'status/spec-in-progress').concat([{ ...label('status/in-engineering') }]);
+    const r = await w.c.call('withdraw_spec', { repo: 'BELAY', number: p.number, to: 'ready' });
+    refused(r, 'document_locked');
+    assert.match(r.payload.reason, /planning has started/i);
+  } finally { await w.close(); }
+});

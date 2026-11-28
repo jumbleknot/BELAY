@@ -828,7 +828,7 @@ FR-036.
 
 **Independent Test**: spec.md User Story 6 "Independent Test".
 
-- [ ] T065 [P] [US6] Test: `withdraw_spec`. In `tools.test.mjs` and `tool-contract.test.mjs`:
+- [X] T065 [P] [US6] Test: `withdraw_spec`. In `tools.test.mjs` and `tool-contract.test.mjs`:
   - `to: ready|draft`;
   - a `withdrawn` trailer;
   - no git or file delete call;
@@ -838,7 +838,7 @@ FR-036.
   - **Scenarios covered**: US6-AC1, US6-AC2, US6-AC3, FR-019
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/tools.test.mjs` → expected: failing —
     `unknown tool withdraw_spec`
-- [ ] T066 [US6] Implement `withdraw_spec` (contract, handler, manifest, skill wording) (prerequisite: T065 RED)
+- [X] T066 [US6] Implement `withdraw_spec` (contract, handler, manifest, skill wording) (prerequisite: T065 RED)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/tools.test.mjs` → expected: 0 failures
 
 ---

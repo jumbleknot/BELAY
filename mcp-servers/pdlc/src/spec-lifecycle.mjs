@@ -230,6 +230,25 @@ export function createSpecLifecycle({ forge, allowlist, proposals, localCopy, sp
       return { repo: repo.name, number, branch: state.branch, spec_dir: state.spec_dir, stage: 'spec-in-progress' };
     },
 
+    /**
+     * withdraw_spec (US6; FR-019): back to a proposal stage the author chooses (ready or draft), until planning starts,
+     * with a `withdrawn` trailer so the branch is never reused. Deletes NOTHING: the worktree, the branch (local and
+     * published) and the state file stay; the state file is marked withdrawn.
+     */
+    async withdraw({ repo: repoArg, number, to }) {
+      const { repo, path, issue } = await proposals.loadProposal(repoArg, number, { write: true });
+      const { state, specDir } = await specOf(repo, number);
+      const stage = stageFromLabels(names(issue));
+      if (LOCKED.has(stage)) throw new Refusal('document_locked', `planning has started for proposal #${number} (stage "${stage}"), so the spec can no longer be withdrawn from Claude Desktop`);
+      checkTransition(stage, to, 'withdraw_spec');
+      await assertIssueOwnsSpec(path, number, state);
+      await moveStage({ path, issue, to, by: 'withdraw_spec',
+        text: `Spec withdrawn by its author. Branch \`${state.branch}\` is kept and will not be reused.`,
+        trailer: { stage: 'withdrawn', branch: state.branch, spec: state.spec_dir } });
+      await worktree.update({ repo, specDir }, { withdrawn: true });
+      return { repo: repo.name, number, branch: state.branch, spec_dir: state.spec_dir, stage: to };
+    },
+
     /** take_latest_spec (R8; FR-022; US8-AC4): bring the published branch in, keeping the author's edits. Publishes nothing. */
     async takeLatest({ repo: repoArg, number }) {
       const { repo, issue } = await proposals.loadProposal(repoArg, number, { write: true });
