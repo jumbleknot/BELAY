@@ -1,12 +1,12 @@
 // A scripted git-runner double: `script` maps the joined argv to a {stdout} answer, a {code, stderr}
-// failure, or a function of the call. Every call is recorded with its cwd.
+// failure, or a function of the call. Every call is recorded with its cwd (and, feature 016, the spec it names).
 import { GitError } from '../../../src/git-runner.mjs';
 
 export function fakeGit(script = {}) {
   const calls = [];
   const git = {
-    async run(args, { cwd }) {
-      calls.push({ args: [...args], cwd });
+    async run(args, { cwd, spec } = {}) {
+      calls.push({ args: [...args], cwd, ...(spec && { spec }) });
       const key = args.join(' ');
       let answer = script[key];
       if (typeof answer === 'function') answer = answer({ args, cwd, calls });

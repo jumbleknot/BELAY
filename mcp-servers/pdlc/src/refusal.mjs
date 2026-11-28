@@ -9,6 +9,7 @@ export const REFUSAL_CODES = Object.freeze([
   'invalid_input', 'forge_auth', 'forge_unreachable', 'not_found',
   // Feature 016 (contracts/tools.md "New refusal codes"), added as each is implemented.
   'stage_transition_refused', 'stage_ambiguous', 'push_target_refused', 'spec_kit_unavailable', 'path_outside_feature',
+  'branch_exists', 'spec_state_inconsistent',
 ]);
 
 export class Refusal extends Error {

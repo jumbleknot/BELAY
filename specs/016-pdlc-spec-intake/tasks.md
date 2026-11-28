@@ -244,7 +244,7 @@ with BELAY's `.specify/`, and by hand per quickstart §2 step 1.
   - **Scenarios covered**: US8-AC1, FR-020
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/spec-files.test.mjs` → expected: failing —
     `Cannot find module '../../src/spec-files.mjs'`
-- [ ] T020 [P] [US1] Test: worktree creation and state (R2). In `mcp-servers/pdlc/tests/unit/spec-worktree.test.mjs`,
+- [X] T020 [P] [US1] Test: worktree creation and state (R2). In `mcp-servers/pdlc/tests/unit/spec-worktree.test.mjs`,
   with a git double:
   - the git call sequence is fetch every head, then `worktree add -b <branch> <path> origin/<default>`;
   - the state file has data-model.md `Spec in progress` fields `recorded_remote_tip` (null), `branch`, `spec_dir` and
@@ -311,7 +311,7 @@ with BELAY's `.specify/`, and by hand per quickstart §2 step 1.
 - [X] T024 [P] [US1] Implement `mcp-servers/pdlc/src/spec-files.mjs` (R5; data-model.md `Spec in progress.revision`)
   (prerequisite: T019 RED)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/spec-files.test.mjs` → expected: 0 failures
-- [ ] T025 [P] [US1] Implement `mcp-servers/pdlc/src/spec-worktree.mjs` create, resume and state (R2; data-model.md
+- [X] T025 [P] [US1] Implement `mcp-servers/pdlc/src/spec-worktree.mjs` create, resume and state (R2; data-model.md
   `Spec in progress.worktree_path`, `.recorded_remote_tip`, `.last_start_or_reopen`) (prerequisite: T020 RED)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/spec-worktree.test.mjs` → expected: 0 failures
 - [ ] T026 [US1] Add `check_spec_kit`, `start_spec`, `get_spec` and `write_spec_file` to
