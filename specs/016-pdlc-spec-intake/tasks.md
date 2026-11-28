@@ -212,7 +212,7 @@ with BELAY's `.specify/`, and by hand per quickstart §2 step 1.
 
 ### Tests for User Story 1 (REQUIRED — TDD checkpoint format) ⚠️
 
-- [ ] T017 [P] [US1] Test: Spec Kit inspection (R3, R14). In `mcp-servers/pdlc/tests/unit/spec-kit-runner.test.mjs`,
+- [X] T017 [P] [US1] Test: Spec Kit inspection (R3, R14). In `mcp-servers/pdlc/tests/unit/spec-kit-runner.test.mjs`,
   with fixture `.specify/` trees in `tests/fixtures/spec-kit/`:
   - `initialised: false` without `init-options.json`;
   - `supported: false` for a version outside 1.4.x;
@@ -222,7 +222,7 @@ with BELAY's `.specify/`, and by hand per quickstart §2 step 1.
   - **Scenarios covered**: FR-005, US7-AC1 (inspection half)
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/spec-kit-runner.test.mjs` → expected: failing —
     `Cannot find module '../../src/spec-kit-runner.mjs'`
-- [ ] T018 [P] [US1] Test: running the scripts (R1). In the same file, with injected `execFile` and git doubles,
+- [X] T018 [P] [US1] Test: running the scripts (R1). In the same file, with injected `execFile` and git doubles,
   assert:
   - the call order: clone a scratch clone at `<clone_root>/.pdlc-scratch/<Repo>-<random>` with
     `clone --shared --no-checkout <copy path>`, then copy the remote refs into it, then `checkout --detach`;
@@ -306,7 +306,7 @@ with BELAY's `.specify/`, and by hand per quickstart §2 step 1.
 
 ### Implementation for User Story 1
 
-- [ ] T023 [P] [US1] Implement `mcp-servers/pdlc/src/spec-kit-runner.mjs` (R1, R3, R14) (prerequisite: T017, T018 RED)
+- [X] T023 [P] [US1] Implement `mcp-servers/pdlc/src/spec-kit-runner.mjs` (R1, R3, R14) (prerequisite: T017, T018 RED)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/spec-kit-runner.test.mjs` → expected: 0 failures
 - [ ] T024 [P] [US1] Implement `mcp-servers/pdlc/src/spec-files.mjs` (R5; data-model.md `Spec in progress.revision`)
   (prerequisite: T019 RED)

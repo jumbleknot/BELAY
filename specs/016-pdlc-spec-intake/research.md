@@ -53,7 +53,9 @@ a check. So the server never runs repository code in the local copy or a worktre
    so the script's `git branch -a` scan sees every forge branch;
 4. runs `checkout --detach origin/<default>` in the scratch clone;
 5. runs the script there, with **no** `GIT_CONFIG_*` authentication in its environment. Its
-   `git ls-remote --heads origin` reaches only the local copy and answers harmlessly;
+   `git ls-remote --heads origin` reaches only the local copy. That is also what keeps numbering right for a spec
+   branch that exists only on this workstation: the copy's local branches (created by `worktree add -b`) are its
+   heads, so the dry run sees them (read from the script, 2026-11-27: `Get-HighestNumberFromRemoteRefs`);
 6. reads the JSON output, then deletes the scratch folder.
 
 The only place the script can write is the scratch folder, and the scratch folder is an allowlisted write target

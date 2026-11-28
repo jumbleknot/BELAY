@@ -34,17 +34,18 @@ const HEX = /^[0-9a-f]{7,40}$/;
 const BRANCH = /^[A-Za-z0-9._/-]+$/;
 const isBranch = (b) => typeof b === 'string' && BRANCH.test(b) && !b.startsWith('-') && !b.includes('..');
 const same = (a, b) => typeof a === 'string' && typeof b === 'string' && resolve(a) === resolve(b);
-const under = (p, root) => typeof p === 'string' && resolve(p).startsWith(resolve(root) + sep);
+const under = (p, root) => typeof p === 'string' && typeof root === 'string' && resolve(p).startsWith(resolve(root) + sep);
 // The one commit message shape (research R4 "Commit identity").
 const APPROVAL_MESSAGE = /^docs\(\d{3,}\): approve spec for proposal item #\d+\n\nApproved in Claude Desktop by the spec's author\.$/;
 
 /** The folders a spec's calls are confined to (research R2, R5), derived from the spec, never from the call. */
 function specPaths(spec) {
-  const slug = basename(spec.specDir);
+  // Before the branch exists (the Spec Kit scratch steps) a spec has no folder yet: only the scratch shapes can match.
+  const slug = typeof spec.specDir === 'string' ? basename(spec.specDir) : null;
   return {
-    worktree: join(spec.cloneRoot, '.pdlc-specs', spec.repo, slug),
+    worktree: slug ? join(spec.cloneRoot, '.pdlc-specs', spec.repo, slug) : null,
     scratchRoot: join(spec.cloneRoot, '.pdlc-scratch'),
-    backups: join(spec.cloneRoot, '.pdlc-backups', spec.repo, slug),
+    backups: slug ? join(spec.cloneRoot, '.pdlc-backups', spec.repo, slug) : null,
   };
 }
 

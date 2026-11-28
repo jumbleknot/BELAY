@@ -1,0 +1,67 @@
+installed:
+- agent-context
+- git
+settings:
+  auto_execute_hooks: true
+hooks:
+  before_specify:
+  - extension: git
+    command: speckit.git.feature
+    enabled: true
+    optional: false
+    priority: 10
+    prompt: Execute speckit.git.feature?
+    description: Create feature branch before specification
+    condition: null
+  after_specify:
+  - extension: git
+    command: speckit.git.commit
+    enabled: true
+    optional: true
+    priority: 10
+    prompt: Commit?
+    description: Auto-commit after specification
+    condition: null
+  - extension: belay
+    command: speckit.belay.spec-stage
+    enabled: true
+    optional: false
+    priority: 20
+    prompt: Move the source proposal to "spec in progress"?
+    description: Record the spec's stage on the proposal it came from (feature 016)
+    condition: null
+  before_clarify:
+  - extension: git
+    command: speckit.git.commit
+    enabled: true
+    optional: true
+    priority: 10
+    prompt: Commit?
+    description: Auto-commit before spec clarification
+    condition: null
+  after_clarify:
+  - extension: agent-context
+    command: speckit.agent-context.update
+    enabled: true
+    optional: true
+    priority: 10
+    prompt: Update agent context?
+    description: Refresh the agent context file
+    condition: null
+  - extension: acme
+    command: speckit.acme.disabled
+    enabled: false
+    optional: false
+    priority: 30
+    prompt: x
+    description: disabled mandatory hooks are not run and do not block
+    condition: null
+  before_plan:
+  - extension: acme
+    command: speckit.acme.plan-only
+    enabled: true
+    optional: false
+    priority: 10
+    prompt: x
+    description: a hook point the Claude Desktop route never reaches
+    condition: null

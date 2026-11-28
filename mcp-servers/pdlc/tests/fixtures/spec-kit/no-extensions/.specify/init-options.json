@@ -1,0 +1,6 @@
+{
+  "ai": "claude",
+  "feature_numbering": "sequential",
+  "script": "ps",
+  "speckit_version": "1.4.1"
+}
