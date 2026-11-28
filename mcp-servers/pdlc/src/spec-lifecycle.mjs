@@ -129,11 +129,20 @@ export function createSpecLifecycle({ forge, allowlist, proposals, localCopy, sp
         throw new Refusal('not_ready_proposal', `proposal #${number} is at stage "${stage}", not a ready proposal; only a ready proposal can start a spec`);
       }
 
+      // US7, SC-005: Spec Kit is checked BEFORE any git call that writes (even the fast-forward's fetch), so a
+      // repository without it gains nothing; and again after the fast-forward, which may have changed it.
+      if (!existsSync(copyPath)) {
+        throw new Refusal('spec_kit_unavailable', `there is no local copy of ${repo.name} yet; run sync_repo first, then start the spec`);
+      }
+      const refuseUnlessReady = (kit) => {
+        const unsupported = kit.hooks.filter((h) => h.handling === 'unsupported');
+        if (kit.initialised && kit.supported && unsupported.length) throw new Refusal('spec_hook_unsupported', kit.reason);
+        if (!kit.ok) throw new Refusal('spec_kit_unavailable', kit.reason);
+      };
+      refuseUnlessReady(await specKit.inspect({ copyPath }));
       await localCopy.sync(repo);
       const kit = await specKit.inspect({ copyPath });
-      const unsupported = kit.hooks.filter((h) => h.handling === 'unsupported');
-      if (kit.initialised && kit.supported && unsupported.length) throw new Refusal('spec_hook_unsupported', kit.reason);
-      if (!kit.ok) throw new Refusal('spec_kit_unavailable', kit.reason);
+      refuseUnlessReady(kit);
 
       const { withdrawn } = readTrailers(await comments(path, number));
       const prep = await specKit.prepare({ repo, copyPath, shortName, script: kit.script });
@@ -196,6 +205,29 @@ export function createSpecLifecycle({ forge, allowlist, proposals, localCopy, sp
         trailer: { stage: 'ready-to-plan', branch: state.branch, spec: state.spec_dir } });
       await worktree.update({ repo, specDir }, { proposal_updated_at_start: after.updated_at });
       return { repo: repo.name, number, commit, branch: state.branch, spec_url: url, stage: 'ready-to-plan' };
+    },
+
+    /**
+     * reopen_spec (US5; FR-017): ready-to-plan → spec-in-progress, until planning starts. The clarification baseline
+     * becomes the spec's current session count, so approving again needs a new session (R15); the branch stays the same.
+     */
+    async reopen({ repo: repoArg, number }) {
+      const { repo, path, issue } = await proposals.loadProposal(repoArg, number, { write: true });
+      const { state, specDir } = await specOf(repo, number);
+      const stage = stageFromLabels(names(issue));
+      if (LOCKED.has(stage)) throw new Refusal('document_locked', `planning has started for proposal #${number} (stage "${stage}"), so the spec can no longer be reopened from Claude Desktop`);
+      checkTransition(stage, 'spec-in-progress', 'reopen_spec');
+      await assertIssueOwnsSpec(path, number, state);
+      const { files: list } = await files.read({ worktree: state.worktree_path, specDir });
+      const after = await moveStage({ path, issue, to: 'spec-in-progress', by: 'reopen_spec',
+        text: 'Spec reopened by its author for editing; hidden from ready work until approved again.',
+        trailer: { stage: 'spec-in-progress', branch: state.branch, spec: state.spec_dir } });
+      await worktree.update({ repo, specDir }, {
+        last_start_or_reopen: now().toISOString().slice(0, 10),
+        sessions_at_start_or_reopen: countClarifySessions(list.find((f) => f.path === 'spec.md')?.content ?? ''),
+        proposal_updated_at_start: after.updated_at,
+      });
+      return { repo: repo.name, number, branch: state.branch, spec_dir: state.spec_dir, stage: 'spec-in-progress' };
     },
 
     /** take_latest_spec (R8; FR-022; US8-AC4): bring the published branch in, keeping the author's edits. Publishes nothing. */

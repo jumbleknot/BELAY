@@ -227,3 +227,18 @@ test('a push straight to the default branch is refused by the server, even in a 
   const ctx = { cloneRoot: forge.cloneRoot, repo: 'target', copyPath, defaultBranch: 'main', featureBranch: 'main', specDir: 'specs/003-int-probe' };
   await assert.rejects(git.run(['push', 'origin', 'refs/heads/main:refs/heads/main'], { cwd: state.worktree_path, spec: ctx }), (e) => e.code === 'push_target_refused');
 });
+
+test('US7, SC-005: a repository without Spec Kit is reported as not set up, and gains no branch, commit or file (T057)', async () => {
+  forge.createRepo('plain', { files: { 'README.md': '# no spec kit here\n' } });
+  const repo = { name: 'plain', default_branch: 'main' };
+  assert.equal((await lc.sync(repo)).action, 'cloned');
+  const copyPath = join(forge.cloneRoot, 'plain');
+  const heads = sh(forge.root, 'ls-remote', '--heads', forge.originUrlFor('plain'));
+  const before = copyState(copyPath);
+  const kit = await specKit.inspect({ copyPath });
+  assert.deepEqual([kit.initialised, kit.ok], [false, false]);
+  assert.match(kit.reason, /not set up for Spec Kit/);
+  assert.equal(sh(forge.root, 'ls-remote', '--heads', forge.originUrlFor('plain')), heads, 'no new branch on the forge');
+  assert.deepEqual(copyState(copyPath), before, 'the copy is byte-identical');
+  assert.equal(existsSync(join(forge.cloneRoot, '.pdlc-specs', 'plain')), false);
+});

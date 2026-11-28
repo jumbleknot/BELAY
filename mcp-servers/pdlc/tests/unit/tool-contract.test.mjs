@@ -29,6 +29,7 @@ const CONTRACT = {
   write_spec_file: { props: ['repo', 'number', 'path', 'content', 'base_revision'], required: ['repo', 'number', 'path', 'content', 'base_revision'] },
   approve_spec: { props: ['repo', 'number', 'base_revision'], required: ['repo', 'number', 'base_revision'] },
   take_latest_spec: { props: ['repo', 'number'], required: ['repo', 'number'] },
+  reopen_spec: { props: ['repo', 'number'], required: ['repo', 'number'] },
 };
 
 const sorted = (a) => [...a].sort();
@@ -70,7 +71,12 @@ test('no tool name offers a close, reopen, delete, label, milestone, assignee, b
   const c = await connect();
   try {
     const { tools } = await c.client.listTools();
-    for (const t of tools) assert.doesNotMatch(t.name, /close|reopen|delete|label|milestone|assign|bulk|write_file/);
+    // Feature 016: `reopen_spec` is the one contract name containing "reopen". It reopens a SPEC for editing (ready to
+    // plan → spec in progress) and never an issue, which stays open until merge; FR-027 still forbids an issue reopen.
+    const SPEC_LIFECYCLE = new Set(['reopen_spec']);
+    for (const t of tools.filter((x) => !SPEC_LIFECYCLE.has(x.name))) {
+      assert.doesNotMatch(t.name, /close|reopen|delete|label|milestone|assign|bulk|write_file/);
+    }
   } finally { await c.close(); }
 });
 

@@ -116,9 +116,13 @@ test('start_spec refuses spec_kit_unavailable in a repository without Spec Kit, 
   const w = await specWorld({ fixture: new URL('../fixtures/spec-kit/not-initialised/', import.meta.url).pathname });
   try {
     const p = w.ready();
-    refused(await w.c.call('start_spec', { repo: 'BELAY', number: p.number, short_name: 'pane-probe' }), 'spec_kit_unavailable');
+    const r = await w.c.call('start_spec', { repo: 'BELAY', number: p.number, short_name: 'pane-probe' });
+    refused(r, 'spec_kit_unavailable');
+    assert.match(r.payload.reason, /not set up for Spec Kit/);
     assert.deepEqual(w.forge.writes(), []);
-    assert.ok(!w.calls.some((c) => ['clone', 'worktree'].includes(c.args[0])));
+    // T057: Spec Kit is checked before ANY git call that writes, not even a fetch (US7-AC2, SC-005)
+    const writes = w.calls.filter((c) => ['fetch', 'clone', 'worktree', 'merge', 'checkout', 'add', 'commit', 'push', 'reset'].includes(c.args[0]));
+    assert.deepEqual(writes.map((c) => c.args.join(' ')), [], `expected no git write calls, saw ${writes.map((c) => c.args[0]).join(', ')}`);
   } finally { await w.close(); }
 });
 
@@ -435,5 +439,79 @@ test('take_latest_spec refuses nothing_to_take when the forge has not moved', as
     const label = (name) => w.forge.state.labels.belay.find((l) => l.name === name);
     issue.labels = issue.labels.filter((l) => l.name !== 'status/ready-to-plan').concat([{ ...label('status/spec-in-progress') }]);
     refused(await w.c.call('take_latest_spec', { repo: 'BELAY', number: p.number }), 'nothing_to_take');
+  } finally { await w.close(); }
+});
+
+// ── reopen_spec (US5; FR-017, FR-018) ───────────────────────────────────────────────────────────────────────────
+
+async function approved() {
+  const { w, p, revision } = await clarified();
+  const a = await w.c.call('approve_spec', { repo: 'BELAY', number: p.number, base_revision: revision });
+  ok(a);
+  return { w, p };
+}
+
+test('US5-AC1 reopen_spec moves ready-to-plan back to spec-in-progress with the reopen text, and hides it from ready work', async () => {
+  const { w, p } = await approved();
+  try {
+    const r = await w.c.call('reopen_spec', { repo: 'BELAY', number: p.number });
+    ok(r);
+    assert.deepEqual([r.payload.stage, r.payload.branch], ['spec-in-progress', BRANCH]);
+    assert.ok(w.labelsOf(p.number).includes('status/spec-in-progress'));
+    assert.ok(!w.labelsOf(p.number).includes('status/ready-to-plan'));
+    assert.equal(w.forge.issue('BELAY', p.number).comments.at(-1).body,
+      `Spec reopened by its author for editing; hidden from ready work until approved again.\n\n<!-- pdlc-stage: stage=spec-in-progress branch=${BRANCH} spec=${SPEC_DIR} -->`);
+    assert.equal(w.c.audits().find((a) => a.tool === 'reopen_spec').branch, BRANCH);
+    assert.ok(!w.forge.writes().some((c) => c.method === 'PATCH'), 'reopen_spec never changes the issue\'s state (FR-027: no issue reopen or close)');
+  } finally { await w.close(); }
+});
+
+test('US5-AC2 a reopen resets the clarification count: approving again needs a NEW session; then the comment says re-approved, on the same branch', async () => {
+  const { w, p } = await approved();
+  try {
+    ok(await w.c.call('reopen_spec', { repo: 'BELAY', number: p.number }));
+    const state = JSON.parse(readFileSync(join(w.cloneRoot, '.pdlc-specs', 'BELAY', `${BRANCH}.state.json`), 'utf8'));
+    assert.equal(state.sessions_at_start_or_reopen, 1, 'the one session already in the spec is the new baseline');
+    assert.equal(state.last_start_or_reopen, '2026-11-27');
+    const g = await w.c.call('get_spec', { repo: 'BELAY', number: p.number });
+    assert.equal(g.payload.clarified, false);
+    const edited = CLARIFIED.replace('- **FR-001**: The pane MUST show the spec.', '- **FR-001**: The pane MUST show the spec beside the chat.');
+    const wr = await w.c.call('write_spec_file', { repo: 'BELAY', number: p.number, path: 'spec.md', content: edited, base_revision: g.payload.revision });
+    refused(await w.c.call('approve_spec', { repo: 'BELAY', number: p.number, base_revision: wr.payload.revision }), 'spec_not_clarified');
+    const again = edited.replace('## Requirements', '### Session 2026-11-28\n\n- No questions: no critical ambiguity found.\n\n## Requirements');
+    const wr2 = await w.c.call('write_spec_file', { repo: 'BELAY', number: p.number, path: 'spec.md', content: again, base_revision: wr.payload.revision });
+    const a = await w.c.call('approve_spec', { repo: 'BELAY', number: p.number, base_revision: wr2.payload.revision });
+    ok(a);
+    assert.equal(a.payload.branch, BRANCH);
+    assert.match(w.forge.issue('BELAY', p.number).comments.at(-1).body, /^Spec re-approved by its author and published on branch `017-pane-probe`/);
+    assert.deepEqual(w.pushes, [BRANCH, BRANCH], 'both approvals published the same branch');
+    assert.equal(w.commits.length, 2);
+  } finally { await w.close(); }
+});
+
+test('US5-AC3 FR-018 reopen_spec refuses document_locked at in-engineering, and stage_transition_refused when not ready to plan', async () => {
+  const { w, p } = await approved();
+  try {
+    const issue = w.forge.issue('BELAY', p.number);
+    const label = (name) => w.forge.state.labels.belay.find((l) => l.name === name);
+    issue.labels = issue.labels.filter((l) => l.name !== 'status/ready-to-plan').concat([{ ...label('status/in-engineering') }]);
+    const r = await w.c.call('reopen_spec', { repo: 'BELAY', number: p.number });
+    refused(r, 'document_locked');
+    assert.match(r.payload.reason, /planning has started/i);
+    issue.labels = issue.labels.filter((l) => l.name !== 'status/in-engineering').concat([{ ...label('status/spec-in-progress') }]);
+    refused(await w.c.call('reopen_spec', { repo: 'BELAY', number: p.number }), 'stage_transition_refused');
+  } finally { await w.close(); }
+});
+
+test('US7 start_spec with no local copy yet refuses spec_kit_unavailable, saying to sync first, and clones nothing', async () => {
+  const w = await specWorld();
+  try {
+    const { rmSync } = await import('node:fs');
+    rmSync(w.copyPath, { recursive: true, force: true });
+    const p = w.ready();
+    const r = await w.c.call('start_spec', { repo: 'BELAY', number: p.number, short_name: 'pane-probe' });
+    refused(r, 'spec_kit_unavailable');
+    assert.match(r.payload.reason, /sync_repo/);
+    assert.ok(!w.calls.some((c) => c.args[0] === 'clone'));
   } finally { await w.close(); }
 });

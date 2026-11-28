@@ -105,6 +105,10 @@ export const TOOLS = Object.freeze({
     description: "Approve the spec in progress: refuse while [NEEDS CLARIFICATION] markers remain or clarification has not run, then commit the spec folder, publish the feature branch, and move the proposal to ready to plan with a comment linking the folder.",
     input: strict({ repo, number, base_revision: revision }),
   },
+  reopen_spec: {
+    description: 'Reopen an approved spec (ready to plan) for editing, until planning starts: the proposal moves back to spec in progress and leaves the ready list. Approving again needs a new clarification session and publishes on the same branch.',
+    input: strict({ repo, number }),
+  },
   take_latest_spec: {
     description: "When the feature branch changed on the forge, bring the published branch into the spec in progress: back up first, keep the author's edits by a three-way merge per file, and list any conflicts for the author to resolve. Publishes nothing and changes no stage.",
     input: strict({ repo, number }),

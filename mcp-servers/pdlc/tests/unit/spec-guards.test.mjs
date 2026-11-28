@@ -113,6 +113,7 @@ test('one audit line per call, allowed or refused, for every spec tool', async (
       write_spec_file: { repo: 'BELAY', number: p.number, path: 'spec.md', content: SPEC, base_revision: revision },
       approve_spec: { repo: 'BELAY', number: p.number, base_revision: 'f'.repeat(64) },
       take_latest_spec: { repo: 'BELAY', number: p.number },
+      reopen_spec: { repo: 'BELAY', number: p.number },
     };
     assert.deepEqual(Object.keys(calls).sort(), [...SPEC_TOOLS].filter((t) => Object.hasOwn(calls, t)).sort());
     for (const tool of SPEC_TOOLS.filter((t) => Object.hasOwn(calls, t))) {

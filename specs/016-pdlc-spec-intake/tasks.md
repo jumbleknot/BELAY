@@ -718,7 +718,7 @@ inserted, not renumbered, so references to T055 onwards stay valid.
 
 **Independent Test**: spec.md User Story 5 "Independent Test".
 
-- [ ] T055 [P] [US5] Test: `reopen_spec`. In `tools.test.mjs` and `tool-contract.test.mjs`:
+- [X] T055 [P] [US5] Test: `reopen_spec`. In `tools.test.mjs` and `tool-contract.test.mjs`:
   - `ready-to-plan` → `spec-in-progress` with the reopen text;
   - `last_start_or_reopen` and `sessions_at_start_or_reopen` are reset to the current date and session count, so
     approving again needs a new clarification session (data-model.md `Spec in progress.last_start_or_reopen`,
@@ -728,10 +728,15 @@ inserted, not renumbered, so references to T055 onwards stay valid.
   - **Scenarios covered**: US5-AC1, US5-AC2, US5-AC3, FR-017
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/tools.test.mjs` → expected: failing —
     `unknown tool reopen_spec`
-- [ ] T056 [US5] Implement `reopen_spec` (contract, handler, manifest, skill). Extend the integration test with
+- [X] T056 [US5] Implement `reopen_spec` (contract, handler, manifest, skill). Extend the integration test with
   approve → reopen → edit → approve: two commits on the same branch (prerequisite: T055 RED)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/tools.test.mjs`, then
     `node --test mcp-servers/pdlc/tests/integration/spec-lifecycle.integration.test.mjs` → expected: 0 failures
+  - **Done 2026-11-28, as built**: reopen is a forge stage move, which the integration tier (no forge) cannot run, so
+    "two commits on the same branch" is asserted in the unit tier (two approvals, two pushes of the same branch) and by
+    T045's real-git publish-again. 014's tool-name guard forbade any name containing `reopen`; it now names `reopen_spec`
+    as the one allowed contract name (a spec reopen, never an issue reopen) and `reopen_spec` is asserted to send no
+    issue state change (FR-027). Reopen also requires the issue's stage record to name the spec's branch (FR-023)
 
 ---
 
@@ -741,7 +746,7 @@ inserted, not renumbered, so references to T055 onwards stay valid.
 
 **Independent Test**: spec.md User Story 7 "Independent Test", and quickstart §6.
 
-- [ ] T057 [P] [US7] Test:
+- [X] T057 [P] [US7] Test:
   - `start_spec` against a repository without `.specify/` refuses `spec_kit_unavailable`, and the git double sees no
     write call;
   - the integration test with a bare repository without `.specify/` shows no new branch on the remote and none in
@@ -750,7 +755,7 @@ inserted, not renumbered, so references to T055 onwards stay valid.
   - **Scenarios covered**: US7-AC1, US7-AC2, SC-005
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/tools.test.mjs` → expected: failing — `expected no git
     write calls, saw fetch`
-- [ ] T058 [US7] Make `start_spec` check Spec Kit before any git call, and finish the skill's wording (prerequisite:
+- [X] T058 [US7] Make `start_spec` check Spec Kit before any git call, and finish the skill's wording (prerequisite:
   T057 RED)
   - **Verify GREEN**: same commands as T057 → expected: 0 failures
 

@@ -51,6 +51,11 @@ export function createToolHandlers(deps = {}) {
       wrote('approve_spec', `spec approved and published: ${result.commit}`, { repo: result.repo, number: result.number, branch: result.branch }, ctx);
       return result;
     },
+    reopen_spec: async (args, ctx) => {
+      const result = await specs.reopen(args);
+      wrote('reopen_spec', 'spec reopened', { repo: result.repo, number: result.number, branch: result.branch }, ctx);
+      return result;
+    },
     take_latest_spec: async (args, ctx) => {
       const result = await specs.takeLatest(args);
       wrote('take_latest_spec', `took the latest: ${result.merged.length} merged, ${result.conflicts.length} conflict(s)`, { repo: result.repo, number: result.number, branch: result.branch }, ctx);

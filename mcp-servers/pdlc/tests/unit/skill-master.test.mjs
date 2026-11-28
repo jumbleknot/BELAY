@@ -120,3 +120,10 @@ test('016 US8-AC4: on branch_changed the skill shows what changed and offers Tak
   assert.match(part, /approve again/i);
   assert.match(part, /`backup_path`/);
 });
+
+test('016 US7-AC1: where Spec Kit is not set up, the skill ends after the proposal is saved, saying why in plain words and that the spec is written in Claude Code', () => {
+  const step = skill.slice(skill.indexOf('## 7.'), skill.indexOf('## 8.'));
+  assert.match(step, /`ok: false`/);
+  assert.match(step, /written in Claude Code in that repository instead/);
+  assert.match(step, /end the session there\. Nothing is created/);
+});
