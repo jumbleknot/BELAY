@@ -52,15 +52,27 @@ A push to a branch with an open PR runs once, through the `pull_request` event. 
 8. `pnpm nx run pdlc:test`: the server's unit and contract tests (the contract test speaks the real MCP protocol
    over the SDK's in-memory transport), then the same 70% coverage gate through
    `check-coverage.mjs --policy mcp-servers/pdlc/coverage-policy.yaml`.
-9. `pnpm nx run pdlc:integration`: real git against local bare repositories (clone, fast-forward, and every copy
-   refusal), with no doubles and no forge. It needs only git on the runner.
-10. The failure digest. It always runs and never changes the job's result.
+9. Install `pwsh`: `node scripts/install-pwsh.mjs "$HOME/.local/pwsh"`, then put that folder on the `PATH`. It downloads
+   PowerShell at the version pinned in `scripts/install-pwsh.mjs` (`PWSH_PIN`, 7.7.0, the dev container's version) and
+   refuses bytes whose sha256 is not the pin. The runner image has no `pwsh` (measured 2026-11-27), and step 10 runs
+   the target repository's real Spec Kit scripts (feature 016, decision M9). Renovate moves the pin with the dev
+   container's; `refresh-pin-checksum.mjs pwsh` moves its sha256. About 10 seconds.
+10. `pnpm nx run pdlc:integration`: real git against local bare repositories (clone, fast-forward, every copy
+   refusal, and a whole spec lifecycle with BELAY's real Spec Kit scripts under `pwsh`), with no doubles and no forge.
+11. On a push to `main` only: post the merged commit's suite outcomes (feature 016). Steps 6, 8 and 10 each pass
+   `--results=target/test-results/<target>.jsonl`, so their own run writes one line per test case, and this step runs
+   `node scripts/feature-merged.mjs --outcomes target/test-results`. For a merge that came from a proposal it comments
+   the passed, failed, skipped and todo counts per target on that proposal; otherwise it logs and does nothing. It runs
+   no test, always exits 0 and is `continue-on-error`, so it can never change the job's result. A run cancelled by a
+   later push does not reach it (measured: a cancelled job's `always()` steps do not run); see the `feature-merged`
+   workflow below.
+12. The failure digest. It always runs and never changes the job's result.
 
 `pdlc:integration-forge`, the server's live tier against the real forge and the `ci-smoke` repository, is **not**
 in CI: nothing in CI talks to a live forge. It is operator-run in the dev container, maps `FORGE_ISSUE_TOKEN` to
 `PDLC_FORGE_TOKEN` at the point of use, and fails (never skips) when the token is unset.
 
-Steps 3 to 9 run through `scripts/ci-log-step.sh`. That script keeps each step's exit code and mirrors its output to the per-step log the digest reads.
+Steps 3 to 10 run through `scripts/ci-log-step.sh`. That script keeps each step's exit code and mirrors its output to the per-step log the digest reads.
 
 ## Running it locally
 
@@ -181,6 +193,25 @@ These are the bot's health loop (feature 012), both on the `belay` runner and ne
 
 The bot's own run fails its verdict when the weekly report is more than 8 days old. The details are in
 [the dependency-bot runbook](renovate.md#the-health-loop).
+
+## The feature-merged workflow
+
+[`.forgejo/workflows/feature-merged.yml`](../../.forgejo/workflows/feature-merged.yml) closes a proposal when its
+feature branch merges (feature 016). `feature-merged` is its own workflow and not a required check: it runs after the
+merge, on every push to `main`, on the `belay` runner, in at most 5 minutes, and it runs **no tests**.
+
+- It finds the merged pull request (the forge's commit-to-PR lookup, or the merge commit's title) and reads the one
+  `Proposal #<n>` on the Input line of `specs/<branch>/spec.md`. No marker: one log line, exit 0.
+- It counts the test declarations the feature created: `count-repo-metrics.mjs` at the merge commit minus its first
+  parent (the checkout is `fetch-depth: 2`). A count it cannot read is written `unknown` with its reason, never 0.
+- It posts the closing comment, swaps the issue's stage label to `status/merged`, and closes it. Comment first, so a
+  re-run only completes what is missing.
+- The whole suite's outcomes arrive separately, from step 11 of `guardrails`' own run on the same commit.
+- Credential: the run token (measured 2026-11-27: it can comment on and close an issue in its own repository), with
+  `CI_DIGEST_TOKEN` as the fallback on a 401 or 403.
+- **Re-run** it from the Actions page with `workflow_dispatch` and the merge commit's `sha`, or check its comment first
+  with `node scripts/feature-merged.mjs --sha <merge sha> --dry-run`, which writes nothing.
+- Its own concurrency group never cancels a run in progress, because `guardrails`' runs on `main` cancel each other.
 
 ## The registry-retention workflow
 

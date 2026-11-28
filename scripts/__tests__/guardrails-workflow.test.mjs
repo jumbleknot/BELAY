@@ -40,8 +40,9 @@ test('two jobs, guardrails and sast, each on the belay runner label with a timeo
 test('steps run in contract order with pinned actions, Node 26 and the Nx targets', () => {
   const steps = load().jobs.guardrails.steps;
   // Feature 014 added the three pdlc steps (pdlc:lint, pdlc:test, pdlc:integration) after scripts:test.
-  // Feature 016 (research M9) added the pinned pwsh install just before pdlc:integration.
-  assert.equal(steps.length, 11, 'the contract defines exactly eleven steps');
+  // Feature 016 added the pinned pwsh install just before pdlc:integration (research M9), and the outcomes step just
+  // before the digest (decision M10).
+  assert.equal(steps.length, 12, 'the contract defines exactly twelve steps');
   assert.equal(steps[0].uses, CHECKOUT);
   assert.equal(steps[1].uses, SETUP_NODE);
   assert.equal(String(steps[1].with['node-version']), NODE_VERSION);
@@ -50,7 +51,8 @@ test('steps run in contract order with pinned actions, Node 26 and the Nx target
   assert.equal(steps[2].run.trim(), 'bash scripts/ci-log-step.sh guardrails-install-pnpm bash scripts/install-pnpm.sh');
   assert.equal(steps[3].run.trim(), 'bash scripts/ci-log-step.sh guardrails-install-deps pnpm install --frozen-lockfile');
   assert.equal(steps[4].run.trim(), 'bash scripts/ci-log-step.sh guardrails-lint pnpm nx run scripts:lint');
-  assert.equal(steps[5].run.trim(), 'bash scripts/ci-log-step.sh guardrails-test pnpm nx run scripts:test');
+  // Feature 016 (M10): each test step writes its collector report for the outcomes step.
+  assert.equal(steps[5].run.trim(), 'bash scripts/ci-log-step.sh guardrails-test pnpm nx run scripts:test --results=target/test-results/scripts-test.jsonl');
 });
 
 test('pdlc: the server\'s lint, test and real-git integration run after scripts:lint and scripts:test, wrapped for the digest', () => {
@@ -58,9 +60,9 @@ test('pdlc: the server\'s lint, test and real-git integration run after scripts:
   const runs = steps.map((st) => (st.run ?? '').trim());
   const at = (cmd) => runs.findIndex((r) => r === cmd);
   const lint = at('bash scripts/ci-log-step.sh guardrails-pdlc-lint pnpm nx run pdlc:lint');
-  const unit = at('bash scripts/ci-log-step.sh guardrails-pdlc-test pnpm nx run pdlc:test');
-  const integ = at('bash scripts/ci-log-step.sh guardrails-pdlc-integration pnpm nx run pdlc:integration');
-  const scriptsTest = at('bash scripts/ci-log-step.sh guardrails-test pnpm nx run scripts:test');
+  const unit = at('bash scripts/ci-log-step.sh guardrails-pdlc-test pnpm nx run pdlc:test --results=target/test-results/pdlc-test.jsonl');
+  const integ = at('bash scripts/ci-log-step.sh guardrails-pdlc-integration pnpm nx run pdlc:integration --results=target/test-results/pdlc-integration.jsonl');
+  const scriptsTest = at('bash scripts/ci-log-step.sh guardrails-test pnpm nx run scripts:test --results=target/test-results/scripts-test.jsonl');
   assert.ok(lint > scriptsTest && unit > lint && integ > unit, `order: ${runs.join(' | ')}`);
   // Feature 016: pdlc:integration runs Spec Kit's PowerShell scripts, so the pinned pwsh is installed right before it.
   const pwsh = runs.findIndex((r) => r.startsWith('bash scripts/ci-log-step.sh guardrails-install-pwsh '));

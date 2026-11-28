@@ -628,7 +628,7 @@ inserted, not renumbered, so references to T055 onwards stay valid.
   - **Scenarios covered**: US4-AC2, US4-AC3, FR-014, FR-038, FR-039, SC-010
   - **Verify RED**: `node --test scripts/__tests__/feature-merged.test.mjs` → expected: failing —
     `Cannot find module '../feature-merged.mjs'`
-- [ ] T051 [P] [US4] Test: config and workflow guards. In `scripts/__tests__/feature-merged-workflow.guard.test.mjs`:
+- [X] T051 [P] [US4] Test: config and workflow guards. In `scripts/__tests__/feature-merged-workflow.guard.test.mjs`:
   - `scripts/feature-merged.config.json` targets equal the test targets in `.forgejo/workflows/guardrails.yml`;
   - `feature-merged.yml` triggers on `push` to `main` and on `workflow_dispatch` only; runner `belay`; timeout 5;
     `fetch-depth: 2`; a concurrency group with no `cancel-in-progress`; no step runs `nx` or a test target;
@@ -683,12 +683,17 @@ inserted, not renumbered, so references to T055 onwards stay valid.
     `scripts/lib/node-test-with-results.mjs` (new; tested in `node-test-with-results.test.mjs`) and
     `check-coverage.mjs --results` (tested in `check-coverage.test.mjs`); research R12 records the Nx measurement. The
     collector's reporter body gained an in-process test, because a child run is invisible to the parent's coverage
-- [ ] T054 [US4] Add `.forgejo/workflows/feature-merged.yml`, add the reporter attachment and the final outcomes step
+- [X] T054 [US4] Add `.forgejo/workflows/feature-merged.yml`, add the reporter attachment and the final outcomes step
   to `guardrails.yml`'s `guardrails` job, and update the CI digest coverage gate (`check-ci-digest-coverage`) for the
   new steps (prerequisite: T051 RED; T006 answers whether an `always()` step runs in a cancelled job)
   - **Verify GREEN**: `node --test scripts/__tests__/feature-merged-workflow.guard.test.mjs` and
     `node --test scripts/__tests__/check-ci-digest-coverage.test.mjs` → expected: 0 failures; then
     `pnpm nx run scripts:lint` passes
+  - **Done 2026-11-28, as built**: the outcomes step sits just before the failure digest (which stays the last step,
+    so 014's digest guard is unchanged) and runs through `ci-log-step.sh` as the digest-coverage gate requires;
+    `feature-merged.yml` calls `pnpm nx run scripts:feature-merged` (the plan's Nx rule), so T051's guard forbids test
+    targets there, not `nx`. `guardrails-workflow.test.mjs`'s exact-step guard now asserts twelve steps and the three
+    `--results` paths. `docs/runbooks/ci.md` (T079) and its wiki page were updated with it
 - [ ] T054c [US4] Implement the `record-tests` verb in `scripts/backlog.mjs`, importing `measureCommit` and the
   proposal-marker parser shared with `feature-merged.mjs` (prerequisite: T054a RED; T053 GREEN)
   - **Verify GREEN**: `node --test scripts/__tests__/backlog.test.mjs` → expected: 0 failures; then
@@ -891,7 +896,7 @@ FR-036.
 - [ ] T078 [P] Update `openwiki/invariants/secrets-management.md` (canonical): the `pdlc` token row's scope
   (`write:repository`); and `CI_DIGEST_TOKEN`'s users if T006 showed the fallback is used
   - **Done when**: the rows match research M5 and M6 as measured
-- [ ] T079 [P] Add the `feature-merged` workflow and the `guardrails` outcomes step to `docs/runbooks/ci.md`: trigger,
+- [X] T079 [P] Add the `feature-merged` workflow and the `guardrails` outcomes step to `docs/runbooks/ci.md`: trigger,
   not required, token, re-run by `workflow_dispatch` with `sha`, no second test run, and reading their comments
   - **Done when**: the page names the workflow and how to re-run it
 - [ ] T080 **Close-out re-search**: re-run T002's searches for the OLD identifiers (`close-proposal`,

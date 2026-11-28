@@ -1,0 +1,60 @@
+# feature-merged: close a proposal when its feature branch merges into main (feature 016; contracts/feature-merged.md;
+# research R10 to R12, decision M10). NOT a required check: it runs after the merge, and nothing in it can block one.
+#
+# What it does: find the merged pull request, read the one `Proposal #<n>` on specs/<branch>/spec.md's Input line,
+# count the test declarations the feature created (count-repo-metrics.mjs at the merge commit and its parent, read from
+# git objects: NO TEST RUNS here), then comment, swap the issue to status/merged and close it. A merge that did not come
+# from a proposal is one log line and exit 0. The suite's outcomes come separately, from guardrails' own run on main.
+#
+# Its own concurrency group and never cancel-in-progress: guardrails' runs on main cancel each other (measured, T006:
+# a cancelled job's always() steps do not run), so the close must not live there.
+# Credential: the run token (measured, T006: it can comment on and close an issue in its own repository); the script
+# falls back to CI_DIGEST_TOKEN only on a 401 or 403.
+# Re-run: workflow_dispatch with the merge commit's sha. The script is idempotent.
+name: feature-merged
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: The merge commit on main to process again
+        required: true
+
+concurrency:
+  group: feature-merged-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  feature-merged:
+    runs-on: belay
+    timeout-minutes: 5
+    steps:
+      - name: Checkout (the merge commit and its parent, for the created count)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 2
+          ref: ${{ inputs.sha || github.sha }}
+      - name: Set up Node (constitution pin)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+        with:
+          node-version: 26.13.1
+      - name: Install pnpm (version from package.json packageManager)
+        run: bash scripts/ci-log-step.sh feature-merged-install-pnpm bash scripts/install-pnpm.sh
+      - name: Install workspace dependencies (frozen lockfile)
+        run: bash scripts/ci-log-step.sh feature-merged-install-deps pnpm install --frozen-lockfile
+      - name: Close the proposal this merge completes (no test run)
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_DIGEST_TOKEN: ${{ secrets.CI_DIGEST_TOKEN }}
+          MERGE_SHA: ${{ inputs.sha || github.sha }}
+        run: bash scripts/ci-log-step.sh feature-merged-close pnpm nx run scripts:feature-merged --sha="$MERGE_SHA"
+      - name: Publish failure digest
+        if: always()
+        continue-on-error: true
+        env:
+          CI_DIGEST_TOKEN: ${{ secrets.CI_DIGEST_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_DIGEST_JOB_STATUS: ${{ job.status }}
+        run: node scripts/ci-failure-digest.mjs

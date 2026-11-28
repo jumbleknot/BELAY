@@ -8,10 +8,11 @@ M10 (research R12): **no test target runs a second time**.
 - `.forgejo/workflows/feature-merged.yml`: `on: push: branches: [main]`, with `workflow_dispatch` taking a `sha` for
   a re-run. Runner `belay`, timeout 5 minutes, checkout `fetch-depth: 2` (the counter reads the parent's objects). Its
   own concurrency group, **without** `cancel-in-progress`. It runs no test. It is not a required check.
-- `.forgejo/workflows/guardrails.yml`, job `guardrails`, gains one final step, after the failure digest:
+- `.forgejo/workflows/guardrails.yml`, job `guardrails`, gains one step just before the failure digest (which stays the
+  last step; as built, T054):
   `if: always() && github.event_name == 'push'`, `continue-on-error: true`, running
-  `node scripts/feature-merged.mjs --outcomes <reports dir> --job-status ${{ job.status }}`. The three test steps
-  write their collector reports into `<reports dir>` by the path T007 chose. The job's 10-minute timeout is
+  `node scripts/feature-merged.mjs --outcomes target/test-results --job-status "$JOB_STATUS"`, through
+  `ci-log-step.sh`. The three test steps pass `--results=target/test-results/<report>` (research R12). The job's 10-minute timeout is
   unchanged.
 
 ## Script

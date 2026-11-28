@@ -57,13 +57,13 @@ jobs:
       - name: Gates and selftests (scripts:lint)
         run: bash scripts/ci-log-step.sh guardrails-lint pnpm nx run scripts:lint
       - name: Script unit tests (scripts:test)
-        run: bash scripts/ci-log-step.sh guardrails-test pnpm nx run scripts:test
+        run: bash scripts/ci-log-step.sh guardrails-test pnpm nx run scripts:test --results=target/test-results/scripts-test.jsonl
       # The pdlc operator-tool MCP server (feature 014, ADR-0005). Its live-forge tier is
       # operator-run in the dev container (docs/runbooks/pdlc.md) and never runs here.
       - name: pdlc server lint (pdlc:lint)
         run: bash scripts/ci-log-step.sh guardrails-pdlc-lint pnpm nx run pdlc:lint
       - name: pdlc server unit and contract tests (pdlc:test)
-        run: bash scripts/ci-log-step.sh guardrails-pdlc-test pnpm nx run pdlc:test
+        run: bash scripts/ci-log-step.sh guardrails-pdlc-test pnpm nx run pdlc:test --results=target/test-results/pdlc-test.jsonl
       # Feature 016 (research M9, ADR-0006): pdlc:integration runs the target repository's real Spec Kit PowerShell
       # scripts, and this runner image has no pwsh. A version-pinned, sha256-verified install (never a piped
       # installer); the pin lives in scripts/install-pwsh.mjs and Renovate moves it with the dev container's.
@@ -74,7 +74,20 @@ jobs:
           echo "$HOME/.local/pwsh" >> "$GITHUB_PATH"
           CI_LOG_STEP
       - name: pdlc server real-git integration (pdlc:integration)
-        run: bash scripts/ci-log-step.sh guardrails-pdlc-integration pnpm nx run pdlc:integration
+        run: bash scripts/ci-log-step.sh guardrails-pdlc-integration pnpm nx run pdlc:integration --results=target/test-results/pdlc-integration.jsonl
+      # Feature 016 (contracts/feature-merged.md, decision M10): on a push to main, the merged commit's suite outcomes
+      # (passed, failed, skipped, todo per target) from THIS run's collector reports, as a comment on the proposal the
+      # merge completed. No test runs twice. always() + continue-on-error + an unconditional exit 0 in the script: it
+      # can never change this job's result. A run cancelled by a later push does not reach it (measured, T006); the
+      # closing comment says so for that case.
+      - name: Post the suite outcomes for a proposal's merge (push to main only)
+        if: always() && github.event_name == 'push'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CI_DIGEST_TOKEN: ${{ secrets.CI_DIGEST_TOKEN }}
+          JOB_STATUS: ${{ job.status }}
+        run: bash scripts/ci-log-step.sh guardrails-feature-outcomes node scripts/feature-merged.mjs --outcomes target/test-results --job-status "$JOB_STATUS"
       # Publish an agent-readable failure digest. The forge API exposes no log or artifact endpoint,
       # so each job PUSHES a distilled, redacted digest into a channel the API can already read: a PR
       # comment, or a commit status on push. `always()` + `continue-on-error` + an unconditional
