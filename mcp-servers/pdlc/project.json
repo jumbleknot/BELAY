@@ -71,7 +71,7 @@
         "command": "node mcp-servers/pdlc/scripts/pack.mjs"
       },
       "metadata": {
-        "description": "Build target/pdlc/pdlc-<version>.mcpb (a hoisted pnpm deploy, then mcpb pack) and target/pdlc/proposal-intake.zip for Claude Desktop. See docs/runbooks/pdlc.md."
+        "description": "Build target/pdlc/pdlc-<version>.mcpb (a hoisted pnpm deploy, then mcpb pack) and target/pdlc/proposal-intake-<version>.zip for Claude Desktop. See docs/runbooks/pdlc.md."
       }
     }
   }

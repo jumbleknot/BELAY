@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // pdlc:pack (research R12; ADR-0005). Builds the two files the operator installs in Claude Desktop:
 //   target/pdlc/pdlc-<version>.mcpb      the Desktop Extension
-//   target/pdlc/proposal-intake.zip      the master skill, for Settings → Skills
+//   target/pdlc/proposal-intake-<version>.zip  the master skill, for Settings → Skills (the server's version: they
+//                                              change together, so the file name says which build it is)
 //
 // THE BUNDLE NEEDS A REAL, FLAT node_modules. pnpm's default layout is symlinks into a store, which a zip
 // does not carry, so the package is staged with a hoisted `pnpm deploy --prod` first. Development-only
@@ -93,10 +94,11 @@ function pack() {
   const skillDir = join(project, 'skill', 'proposal-intake');
   const files = [...walk(skillDir)].filter((p) => lstatSync(p).isFile())
     .map((p) => ({ name: `proposal-intake/${relative(skillDir, p).replace(/\\/g, '/')}`, data: readFileSync(p) }));
-  writeFileSync(join(out, 'proposal-intake.zip'), zipFiles(files));
+  const skillZip = join(out, `proposal-intake-${version}.zip`);
+  writeFileSync(skillZip, zipFiles(files));
 
-  for (const f of [mcpb, join(out, 'proposal-intake.zip')]) if (!existsSync(f)) throw new Error(`${f} was not written`);
-  console.log(`✓ pdlc pack: ${relative(workspace, mcpb)} and target/pdlc/proposal-intake.zip`);
+  for (const f of [mcpb, skillZip]) if (!existsSync(f)) throw new Error(`${f} was not written`);
+  console.log(`✓ pdlc pack: ${relative(workspace, mcpb)} and ${relative(workspace, skillZip)}`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) pack();

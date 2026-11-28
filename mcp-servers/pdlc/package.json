@@ -1,6 +1,6 @@
 {
   "name": "@belay/pdlc",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "The pdlc operator-tool MCP server: proposal intake from Claude Desktop (feature 014, ADR-0005)",
   "type": "module",

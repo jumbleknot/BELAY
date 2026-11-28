@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "pdlc",
   "display_name": "pdlc proposal intake",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "File and refine feature proposals as forge issues, write each one's spec with the repository's own Spec Kit and publish it on its feature branch, and keep local copies whose default branch is read-only, for the proposal-intake skill.",
   "long_description": "An operator-tool MCP server for one operator (BELAY constitution 1.1.0, ADR-0005, ADR-0006). It reads and writes only issues labelled type/proposal in repositories under the configured owner, and keeps a local copy of each repository whose default branch is read-only and fast-forward only. From a ready proposal it writes a spec with the repository's own Spec Kit, in a worktree on that feature's own branch, and on the author's approval commits the spec folder and publishes that feature branch only: never the default branch, never a force push. It moves the proposal through its stage labels, and shows the proposal or spec in a pane beside the chat. It never closes, deletes or relabels arbitrary issues.",
   "author": {

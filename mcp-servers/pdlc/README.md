@@ -54,7 +54,7 @@ pnpm nx run pdlc:lint                # syntax + mcpb validate
 pnpm nx run pdlc:test                # unit + contract, 70% coverage floor
 pnpm nx run pdlc:integration         # real git
 pnpm nx run pdlc:integration-forge   # real forge, ci-smoke; PDLC_IT_TOKEN (write:issue + write:repository), fails without a token
-pnpm nx run pdlc:pack                # target/pdlc/pdlc-<version>.mcpb + proposal-intake.zip
+pnpm nx run pdlc:pack                # target/pdlc/pdlc-<version>.mcpb + proposal-intake-<version>.zip
 ```
 
 Installing and configuring it on the workstation, updating the skill, the audit trail and the hand-off to
