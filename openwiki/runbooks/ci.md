@@ -4,16 +4,18 @@ title: CI guardrails, the failure digest, and the PR loop
 description: The single guardrails Forgejo Actions workflow required on main — what it runs and how to reproduce it locally, how a failure is read back from the redacted digest and its package bundle with ci-status.mjs, the dedicated repository runner and the one exception to it (the dev-container image job, which never runs pull-request code), the sast job beside guardrails, the report-only registry-retention job, branch protection, the terminal PR loop through forge-pr.mjs, and the rule every new job must follow.
 tags: [ci, forgejo, pull-requests, runbook]
 resource: docs/runbooks/ci.md
-resource-sha256: 4f387e3400cf07888b3b7d62b7d49f496f509396a4c8bf1400a3356ac2617764
-timestamp: 2026-11-27T01:29:53.048Z
+resource-sha256: 6e6de74f123e59c6b8c94f864207c3f051996d6667be901fe9c04b9a575b4c92
+timestamp: 2026-11-28T15:25:35.973Z
 ---
 
 # CI guardrails, the failure digest, and the PR loop
 
-BELAY's required CI is one workflow, `.forgejo/workflows/guardrails.yml`. Three others are not merge
+BELAY's required CI is one workflow, `.forgejo/workflows/guardrails.yml`. Four others are not merge
 checks: `devcontainer-image.yml` publishes the dev-container image after scanning it,
-`registry-retention.yml` reports which old package versions would be deleted, and `image-scan.yml`
-sweeps third-party images for CVEs ([image scanning](image-scanning.md)). Guardrails runs on every pull request,
+`registry-retention.yml` reports which old package versions would be deleted, `image-scan.yml`
+sweeps third-party images for CVEs ([image scanning](image-scanning.md)), and `feature-merged.yml` closes
+the proposal a merged feature branch came from, with the test declarations it created counted from git
+(no test run; re-run by `workflow_dispatch` with the merge `sha`). Guardrails runs on every pull request,
 every push to `main` and manual dispatch, and branch protection on `main` requires its
 `guardrails / guardrails (pull_request)` and `guardrails / sast (pull_request)` contexts. Its `guardrails` job installs Node and the pinned pnpm, then
 runs `pnpm nx run scripts:lint` (every gate: Spec Kit overrides, digest coverage, egress allowlist,
@@ -21,9 +23,11 @@ secret scan, topology scrub, toolchain consistency, inline and argv secrets, ove
 resource naming, OpenWiki OKF and governance, each after its selftest) and `pnpm nx run scripts:test` (the unit
 tests under coverage, then the 70% line-coverage gate, whose verdict is the step's last line), then the `pdlc`
 server's three targets: `pdlc:lint`, `pdlc:test` (unit and contract tests, its own 70% gate) and
-`pdlc:integration` (real git). So **those five commands, run locally, reproduce the required check**. The
-server's live-forge tier, `pdlc:integration-forge`, is operator-run and never in CI. A failure-digest step always
-runs last and never changes the result.
+`pdlc:integration` (real git, and BELAY's real Spec Kit scripts under a pinned, checksum-verified `pwsh` that the job
+installs just before it). So **those five commands, run locally, reproduce the required check**. The
+server's live-forge tier, `pdlc:integration-forge`, is operator-run and never in CI. On a push to `main` the three test
+steps also write per-test reports, and a step that can never change the result posts the merged commit's suite
+outcomes on the proposal it completed. A failure-digest step always runs last and never changes the result.
 Full detail is in [docs/runbooks/ci.md](../../docs/runbooks/ci.md).
 
 The whole PR loop runs from a terminal:
