@@ -236,7 +236,7 @@ with BELAY's `.specify/`, and by hand per quickstart §2 step 1.
   - a scratch path outside `.pdlc-scratch/` is refused `path_outside_feature`.
   - **Scenarios covered**: US1-AC1, US8-AC6 (token never in a child that runs repository code)
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/spec-kit-runner.test.mjs` → expected: failing — as T017
-- [ ] T019 [P] [US1] Test: spec files and the path guard (R5). In `mcp-servers/pdlc/tests/unit/spec-files.test.mjs`:
+- [X] T019 [P] [US1] Test: spec files and the path guard (R5). In `mcp-servers/pdlc/tests/unit/spec-files.test.mjs`:
   - `spec.md` and `checklists/*.md` are accepted;
   - refused `path_outside_feature`: `..`, an absolute path, a symlink, `:` (an alternate data stream), and any other
     file in the folder;
@@ -308,7 +308,7 @@ with BELAY's `.specify/`, and by hand per quickstart §2 step 1.
 
 - [X] T023 [P] [US1] Implement `mcp-servers/pdlc/src/spec-kit-runner.mjs` (R1, R3, R14) (prerequisite: T017, T018 RED)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/spec-kit-runner.test.mjs` → expected: 0 failures
-- [ ] T024 [P] [US1] Implement `mcp-servers/pdlc/src/spec-files.mjs` (R5; data-model.md `Spec in progress.revision`)
+- [X] T024 [P] [US1] Implement `mcp-servers/pdlc/src/spec-files.mjs` (R5; data-model.md `Spec in progress.revision`)
   (prerequisite: T019 RED)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/spec-files.test.mjs` → expected: 0 failures
 - [ ] T025 [P] [US1] Implement `mcp-servers/pdlc/src/spec-worktree.mjs` create, resume and state (R2; data-model.md
