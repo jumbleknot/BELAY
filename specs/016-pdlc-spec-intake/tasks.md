@@ -602,14 +602,14 @@ codes" is observed.
 Revised 2026-11-27 for decision M10 (research R12): no test target runs a second time. Task IDs T054a to T054d are
 inserted, not renumbered, so references to T055 onwards stay valid.
 
-- [ ] T049 [P] [US4] Test: the result collector (R12). In `scripts/__tests__/collect-test-results.test.mjs`, run
+- [X] T049 [P] [US4] Test: the result collector (R12). In `scripts/__tests__/collect-test-results.test.mjs`, run
   `node --test` on fixture tests (one pass, one fail, one skip, one todo, nested) with the collector as reporter.
   Assert one JSON line per test case, with the file from the repository root, the full name path and the outcome
   (data-model.md `Merge record.outcomes`).
   - **Scenarios covered**: FR-038
   - **Verify RED**: `node --test scripts/__tests__/collect-test-results.test.mjs` → expected: failing —
     `Cannot find module '../lib/collect-test-results.mjs'`
-- [ ] T050 [P] [US4] Test: `feature-merged.mjs` ([contracts/feature-merged.md](contracts/feature-merged.md)). In
+- [X] T050 [P] [US4] Test: `feature-merged.mjs` ([contracts/feature-merged.md](contracts/feature-merged.md)). In
   `scripts/__tests__/feature-merged.test.mjs`, with a fake forge, a fixture git repository (two commits, the second
   adding test declarations) and fixture collector reports:
   - close form: PR found by the API, and by title fallback;
@@ -664,9 +664,9 @@ inserted, not renumbered, so references to T055 onwards stay valid.
 
 ### Implementation for User Story 4
 
-- [ ] T052 [P] [US4] Implement `scripts/lib/collect-test-results.mjs` (prerequisite: T049 RED)
+- [X] T052 [P] [US4] Implement `scripts/lib/collect-test-results.mjs` (prerequisite: T049 RED)
   - **Verify GREEN**: `node --test scripts/__tests__/collect-test-results.test.mjs` → expected: 0 failures
-- [ ] T053 [US4] Implement `scripts/feature-merged.mjs` (both forms) and `scripts/feature-merged.config.json`. Count
+- [X] T053 [US4] Implement `scripts/feature-merged.mjs` (both forms) and `scripts/feature-merged.config.json`. Count
   with `measureCommit` from `scripts/count-repo-metrics.mjs`, imported, never re-implemented. Cite data-model.md
   `Merge record.proposal` (exactly one marker, or none) and `Proposal issue.state` (the close happens only here, at
   merged). Attach the reporter to the three test targets by the path T007 chose (research R12, measured 2026-11-27: the
@@ -676,6 +676,13 @@ inserted, not renumbered, so references to T055 onwards stay valid.
   a child `node` a test spawns does not inherit the collector. Add the `scripts:feature-merged` Nx target (prerequisite: T050 RED; T052 GREEN)
   - **Verify GREEN**: `node --test scripts/__tests__/feature-merged.test.mjs` → expected: 0 failures; then
     `pnpm nx run scripts:test` passes
+  - **Done 2026-11-28, as built**: the proposal is found from `specs/<PR head branch>/spec.md` at the merge commit (both
+    routes name the folder after the branch), which needs no diff against the parent, so guardrails' depth-1 checkout can
+    post outcomes; only `feature-merged.yml` needs `fetch-depth: 2`, for the created count. The marker parser
+    `findProposalNumbers` is exported for `record-tests`. The collector is attached by
+    `scripts/lib/node-test-with-results.mjs` (new; tested in `node-test-with-results.test.mjs`) and
+    `check-coverage.mjs --results` (tested in `check-coverage.test.mjs`); research R12 records the Nx measurement. The
+    collector's reporter body gained an in-process test, because a child run is invisible to the parent's coverage
 - [ ] T054 [US4] Add `.forgejo/workflows/feature-merged.yml`, add the reporter attachment and the final outcomes step
   to `guardrails.yml`'s `guardrails` job, and update the CI digest coverage gate (`check-ci-digest-coverage`) for the
   new steps (prerequisite: T051 RED; T006 answers whether an `always()` step runs in a cancelled job)

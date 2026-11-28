@@ -18,6 +18,7 @@ import { existsSync, globSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import { dirname, join, matchesGlob, resolve } from 'node:path';
 import { classifyExpiry, daysUntil, WARNING_WINDOW_DAYS } from './allowlist-expiry.mjs';
 import { isMain } from './lib/is-main.mjs';
+import { resultsReporterArgs } from './lib/node-test-with-results.mjs';
 
 /** A usage problem (bad arguments, an invalid policy): exit 2. */
 export class CoverageUsageError extends Error {
@@ -272,8 +273,9 @@ export function coverageSelftest(deps = {}) {
 export const POLICY_PATH = 'scripts/coverage-policy.yaml';
 export const REPORT_PATH = 'coverage/scripts.lcov';
 const TEST_GLOB = 'scripts/__tests__/*.test.mjs';
-const USAGE = `Usage: check-coverage.mjs --run | [--policy <file>] [--report <lcov>] | --selftest | --help
+const USAGE = `Usage: check-coverage.mjs --run [--results <file>] | [--policy <file>] [--report <lcov>] | --selftest | --help
   --run              delete the report, run ${TEST_GLOB} under coverage, then gate (scripts:test)
+  --results <file>   with --run: also write one JSON line per test case there (feature 016; "" means none)
   --report <lcov>    gate an existing report only (default ${REPORT_PATH})
   --policy <file>    judge with this policy instead of ${POLICY_PATH}, for another Nx project that runs
                      its own tests under coverage and keeps its own policy in its project root
@@ -287,7 +289,7 @@ Exit: 0 pass · 1 below the floor, no data, or a missing/malformed report · 2 b
 const INHERITED_TEST_RUNNER_VARS = ['NODE_TEST_CONTEXT', 'NODE_TEST_WORKER_ID', 'NODE_V8_COVERAGE'];
 
 function parseArgs(argv) {
-  const args = { run: false, selftest: false, help: false, report: REPORT_PATH, policy: null };
+  const args = { run: false, selftest: false, help: false, report: REPORT_PATH, policy: null, results: '' };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--run') args.run = true;
@@ -297,6 +299,11 @@ function parseArgs(argv) {
       const v = argv[++i];
       if (v === undefined || v.startsWith('--')) throw new CoverageUsageError(`--report needs a path\n${USAGE}`);
       args.report = v;
+    } else if (a === '--results') {
+      // Feature 016 (research R12): attach the test-result collector. An empty value (Nx with no --results) is none.
+      const v = argv[++i];
+      if (v === undefined || v.startsWith('--')) throw new CoverageUsageError(`--results needs a path (or "")\n${USAGE}`);
+      args.results = v;
     } else if (a === '--policy') {
       const v = argv[++i];
       if (v === undefined || v.startsWith('--')) throw new CoverageUsageError(`--policy needs a path\n${USAGE}`);
@@ -330,18 +337,25 @@ function gate({ root, reportPath, policy, modules, today }) {
   return verdict.ok ? 0 : 1;
 }
 
-function runTests({ root, policy, reportPath }) {
-  rmSync(join(root, reportPath), { force: true });
-  mkdirSync(dirname(join(root, reportPath)), { recursive: true });
-  const env = { ...process.env };
-  for (const k of INHERITED_TEST_RUNNER_VARS) delete env[k];
-  const args = [
+/** The node --test argv for --run: the spec and lcov reporters, plus the collector when `results` is a path. */
+export function buildTestArgs({ policy, reportPath, results = '' }) {
+  return [
     '--test', '--experimental-test-coverage',
     ...policy.include.map((p) => `--test-coverage-include=${p}`),
     '--test-reporter=spec', '--test-reporter-destination=stdout',
     '--test-reporter=lcov', `--test-reporter-destination=${reportPath}`,
+    ...resultsReporterArgs(results),
     TEST_GLOB,
   ];
+}
+
+function runTests({ root, policy, reportPath, results = '' }) {
+  rmSync(join(root, reportPath), { force: true });
+  mkdirSync(dirname(join(root, reportPath)), { recursive: true });
+  if (results) mkdirSync(dirname(resolve(root, results)), { recursive: true });
+  const env = { ...process.env };
+  for (const k of INHERITED_TEST_RUNNER_VARS) delete env[k];
+  const args = buildTestArgs({ policy, reportPath, results: results ? resolve(root, results) : '' });
   const r = spawnSync(process.execPath, args, { cwd: root, env, stdio: 'inherit' });
   if (r.error) throw r.error;
   return r.status ?? 1;
@@ -360,7 +374,7 @@ export async function main(argv, { root = process.cwd(), today = new Date().toIS
     }
     const { policy, modules } = await loadPolicy(root, args.policy ?? POLICY_PATH);
     if (!args.run) return gate({ root, reportPath: args.report, policy, modules, today });
-    const testStatus = runTests({ root, policy, reportPath: REPORT_PATH });
+    const testStatus = runTests({ root, policy, reportPath: REPORT_PATH, results: args.results });
     let gateStatus;
     try {
       gateStatus = gate({ root, reportPath: REPORT_PATH, policy, modules, today });

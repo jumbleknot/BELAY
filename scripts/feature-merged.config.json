@@ -1,0 +1,8 @@
+{
+  "//": "The test targets whose outcomes guardrails reports on a push to main (feature 016; research R12). Each writes its collector report to <reports dir>/<report> through its opt-in results argument. A guard test holds this list equal to guardrails.yml's test steps.",
+  "targets": [
+    { "target": "scripts:test", "report": "scripts-test.jsonl" },
+    { "target": "pdlc:test", "report": "pdlc-test.jsonl" },
+    { "target": "pdlc:integration", "report": "pdlc-integration.jsonl" }
+  ]
+}

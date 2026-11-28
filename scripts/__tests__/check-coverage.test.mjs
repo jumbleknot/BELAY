@@ -435,3 +435,17 @@ test('policy: an unreadable --policy file exits non-zero and names the file', ()
     assert.match(r.out, /tools\/nope\/policy\.yaml/);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+// Feature 016 (research R12): `--run --results <file>` attaches the test-result collector to scripts:test's own run.
+import { buildTestArgs } from '../check-coverage.mjs';
+test('016: --results adds the collector pair before the test glob; an empty --results (Nx with no argument) adds nothing', () => {
+  const policy = { include: ['scripts/*.mjs'] };
+  const plain = buildTestArgs({ policy, reportPath: 'coverage/scripts.lcov', results: '' });
+  assert.equal(plain.at(-1), 'scripts/__tests__/*.test.mjs');
+  assert.ok(!plain.some((a) => a.includes('collect-test-results')));
+  const withR = buildTestArgs({ policy, reportPath: 'coverage/scripts.lcov', results: '/tmp/r/scripts-test.jsonl' });
+  assert.equal(withR.at(-1), 'scripts/__tests__/*.test.mjs');
+  assert.ok(withR.some((a) => /--test-reporter=.*collect-test-results\.mjs$/.test(a)));
+  assert.ok(withR.includes('--test-reporter-destination=/tmp/r/scripts-test.jsonl'));
+  assert.ok(withR.includes('--test-reporter=spec') && withR.includes('--test-reporter=lcov'), 'the existing reporters stay');
+});

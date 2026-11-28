@@ -24,9 +24,18 @@
         "cwd": "{workspaceRoot}",
         "parallel": false,
         "commands": [
-          "node -e \"require('node:fs').rmSync('coverage/pdlc.lcov', {force: true})\"",
-          "node --test --experimental-test-coverage \"--test-coverage-include=mcp-servers/pdlc/src/*.mjs\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/pdlc.lcov \"mcp-servers/pdlc/tests/unit/*.test.mjs\"",
-          "node scripts/check-coverage.mjs --policy mcp-servers/pdlc/coverage-policy.yaml --report coverage/pdlc.lcov"
+          {
+            "command": "node -e \"require('node:fs').rmSync('coverage/pdlc.lcov', {force: true})\"",
+            "forwardAllArgs": false
+          },
+          {
+            "command": "node scripts/lib/node-test-with-results.mjs \"{args.results}\" --test --experimental-test-coverage \"--test-coverage-include=mcp-servers/pdlc/src/*.mjs\" --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/pdlc.lcov \"mcp-servers/pdlc/tests/unit/*.test.mjs\"",
+            "forwardAllArgs": false
+          },
+          {
+            "command": "node scripts/check-coverage.mjs --policy mcp-servers/pdlc/coverage-policy.yaml --report coverage/pdlc.lcov",
+            "forwardAllArgs": false
+          }
         ]
       },
       "metadata": {
@@ -37,7 +46,7 @@
       "executor": "nx:run-commands",
       "options": {
         "cwd": "{workspaceRoot}",
-        "command": "node --test \"mcp-servers/pdlc/tests/integration/*.test.mjs\""
+        "command": "node scripts/lib/node-test-with-results.mjs \"{args.results}\" --test \"mcp-servers/pdlc/tests/integration/*.test.mjs\""
       },
       "metadata": {
         "description": "Real git against local bare repositories in a temp folder; no doubles, no forge. Gating in guardrails."

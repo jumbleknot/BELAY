@@ -545,6 +545,16 @@ gains an explicit `--test-reporter=spec --test-reporter-destination=stdout` so i
 is read from an environment variable, so a test's own child processes never inherit it. With no argument, every
 target's output and behaviour are unchanged.
 
+**Measured 2026-11-28 (T053), how the argument reaches each target**: Nx `run-commands` substitutes a missing
+`{args.results}` with an empty string and a given `--results=<path>` with the path (a throwaway target printed its
+argv). In a `commands` list, Nx also APPENDS `--results=<path>` to every command that does not interpolate it (seen on
+`pdlc:test`'s `node -e` step), so each of that target's commands carries `forwardAllArgs: false`. As built:
+`scripts:test` is `check-coverage.mjs --run --results "{args.results}"`; `pdlc:test` and `pdlc:integration` run their
+`node --test` through `scripts/lib/node-test-with-results.mjs "{args.results}"`, which puts the collector's reporter pair
+right after `--test` and adds `spec` to stdout when the target names no reporter of its own. With `--results` the
+reports held exactly one line per test case (1640, 361 and 20, equal to each run's `ℹ tests`); without it every target
+ran as before (exit 0).
+
 **Seen in passing (pre-existing, not caused by this feature)**: in a fresh checkout, `pnpm nx run pdlc:test` fails
 with `ENOENT: … open 'coverage/pdlc.lcov'` because `coverage/` does not exist and `node --test` does not create a
 reporter destination's folder. In `guardrails` it passes only because `scripts:test` runs first and

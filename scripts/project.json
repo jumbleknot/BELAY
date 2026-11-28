@@ -78,7 +78,18 @@
       "executor": "nx:run-commands",
       "options": {
         "cwd": "{workspaceRoot}",
-        "command": "node scripts/check-coverage.mjs --run"
+        "command": "node scripts/check-coverage.mjs --run --results \"{args.results}\""
+      }
+    },
+    "feature-merged": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "options": {
+        "cwd": "{workspaceRoot}",
+        "command": "node scripts/feature-merged.mjs"
+      },
+      "metadata": {
+        "description": "Close the proposal a merged feature branch came from, with the tests it created counted from git; or, with --outcomes <dir> --job-status <s>, post the merged commit's suite outcomes from guardrails' reports. No test runs (feature 016, M10). CI runs it on a push to main; --dry-run writes nothing. See docs/runbooks/ci.md."
       }
     }
   }
