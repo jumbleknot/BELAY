@@ -6,7 +6,7 @@ const LEVELS = ['DEBUG', 'INFO', 'WARN', 'ERROR'];
 const SERVICE = 'pdlc';
 
 /** The only fields an audit line may carry: no body, no section text, no token (R17). */
-const AUDIT_FIELDS = new Set(['correlation_id', 'tool', 'repo', 'number', 'decision', 'code', 'outcome']);
+const AUDIT_FIELDS = new Set(['correlation_id', 'tool', 'repo', 'number', 'branch', 'decision', 'code', 'outcome']);
 const DECISIONS = new Set(['allowed', 'refused']);
 
 /**

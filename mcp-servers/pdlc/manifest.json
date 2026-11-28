@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "pdlc",
   "display_name": "pdlc proposal intake",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "File and refine feature proposals as forge issues, and keep read-only local copies of the repositories, for the proposal-intake skill.",
   "long_description": "An operator-tool MCP server for one operator (BELAY constitution 1.1.0, ADR-0005). It reads and writes only issues labelled type/proposal in repositories under the configured owner, and fast-forwards read-only local copies. It never closes, deletes or relabels arbitrary issues, and never commits, branches or pushes.",
   "author": {
@@ -60,6 +60,22 @@
     {
       "name": "add_comment",
       "description": "Add a comment to a proposal. Returns the comment's url and the issue's new updated_at."
+    },
+    {
+      "name": "check_spec_kit",
+      "description": "Check the repository's Spec Kit in its local copy: initialised, version, supported, script flavour, numbering, and how each specify and clarify hook is handled. Reports; changes nothing. ok:false is a result, not an error."
+    },
+    {
+      "name": "start_spec",
+      "description": "Start the spec for a ready proposal: run the repository's own branch script as a dry run, create the feature branch in its own worktree, write spec.md from the repository's template with the Input line filled, and move the proposal to spec in progress."
+    },
+    {
+      "name": "get_spec",
+      "description": "Read a proposal's spec in progress: stage, lock, branch, folder, files, revision, open [NEEDS CLARIFICATION] markers, whether clarify has run since the start or reopen, and whether the proposal changed since the start."
+    },
+    {
+      "name": "write_spec_file",
+      "description": "Write one file of the spec in progress: spec.md or checklists/<name>.md, inside the spec folder only, against the revision last read. Refuses outside spec in progress and when the spec changed since that revision."
     }
   ],
   "user_config": {

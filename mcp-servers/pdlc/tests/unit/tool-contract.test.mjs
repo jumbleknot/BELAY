@@ -22,11 +22,16 @@ const CONTRACT = {
   update_proposal: { props: ['repo', 'number', 'expected_updated_at', 'title', 'sections', 'priority', 'status'],
     required: ['repo', 'number', 'expected_updated_at'], enums: { priority: ['p1', 'p2', 'p3'], status: ['draft', 'ready'] }, sections: { required: [] } },
   add_comment: { props: ['repo', 'number', 'body'], required: ['repo', 'number', 'body'] },
+  // Feature 016 (specs/016-pdlc-spec-intake/contracts/tools.md), added as each user story lands.
+  check_spec_kit: { props: ['repo'], required: ['repo'] },
+  start_spec: { props: ['repo', 'number', 'short_name'], required: ['repo', 'number', 'short_name'] },
+  get_spec: { props: ['repo', 'number'], required: ['repo', 'number'] },
+  write_spec_file: { props: ['repo', 'number', 'path', 'content', 'base_revision'], required: ['repo', 'number', 'path', 'content', 'base_revision'] },
 };
 
 const sorted = (a) => [...a].sort();
 
-test('tools/list names exactly the nine contract tools', async () => {
+test('tools/list names exactly the contract tools (tools/list differs from the contract otherwise)', async () => {
   const c = await connect();
   try {
     const { tools } = await c.client.listTools();
@@ -122,5 +127,19 @@ test('every call writes exactly one audit line before its result reaches the cli
     const ids = c.audits().map((a) => a.correlation_id);
     assert.ok(ids.every((id) => id !== null && id !== undefined), 'the request id is the correlation_id');
     assert.equal(new Set(ids).size, 3);
+  } finally { await c.close(); }
+});
+
+test('016: start_spec.short_name is 2 to 4 kebab words of [a-z0-9], at most 40 characters; write_spec_file.content at most 256 KiB', async () => {
+  const c = await connect();
+  try {
+    const { tools } = await c.client.listTools();
+    const short = tools.find((t) => t.name === 'start_spec').inputSchema.properties.short_name;
+    assert.equal(short.maxLength, 40);
+    assert.equal(short.pattern, '^[a-z0-9]+(?:-[a-z0-9]+){1,3}$');
+    const w = tools.find((t) => t.name === 'write_spec_file').inputSchema.properties;
+    assert.equal(w.base_revision.pattern, '^[0-9a-f]{64}$');
+    assert.equal(w.path.maxLength, 200);
+    assert.equal(w.number.type, 'integer');
   } finally { await c.close(); }
 });

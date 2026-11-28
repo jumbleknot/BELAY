@@ -255,7 +255,7 @@ with BELAY's `.specify/`, and by hand per quickstart §2 step 1.
   - **Scenarios covered**: US1-AC1, US1-AC5, FR-004
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/spec-worktree.test.mjs` → expected: failing —
     `Cannot find module '../../src/spec-worktree.mjs'`
-- [ ] T021 [US1] Test: the tools `check_spec_kit`, `start_spec`, `get_spec` and `write_spec_file` through the handlers
+- [X] T021 [US1] Test: the tools `check_spec_kit`, `start_spec`, `get_spec` and `write_spec_file` through the handlers
   in `mcp-servers/pdlc/tests/unit/tools.test.mjs`, and their names and schemas in
   `mcp-servers/pdlc/tests/unit/tool-contract.test.mjs` and `manifest.test.mjs` ([contracts/tools.md](contracts/tools.md)):
   - `start_spec` refuses `not_ready_proposal` for a draft or a non-proposal issue;
@@ -314,22 +314,29 @@ with BELAY's `.specify/`, and by hand per quickstart §2 step 1.
 - [X] T025 [P] [US1] Implement `mcp-servers/pdlc/src/spec-worktree.mjs` create, resume and state (R2; data-model.md
   `Spec in progress.worktree_path`, `.recorded_remote_tip`, `.last_start_or_reopen`) (prerequisite: T020 RED)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/spec-worktree.test.mjs` → expected: 0 failures
-- [ ] T026 [US1] Add `check_spec_kit`, `start_spec`, `get_spec` and `write_spec_file` to
+- [X] T026 [US1] Add `check_spec_kit`, `start_spec`, `get_spec` and `write_spec_file` to
   `mcp-servers/pdlc/src/tool-contract.mjs` (`short_name` per contracts/tools.md; `content` at most 256 KiB), the
   handlers in `src/tools.mjs`, the `tools` list in `manifest.json`, and an `audit` line per call carrying `branch`. Use
   `stages.mjs` for the stage move (prerequisite: T021 RED; T023 to T025 GREEN)
   - **Verify GREEN**: same commands as T021 → expected: 0 failures; then `pnpm nx run pdlc:test` passes, with the
     coverage floor
+  - **Done 2026-11-28, as built**: the handlers compose a new module, `src/spec-lifecycle.mjs` (start, get, write and the
+    stage move), rather than holding that logic in `tools.mjs`; T021's tool tests are in `tests/unit/spec-tools.test.mjs`
+    over `tests/unit/helpers/spec-world.mjs` (real modules, temporary clone root), so their first RED was
+    `Cannot find module '../../src/spec-lifecycle.mjs'` rather than `unknown tool start_spec`. The audit line gained
+    `branch` (log.test.mjs first). Server, manifest and package move to 0.2.0 (R16). `start_spec` syncs the copy first, and
+    a start interrupted between the worktree and the stage move is completed, never repeated. `get_spec.remote` is
+    `{changed: false}` until User Story 8's take-latest check lands
 - [ ] T027 [US1] Make the integration test pass end to end (prerequisite: T022 RED; T026 GREEN)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/integration/spec-lifecycle.integration.test.mjs` → expected:
     0 failures, 0 skipped; then `pnpm nx run pdlc:integration` passes
-- [ ] T028 [P] [US1] Test: the master skill names the new tools. Extend
+- [X] T028 [P] [US1] Test: the master skill names the new tools. Extend
   `mcp-servers/pdlc/tests/unit/skill-master.test.mjs`: the skill's tool names equal the contract's model-visible tool
   names exactly.
   - **Scenarios covered**: FR-030
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/skill-master.test.mjs` → expected: failing —
     `skill does not name start_spec`
-- [ ] T029 [US1] Rewrite `mcp-servers/pdlc/skill/proposal-intake/SKILL.md`:
+- [X] T029 [US1] Rewrite `mcp-servers/pdlc/skill/proposal-intake/SKILL.md`:
   - a new step after saving a ready proposal: `check_spec_kit`, then "Start the spec" (or stop with the plain reason);
   - follow the repository's `.claude/skills/speckit-specify/SKILL.md` from the copy, with `start_spec` instead of the
     branch hook and `write_spec_file` for every write;

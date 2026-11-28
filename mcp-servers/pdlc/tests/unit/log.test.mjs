@@ -90,3 +90,13 @@ test('a failing stream never crashes an ordinary log call', () => {
   const log = createLogger({ stream: { write: () => { throw new Error('EPIPE'); } }, redact: (x) => x });
   assert.doesNotThrow(() => log.info('x'));
 });
+
+test('016: an audit line may name the feature branch a spec tool acted on, and still never carries spec text', () => {
+  const { log, parsed, lines } = capture();
+  log.audit({ correlation_id: 4, tool: 'start_spec', repo: 'BELAY', number: 91, branch: '017-pane-probe', decision: 'allowed', outcome: 'ok' });
+  assert.equal(parsed()[0].branch, '017-pane-probe');
+  for (const extra of [{ content: '# spec' }, { files: [] }, { path: 'spec.md' }]) {
+    assert.throws(() => log.audit({ correlation_id: 5, tool: 'write_spec_file', decision: 'allowed', outcome: 'ok', ...extra }), TypeError);
+  }
+  assert.equal(lines.length, 1);
+});

@@ -76,7 +76,8 @@ export function createSpecFiles() {
     /** Write one file after the path guard. Returns the folder's new revision. */
     async write({ worktree, specDir, path, content }) {
       const { folder, abs } = target(worktree, specDir, path);
-      if (!lstatExists(folder)) throw outside(`${specDir} does not exist in the spec's worktree`);
+      // The feature folder is new on a new branch: created here, after the guard, under the worktree's specs/.
+      mkdirSync(folder, { recursive: true });
       if (path.startsWith('checklists/')) mkdirSync(join(folder, 'checklists'), { recursive: true });
       writeFileSync(abs, String(content), 'utf8');
       return { revision: revisionOf(folder) };

@@ -44,7 +44,9 @@ export function createServer(deps) {
     const finish = (decision, { code, outcome, result, error }) => {
       const repo = result?.repo ?? where.repo;
       const number = result?.number ?? where.number;
-      log.audit({ correlation_id, tool, ...(repo !== undefined && { repo }), ...(number !== undefined && { number }), decision, ...(code && { code }), outcome });
+      // Feature 016: a spec tool's line names the feature branch it acted on (plan "Logging and audit").
+      const branch = typeof result?.branch === 'string' ? result.branch : typeof error?.branch === 'string' ? error.branch : undefined;
+      log.audit({ correlation_id, tool, ...(repo !== undefined && { repo }), ...(number !== undefined && { number }), ...(branch !== undefined && { branch }), decision, ...(code && { code }), outcome });
       if (decision === 'allowed') {
         const clean = redact(result);
         return { content: [{ type: 'text', text: JSON.stringify(clean) }], structuredContent: clean };
@@ -94,22 +96,32 @@ export async function main({ env = process.env, stderr = process.stderr } = {}) 
   }
 
   const [{ StdioServerTransport }, { createForgeClient }, { createRepoAllowlist }, { createProposals },
-    { createLocalCopy }, { createGitRunner }, { createSetupCheck }] = await Promise.all([
+    { createLocalCopy }, { createGitRunner }, { createSetupCheck }, { createSpecKitRunner }, { createSpecWorktree },
+    { createSpecFiles }, { createSpecLifecycle }] = await Promise.all([
     import('@modelcontextprotocol/sdk/server/stdio.js'), import('./forge-client.mjs'), import('./repo-allowlist.mjs'),
     import('./proposals.mjs'), import('./local-copy.mjs'), import('./git-runner.mjs'), import('./setup-check.mjs'),
+    import('./spec-kit-runner.mjs'), import('./spec-worktree.mjs'), import('./spec-files.mjs'), import('./spec-lifecycle.mjs'),
   ]);
   const redact = createRedactor({ secrets: [config.token] });
   const log = createLogger({ stream: stderr, redact });
   const forge = createForgeClient({ config });
   const allowlist = createRepoAllowlist({ forge, config });
+  const git = createGitRunner({ token: config.token });
+  const proposals = createProposals({ forge, allowlist, config });
+  const localCopy = createLocalCopy({
+    cloneRoot: config.cloneRoot,
+    originUrlFor: (name) => `${config.forgeUrl}/${encodeURIComponent(config.owner)}/${encodeURIComponent(name)}.git`,
+    git,
+  });
   const deps = {
-    log, redact, allowlist,
-    proposals: createProposals({ forge, allowlist, config }),
+    log, redact, allowlist, proposals, localCopy,
     setupCheck: createSetupCheck({ forge, allowlist, config }),
-    localCopy: createLocalCopy({
-      cloneRoot: config.cloneRoot,
-      originUrlFor: (name) => `${config.forgeUrl}/${encodeURIComponent(config.owner)}/${encodeURIComponent(name)}.git`,
-      git: createGitRunner({ token: config.token }),
+    // Feature 016. The Spec Kit runner never receives the token: its scripts run with none (research R1).
+    specs: createSpecLifecycle({
+      forge, allowlist, proposals, localCopy, config,
+      specKit: createSpecKitRunner({ cloneRoot: config.cloneRoot, git }),
+      worktree: createSpecWorktree({ cloneRoot: config.cloneRoot, git }),
+      files: createSpecFiles(),
     }),
   };
   await createServer(deps).connect(new StdioServerTransport());

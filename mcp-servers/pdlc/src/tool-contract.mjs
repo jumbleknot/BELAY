@@ -28,6 +28,14 @@ const sectionShape = (required) => Object.fromEntries(SECTION_IDS.map((id) => {
 
 const strict = (shape) => z.strictObject(shape);
 
+// Feature 016 (specs/016-pdlc-spec-intake/contracts/tools.md). The spec's files are larger than an issue body.
+export const MAX_SPEC_FILE_BYTES = 256 * 1024;
+const shortName = z.string().max(40).regex(/^[a-z0-9]+(?:-[a-z0-9]+){1,3}$/)
+  .describe('2 to 4 lowercase words joined by hyphens, at most 40 characters: the branch and folder name after the number');
+const revision = z.string().regex(/^[0-9a-f]{64}$/).describe('The revision get_spec or the last write returned');
+const specPath = z.string().min(1).max(200).describe('spec.md or checklists/<name>.md, relative to the spec folder');
+const specContent = z.string().refine((s) => byteLength(s) <= MAX_SPEC_FILE_BYTES, { message: `at most ${MAX_SPEC_FILE_BYTES} bytes` });
+
 export const TOOLS = Object.freeze({
   list_repos: {
     description: 'List the repositories under the configured owner, with description, default branch and whether a local proposal copy exists.',
@@ -76,6 +84,22 @@ export const TOOLS = Object.freeze({
   add_comment: {
     description: "Add a comment to a proposal. Returns the comment's url and the issue's new updated_at.",
     input: strict({ repo, number, body: text().refine((s) => s.length > 0, { message: 'body must not be empty' }) }),
+  },
+  check_spec_kit: {
+    description: "Check the repository's Spec Kit in its local copy: initialised, version, supported, script flavour, numbering, and how each specify and clarify hook is handled. Reports; changes nothing. ok:false is a result, not an error.",
+    input: strict({ repo }),
+  },
+  start_spec: {
+    description: "Start the spec for a ready proposal: run the repository's own branch script as a dry run, create the feature branch in its own worktree, write spec.md from the repository's template with the Input line filled, and move the proposal to spec in progress.",
+    input: strict({ repo, number, short_name: shortName }),
+  },
+  get_spec: {
+    description: "Read a proposal's spec in progress: stage, lock, branch, folder, files, revision, open [NEEDS CLARIFICATION] markers, whether clarify has run since the start or reopen, and whether the proposal changed since the start.",
+    input: strict({ repo, number }),
+  },
+  write_spec_file: {
+    description: "Write one file of the spec in progress: spec.md or checklists/<name>.md, inside the spec folder only, against the revision last read. Refuses outside spec in progress and when the spec changed since that revision.",
+    input: strict({ repo, number, path: specPath, content: specContent, base_revision: revision }),
   },
 });
 

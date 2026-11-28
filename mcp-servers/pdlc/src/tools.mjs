@@ -5,11 +5,11 @@
 // Writes are logged at INFO with the tool, repository and issue number, never a body (research R17).
 
 /**
- * @param {{allowlist: object, proposals: object, localCopy: object, setupCheck: object, log?: {info: Function}}} deps
+ * @param {{allowlist: object, proposals: object, localCopy: object, setupCheck: object, specs?: object, log?: {info: Function}}} deps
  * @returns {Record<string, (args: object, ctx: {correlation_id: unknown}) => Promise<object>>} one handler per contract tool
  */
 export function createToolHandlers(deps = {}) {
-  const { allowlist, proposals, localCopy, setupCheck, log } = deps;
+  const { allowlist, proposals, localCopy, setupCheck, specs, log } = deps;
   const wrote = (tool, msg, fields, ctx) => log?.info(msg, { correlation_id: ctx?.correlation_id ?? null, tool, ...fields });
 
   return {
@@ -36,6 +36,19 @@ export function createToolHandlers(deps = {}) {
     add_comment: async (args, ctx) => {
       const result = await proposals.comment(args);
       wrote('add_comment', 'comment added', { repo: args.repo, number: result.number }, ctx);
+      return result;
+    },
+    // Feature 016: the spec lifecycle (spec-lifecycle.mjs).
+    check_spec_kit: async (args) => specs.checkSpecKit(args),
+    start_spec: async (args, ctx) => {
+      const result = await specs.start(args);
+      wrote('start_spec', 'spec started', { repo: result.repo, number: result.number, branch: result.branch }, ctx);
+      return result;
+    },
+    get_spec: async (args) => specs.get(args),
+    write_spec_file: async (args, ctx) => {
+      const result = await specs.writeFile(args);
+      wrote('write_spec_file', `spec file written: ${result.path}`, { repo: result.repo, number: result.number, branch: result.branch }, ctx);
       return result;
     },
   };
