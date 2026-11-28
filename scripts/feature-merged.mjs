@@ -26,17 +26,15 @@ import { forgeEndpoint } from './ci-status.mjs';
 import { measureCommit } from './count-repo-metrics.mjs';
 import { summarise } from './lib/collect-test-results.mjs';
 import { isMain } from './lib/is-main.mjs';
+import { findProposalNumbers } from './lib/proposal-marker.mjs';
 import { STAGE_LABELS, renderTrailer, stageFromLabels } from './lib/stage-trailer.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CONFIG = join(REPO_ROOT, 'scripts', 'feature-merged.config.json');
 const MERGED = STAGE_LABELS.merged;
 
-/** The distinct proposal numbers on a spec's **Input** line, in order (shared with backlog.mjs record-tests). */
-export function findProposalNumbers(specText) {
-  const line = String(specText ?? '').split(/\r?\n/).find((l) => /^\s*\*\*Input\*\*:/.test(l)) ?? '';
-  return [...new Set([...line.matchAll(/Proposal #(\d+)/g)].map((m) => Number(m[1])))];
-}
+// The marker parser is shared with backlog.mjs record-tests (scripts/lib/proposal-marker.mjs).
+export { findProposalNumbers };
 
 const names = (issue) => (issue.labels ?? []).map((l) => l.name);
 const short = (sha) => String(sha).slice(0, 7);

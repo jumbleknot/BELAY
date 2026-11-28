@@ -1119,3 +1119,96 @@ test('016 --help documents stage, and that a proposal closes only when its featu
   assert.match(r.out, /closes\s+only when its feature branch merges/);
   assert.doesNotMatch(r.out, /close-proposal/);
 });
+
+// ── Feature 016 (FR-040; contracts/feature-merged.md "Template count comments"): `record-tests`, run by the tasks
+//    template's two count tasks. The counts are printed in every case; a comment is posted only for an open proposal. ──
+import { mkdirSync as mkdirSync016, writeFileSync as writeFileSync016 } from 'node:fs';
+import { execFileSync as execFileSync016 } from 'node:child_process';
+
+function countRepo016({ input = 'Proposal #42: Proposal: Import' } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'record-tests-'));
+  const g = (...a) => execFileSync016('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...a], { cwd: dir, encoding: 'utf8' }).trim();
+  g('init', '--quiet', '--initial-branch', 'main');
+  g('remote', 'add', 'origin', 'http://forge.example:3000/acme/widget.git');
+  mkdirSync016(join(dir, 'scripts', '__tests__'), { recursive: true });
+  writeFileSync016(join(dir, 'scripts', '__tests__', 'a.test.mjs'), "test('one', () => {});\n");
+  g('add', '-A'); g('commit', '--quiet', '-m', 'base');
+  g('update-ref', 'refs/remotes/origin/main', 'HEAD');
+  g('checkout', '--quiet', '-b', '017-import');
+  mkdirSync016(join(dir, 'specs', '017-import'), { recursive: true });
+  writeFileSync016(join(dir, 'specs', '017-import', 'spec.md'), `# Feature Specification: Import\n\n**Input**: User description: "${input}"\n`);
+  writeFileSync016(join(dir, 'scripts', '__tests__', 'a.test.mjs'), "test('one', () => {});\ntest('two', () => {});\ntest('three', () => {});\n");
+  g('add', '-A'); g('commit', '--quiet', '-m', 'feature');
+  return { dir, head: g('rev-parse', 'HEAD'), base: g('rev-parse', 'origin/main'), cleanup: () => rmSync(dir, { recursive: true, force: true }) };
+}
+async function inRepo016(repo, fn) {
+  const cwd = process.cwd();
+  process.chdir(repo.dir);
+  try { return await fn(); } finally { process.chdir(cwd); }
+}
+const recordForge016 = (issue) => {
+  const posted = [];
+  return { posted, route: (method, path, u, body) => {
+    if (method === 'GET' && /\/issues\/42$/.test(path)) return { data: issue };
+    if (method === 'POST' && /\/issues\/42\/comments$/.test(path)) { posted.push(body.body); return { status: 201, data: { id: 1 } }; }
+    return { status: 404, data: {} };
+  } };
+};
+const openProposal016 = () => ({ number: 42, state: 'open', labels: [{ name: 'type/proposal' }, { name: 'status/in-engineering' }] });
+
+test('016 record-tests --point baseline prints the count at HEAD and comments it on the open proposal; no label or stage change', async () => {
+  const repo = countRepo016();
+  try {
+    const f = recordForge016(openProposal016());
+    const r = await inRepo016(repo, () => runCmd014(['record-tests', '--spec', 'specs/017-import', '--point', 'baseline'], f.route));
+    assert.equal(r.code, 0, r.out);
+    assert.match(r.out, /test declarations at [0-9a-f]{7}: 3/);
+    assert.deepEqual(f.posted, [`Test baseline at ${repo.head.slice(0, 7)} on branch \`017-import\`: 3 test declarations.`]);
+    assert.deepEqual(r.writes.map((w) => w.method), ['POST']);
+  } finally { repo.cleanup(); }
+});
+
+test('016 record-tests --point close-out also counts the merge base with origin/<default> and states the delta', async () => {
+  const repo = countRepo016();
+  try {
+    const f = recordForge016(openProposal016());
+    const r = await inRepo016(repo, () => runCmd014(['record-tests', '--spec', 'specs/017-import', '--point', 'close-out'], f.route));
+    assert.equal(r.code, 0, r.out);
+    assert.deepEqual(f.posted, [`Test count at ${repo.head.slice(0, 7)} on branch \`017-import\`: 3 test declarations (+2 since the merge base ${repo.base.slice(0, 7)}).`]);
+  } finally { repo.cleanup(); }
+});
+
+test('016 record-tests: no proposal marker, two markers, a closed issue or a non-proposal prints why, posts nothing, exits 0', async () => {
+  for (const [input, issue] of [['a plain description', openProposal016()], ['Proposal #42 and Proposal #43', openProposal016()],
+    ['Proposal #42: x', { ...openProposal016(), state: 'closed' }], ['Proposal #42: x', { number: 42, state: 'open', labels: [{ name: 'type/feature' }] }]]) {
+    const repo = countRepo016({ input });
+    try {
+      const f = recordForge016(issue);
+      const r = await inRepo016(repo, () => runCmd014(['record-tests', '--spec', 'specs/017-import', '--point', 'baseline'], f.route));
+      assert.equal(r.code, 0, `${input}: ${r.out}`);
+      assert.match(r.out, /test declarations at [0-9a-f]{7}: 3/, 'the count is printed in every case');
+      assert.match(r.out, /nothing posted/);
+      assert.deepEqual(f.posted, []);
+    } finally { repo.cleanup(); }
+  }
+});
+
+test('016 record-tests: a missing credential exits 3 with the count still printed; 403 exits 4; a transport failure 5; a bad --point 2', async () => {
+  const repo = countRepo016();
+  try {
+    const realIssue = process.env.FORGE_ISSUE_TOKEN;
+    delete process.env.FORGE_ISSUE_TOKEN;
+    const out = [];
+    const realLog = console.log; console.log = (...a) => out.push(a.join(' '));
+    const noCred = await inRepo016(repo, () => backlogMain(['record-tests', '--spec', 'specs/017-import', '--point', 'baseline']).catch((e) => e.code));
+    console.log = realLog;
+    if (realIssue !== undefined) process.env.FORGE_ISSUE_TOKEN = realIssue;
+    assert.equal(noCred, 3);
+    assert.match(out.join('\n'), /test declarations at [0-9a-f]{7}: 3/);
+    const argv = ['record-tests', '--spec', 'specs/017-import', '--point', 'baseline'];
+    assert.equal((await inRepo016(repo, () => runCmd014(argv, () => ({ status: 403, data: {} })))).code, 4);
+    assert.equal((await inRepo016(repo, () => runCmd014(argv, () => ({ transport: true })))).code, 5);
+    const bad = await inRepo016(repo, () => runCmd014(['record-tests', '--spec', 'specs/017-import', '--point', 'middle'], () => ({})));
+    assert.equal(bad.code, 2);
+  } finally { repo.cleanup(); }
+});

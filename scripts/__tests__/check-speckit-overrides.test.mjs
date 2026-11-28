@@ -591,3 +591,42 @@ test('feature-dir: a tree whose extensions.yml lost the hook reports hook-lost',
   const r = checkSpeckitOverrides({ root: fixture({ files: { [EXTENSIONS_YML]: yml } }) });
   assert.ok(r.failures.some((f) => f.code === 'hook-lost' && /speckit\.belay\.feature-dir/.test(f.message)), JSON.stringify(r.failures));
 });
+
+// ── feature 016 (FR-040): the tasks-template override's two required test-count tasks ──────────────────────────
+import { readFileSync as readFileSync016 } from 'node:fs';
+const override016 = () => readFileSync016(new URL('../../.specify/templates/overrides/tasks-template.md', import.meta.url), 'utf8');
+
+test('FR-040: the override has a REQUIRED "Record the test baseline" task in Phase 1, running record-tests --point baseline', () => {
+  const t = override016();
+  const phase1 = t.slice(t.indexOf('## Phase 1:'), t.indexOf('## Phase 2:'));
+  assert.ok(phase1.includes('**Record the test baseline**'), 'tasks-template override has no "Record the test baseline" task');
+  assert.match(phase1, /node scripts\/backlog\.mjs record-tests --spec specs\/\[###-feature-name\] --point baseline/);
+});
+
+test('FR-040: a REQUIRED "Record the test count" task comes immediately before "Open the PR", running record-tests --point close-out', () => {
+  const t = override016();
+  const count = t.indexOf('- [ ] TXXX **Record the test count**');
+  const pr = t.indexOf('- [ ] TXXX **Open the PR**');
+  assert.ok(count > 0 && pr > count, 'the count task comes before Open the PR');
+  const between = t.slice(count, pr);
+  assert.equal((between.match(/^- \[ \] TXXX/gm) ?? []).length, 1, 'nothing between the count task and Open the PR');
+  assert.match(between, /record-tests --spec specs\/\[###-feature-name\] --point close-out/);
+});
+
+test('FR-040: both count tasks say a spec with no proposal posts nothing and is not a failure, and a non-zero exit is recorded and implementation continues', () => {
+  const t = override016();
+  for (const name of ['- [ ] T00X **Record the test baseline**', '- [ ] TXXX **Record the test count**']) {
+    const at = t.indexOf(name);
+    assert.ok(at > 0, name);
+    const task = t.slice(at, t.indexOf('\n- [ ]', at + 1));
+    assert.match(task, /not\s+from\s+a\s+proposal[^.]*nothing\s+is\s+posted[^.]*not\s+a\s+failure/i, name);
+    assert.match(task, /non-zero\s+exit[^.]*record\s+the\s+counts\s+and\s+the\s+exit\s+code[^.]*continue/i, name);
+  }
+});
+
+test('FR-040: the EXCEPTION comment lists both count tasks as required', () => {
+  const t = override016();
+  const exception = t.slice(t.indexOf('EXCEPTION (project override)'), t.indexOf('-->', t.indexOf('EXCEPTION (project override)')));
+  assert.match(exception, /\*\*Record the test baseline\*\*/);
+  assert.match(exception, /\*\*Record the test count\*\*/);
+});

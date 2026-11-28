@@ -19,11 +19,14 @@
 //   - `labels=<unknown-name>` is SILENTLY IGNORED and returns the UNFILTERED set — so a typo reads as
 //     "matched everything". Every label and milestone name is resolved locally first, and refused here.
 
+import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { redactForPublication } from './ci-digest-redact.mjs';
 import { forgeEndpoint, stripControlChars } from './ci-status.mjs';
+import { measureCommit } from './count-repo-metrics.mjs';
+import { findProposalNumbers } from './lib/proposal-marker.mjs';
 import { STAGE_LABELS, StageError, TrailerError, checkTransition, readTrailers, renderTrailer, stageFromLabels } from './lib/stage-trailer.mjs';
 
 /** Exit codes, so a caller (or CI) can branch without parsing prose. */
@@ -554,6 +557,7 @@ const HELP = `backlog.mjs — the agent-driven backlog on this repository's forg
     setup-labels [--dry-run]
     setup-milestone <name> [--description D]
     stage <n> <spec-in-progress|in-engineering> --spec specs/NNN-slug --branch <branch> [--json]
+    record-tests --spec specs/NNN-slug --point baseline|close-out   (the tasks template's count tasks)
 
   Exit codes: 0 ok · 1 unexpected · 2 usage/validation · 3 missing credential · 4 authorization · 5 transport
 
@@ -600,6 +604,7 @@ function parseArgs(argv) {
     else if (a === '--repo') out.repo = val();
     else if (a === '--spec') out.spec = val();
     else if (a === '--branch') out.branch = val();
+    else if (a === '--point') out.point = val();
     else if (a === '--json') out.json = true;
     else if (a === '--dry-run') out.dryRun = true;
     else if (a === '--remove') out.remove = true;
@@ -984,6 +989,54 @@ const COMMANDS = {
     done(`moved to ${target}`);
   },
 
+  /**
+   * The tasks template's two count tasks (feature 016, FR-040; contracts/feature-merged.md "Template count comments"):
+   * count the test declarations at the committed HEAD (and, at close-out, at the merge base with the default branch,
+   * so tests other merges added are not counted), print them, and comment them on the proposal the spec came from.
+   * The counts are printed in EVERY case, before any forge call. No marker, two, or an issue that is not an open
+   * proposal: it says why, posts nothing, and exits 0. A forge failure keeps its exit code (3, 4, 5): the template
+   * task records it and implementation continues (decision M10). It never changes a label or a stage.
+   */
+  async 'record-tests'(opts) {
+    if (!['baseline', 'close-out'].includes(opts.point)) {
+      throw new BacklogError(`record-tests needs --point baseline or --point close-out (got ${JSON.stringify(opts.point ?? '')})`, EXIT.usage);
+    }
+    const spec = normalizeSpecDir(opts.spec);
+    const git = (args) => execFileSync('git', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const count = (rev) => measureCommit({ cwd: process.cwd(), rev }).metrics.testDeclarations;
+    const head = git(['rev-parse', 'HEAD']);
+    const branch = git(['rev-parse', '--abbrev-ref', 'HEAD']);
+    const n = count(head);
+    emit(`test declarations at ${head.slice(0, 7)}: ${n}`);
+    let delta = null;
+    let base = null;
+    if (opts.point === 'close-out') {
+      let upstream = 'origin/main';
+      try { upstream = git(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD']); } catch { /* no origin/HEAD: main */ }
+      base = git(['merge-base', 'HEAD', upstream]);
+      const m = count(base);
+      delta = n - m;
+      emit(`test declarations at the merge base ${base.slice(0, 7)} with ${upstream}: ${m} (${delta >= 0 ? '+' : ''}${delta})`);
+    }
+    const nothing = (why) => emit(`${why}; nothing posted`);
+    const specFile = join(spec, 'spec.md');
+    if (!existsSync(specFile)) return void nothing(`${specFile} does not exist`);
+    const numbers = findProposalNumbers(readFileSync(specFile, 'utf8'));
+    if (numbers.length === 0) return void nothing('not from a proposal (no Proposal #<n> on the spec\'s Input line)');
+    if (numbers.length > 1) return void nothing(`the spec's Input line names more than one proposal (${numbers.map((x) => `#${x}`).join(', ')})`);
+    const c = connect({ write: true, intendedRepo: opts.repo });
+    const item = (await c.call(`${c.R}/issues/${numbers[0]}`)).data;
+    const names = labelNames(item);
+    if (item.pull_request || !names.includes(PROPOSAL_LABEL)) return void nothing(`item #${numbers[0]} is not a proposal`);
+    if (names.includes(BOT_MANAGED_LABEL)) return void nothing(`item #${numbers[0]} is bot-managed`);
+    if (item.state !== 'open') return void nothing(`proposal #${numbers[0]} is not open`);
+    const body = opts.point === 'baseline'
+      ? `Test baseline at ${head.slice(0, 7)} on branch \`${branch}\`: ${n} test declarations.`
+      : `Test count at ${head.slice(0, 7)} on branch \`${branch}\`: ${n} test declarations (${delta >= 0 ? '+' : ''}${delta} since the merge base ${base.slice(0, 7)}).`;
+    await c.call(`${c.R}/issues/${numbers[0]}/comments`, { method: 'POST', body: { body } });
+    emit(`posted on proposal #${numbers[0]}`);
+  },
+
   async 'validate-form'() {
     const c = connect();
     const templates = (await c.call(`${c.R}/issue_templates`)).data;
@@ -998,7 +1051,7 @@ const COMMANDS = {
 export function normalizeSpecDir(raw) {
   const spec = String(raw ?? '').trim().replace(/\\/g, '/').replace(/\/+$/, '');
   if (!/^specs\/\d{3}-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(spec)) {
-    throw new BacklogError(`stage needs --spec specs/NNN-slug (got ${raw === undefined ? 'nothing' : JSON.stringify(String(raw))})`, EXIT.usage);
+    throw new BacklogError(`--spec needs specs/NNN-slug (got ${raw === undefined ? 'nothing' : JSON.stringify(String(raw))})`, EXIT.usage);
   }
   return spec;
 }

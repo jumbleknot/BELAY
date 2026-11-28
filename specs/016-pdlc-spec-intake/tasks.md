@@ -639,7 +639,7 @@ inserted, not renumbered, so references to T055 onwards stay valid.
   - **Scenarios covered**: FR-014, FR-039, plan Constraints ("a merge is never blocked", no second test run)
   - **Verify RED**: `node --test scripts/__tests__/feature-merged-workflow.guard.test.mjs` → expected: failing —
     `ENOENT .forgejo/workflows/feature-merged.yml`
-- [ ] T054a [P] [US4] Test: `backlog.mjs record-tests` ([contracts/feature-merged.md](contracts/feature-merged.md)
+- [X] T054a [P] [US4] Test: `backlog.mjs record-tests` ([contracts/feature-merged.md](contracts/feature-merged.md)
   "Template count comments"). Extend `scripts/__tests__/backlog.test.mjs`, with a fake forge and a fixture git
   repository:
   - `--point baseline` counts `HEAD`; `--point close-out` also counts the merge base with `origin/<default>` and
@@ -652,7 +652,7 @@ inserted, not renumbered, so references to T055 onwards stay valid.
   - **Scenarios covered**: FR-040
   - **Verify RED**: `node --test scripts/__tests__/backlog.test.mjs` → expected: failing —
     `Unknown command: record-tests`
-- [ ] T054b [P] [US4] Test: the tasks-template override carries the two count tasks. Extend
+- [X] T054b [P] [US4] Test: the tasks-template override carries the two count tasks. Extend
   `scripts/__tests__/check-speckit-overrides.test.mjs` (or the override's existing guard): the override holds a
   REQUIRED **Record the test baseline** task in Phase 1 and a REQUIRED **Record the test count** task immediately
   before **Open the PR**, each naming `backlog.mjs record-tests` with its `--point`, the "not from a proposal: nothing
@@ -694,15 +694,19 @@ inserted, not renumbered, so references to T055 onwards stay valid.
     `feature-merged.yml` calls `pnpm nx run scripts:feature-merged` (the plan's Nx rule), so T051's guard forbids test
     targets there, not `nx`. `guardrails-workflow.test.mjs`'s exact-step guard now asserts twelve steps and the three
     `--results` paths. `docs/runbooks/ci.md` (T079) and its wiki page were updated with it
-- [ ] T054c [US4] Implement the `record-tests` verb in `scripts/backlog.mjs`, importing `measureCommit` and the
+- [X] T054c [US4] Implement the `record-tests` verb in `scripts/backlog.mjs`, importing `measureCommit` and the
   proposal-marker parser shared with `feature-merged.mjs` (prerequisite: T054a RED; T053 GREEN)
   - **Verify GREEN**: `node --test scripts/__tests__/backlog.test.mjs` → expected: 0 failures; then
     `pnpm nx run scripts:test` passes
-- [ ] T054d [US4] Add the two REQUIRED count tasks to `.specify/templates/overrides/tasks-template.md` and to its
+- [X] T054d [US4] Add the two REQUIRED count tasks to `.specify/templates/overrides/tasks-template.md` and to its
   EXCEPTION comment (contract text above), then run `node scripts/check-speckit-overrides.mjs` (prerequisite: T054b
   RED; T054c GREEN)
   - **Verify GREEN**: `node --test scripts/__tests__/check-speckit-overrides.test.mjs` → expected: 0 failures; then
     `node scripts/check-speckit-overrides.mjs` exits 0
+  - **Done 2026-11-28, as built**: the marker parser moved to `scripts/lib/proposal-marker.mjs` (shared by
+    `record-tests` and `feature-merged.mjs`); `record-tests` counts with `measureCommit` before any forge call, so the
+    counts print even when the credential is missing; the override's EXCEPTION comment now names five required tasks.
+    T054a's first RED was `Unknown flag: --point` (the parser rejects it before the command)
 
 **Checkpoint**: the stage model closes on merge (SC-004, SC-010 after the feature merges).
 
@@ -878,7 +882,7 @@ FR-036.
   - the file table (lines 170 to 171);
   - the hand-off lines (193, 204), with T070.
   - **Done when**: every hit in T002 for this file is resolved
-- [ ] T074 [P] (rows 5a, 7, line 79 and the reinstall steps done with T040; the count tasks remain) Update `docs/runbooks/spec-kit.md`: rows 5a and 7 (the hooks and the skill), line 79, the reinstall
+- [X] T074 [P] (rows 5a, 7, line 79 and the reinstall steps done with T040; row 1 and the upgrade step's task list, for the count tasks, with T054d) Update `docs/runbooks/spec-kit.md`: rows 5a and 7 (the hooks and the skill), line 79, the reinstall
   steps (lines 158 to 160), and the tasks-template override's two new required count tasks (FR-040)
   - **Done when**: `node scripts/check-speckit-overrides.mjs` passes and the runbook rows match its inventory
 - [ ] T075 [P] Update `mcp-servers/pdlc/README.md` (lines 6 and 17)

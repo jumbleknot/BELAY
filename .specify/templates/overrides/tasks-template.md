@@ -44,9 +44,10 @@ description: "Task list template for feature implementation"
 
   DO NOT keep these sample tasks in the generated tasks.md file.
 
-  EXCEPTION (project override): the **Doc-impact sweep** task in Phase 1, and the **Close-out
-  re-search** and **Open the PR** tasks in the Polish phase, are REQUIRED. Keep all three in every
-  tasks.md and number them in sequence with the rest. And every real test task keeps the Verify
+  EXCEPTION (project override): the **Doc-impact sweep** and **Record the test baseline** tasks in
+  Phase 1, and the **Close-out re-search**, **Record the test count** and **Open the PR** tasks in
+  the Polish phase, are REQUIRED. Keep all five in every tasks.md and number them in sequence with
+  the rest. And every real test task keeps the Verify
   RED / Verify GREEN fields shown in the User Story 1 sample (constitution "TDD Checkpoint
   Format"): the sample tasks go, the format stays.
   See docs/runbooks/spec-kit.md for every way this repository customises Spec Kit.
@@ -75,6 +76,12 @@ description: "Task list template for feature implementation"
     Each hit needing a change becomes its own task in the Polish phase, naming the file.
     Dated records ("measured on …", incident logs, version history) are history: "no change".
   -->
+- [ ] T00X **Record the test baseline** (REQUIRED in every tasks.md, not a sample; feature 016, FR-040). Before the
+  first code task, run `node scripts/backlog.mjs record-tests --spec specs/[###-feature-name] --point baseline` and
+  record the count and the commit it prints in this task. When the spec came from a proposal, it also comments the
+  baseline on that issue. When the spec is not from a proposal, or its issue is not an open proposal, nothing is posted
+  and that is not a failure. On a non-zero exit (3 credential, 4 authorisation, 5 transport), record the counts and the
+  exit code here, say so, and continue: the closing comment's count comes from CI, not from this task.
 
 ---
 
@@ -190,6 +197,11 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] TXXX [P] Additional unit tests (if requested) in tests/unit/
 - [ ] TXXX Security hardening
 - [ ] TXXX Run quickstart.md validation
+- [ ] TXXX **Record the test count** (REQUIRED; feature 016, FR-040), after the last code commit and immediately before
+  opening the PR: run `node scripts/backlog.mjs record-tests --spec specs/[###-feature-name] --point close-out` and record
+  the count, the delta since the merge base and the exit code in this task. When the spec is not from a proposal, or its
+  issue is not an open proposal, nothing is posted and that is not a failure. On a non-zero exit, record the counts and
+  the exit code here, say so, and continue
 - [ ] TXXX **Open the PR** from a real branch, with the repository's PR tools (`docs/runbooks/ci.md`):
   1. `git push origin HEAD:<branch>`
   2. `node scripts/forge-pr.mjs open --head <branch> --title "…" --body-file <file>`
