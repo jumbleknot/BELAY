@@ -46,6 +46,11 @@ export function createToolHandlers(deps = {}) {
       return result;
     },
     get_spec: async (args) => specs.get(args),
+    approve_spec: async (args, ctx) => {
+      const result = await specs.approve(args);
+      wrote('approve_spec', `spec approved and published: ${result.commit}`, { repo: result.repo, number: result.number, branch: result.branch }, ctx);
+      return result;
+    },
     write_spec_file: async (args, ctx) => {
       const result = await specs.writeFile(args);
       wrote('write_spec_file', `spec file written: ${result.path}`, { repo: result.repo, number: result.number, branch: result.branch }, ctx);

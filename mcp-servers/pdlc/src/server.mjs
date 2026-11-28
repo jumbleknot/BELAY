@@ -97,10 +97,11 @@ export async function main({ env = process.env, stderr = process.stderr } = {}) 
 
   const [{ StdioServerTransport }, { createForgeClient }, { createRepoAllowlist }, { createProposals },
     { createLocalCopy }, { createGitRunner }, { createSetupCheck }, { createSpecKitRunner }, { createSpecWorktree },
-    { createSpecFiles }, { createSpecLifecycle }] = await Promise.all([
+    { createSpecFiles }, { createSpecLifecycle }, { createSpecApproval }] = await Promise.all([
     import('@modelcontextprotocol/sdk/server/stdio.js'), import('./forge-client.mjs'), import('./repo-allowlist.mjs'),
     import('./proposals.mjs'), import('./local-copy.mjs'), import('./git-runner.mjs'), import('./setup-check.mjs'),
     import('./spec-kit-runner.mjs'), import('./spec-worktree.mjs'), import('./spec-files.mjs'), import('./spec-lifecycle.mjs'),
+    import('./spec-approval.mjs'),
   ]);
   const redact = createRedactor({ secrets: [config.token] });
   const log = createLogger({ stream: stderr, redact });
@@ -122,6 +123,7 @@ export async function main({ env = process.env, stderr = process.stderr } = {}) 
       specKit: createSpecKitRunner({ cloneRoot: config.cloneRoot, git }),
       worktree: createSpecWorktree({ cloneRoot: config.cloneRoot, git }),
       files: createSpecFiles(),
+      approval: createSpecApproval({ git }),
     }),
   };
   await createServer(deps).connect(new StdioServerTransport());

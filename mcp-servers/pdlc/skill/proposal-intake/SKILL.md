@@ -93,7 +93,31 @@ Follow the repository's own specify prompt, `.claude/skills/speckit-specify/SKIL
 
 Fill the template from the proposal and the interview, section by section, and show each section to the user in plain language before you write it. List any `[NEEDS CLARIFICATION]` markers you left.
 
+**Review.** Walk the author through the spec section by section. When they ask for a change in plain words, show the changed text before you keep it, and write it only when they agree.
+
 - If a write refuses `pane_edit_pending`, the spec changed since you read it: call `get_spec` again, tell the user what changed, take it in, then write.
 - If a write refuses `document_locked`, planning has started and the spec can no longer be edited here. Say so.
 
 **Resume.** When the user picks a proposal at spec in progress, call `get_spec`: it returns the files exactly as they were left, the `revision`, the open markers and whether clarification has run. If `proposal_updated_since_start` is true, tell the user the proposal changed after the spec started and offer to bring the change into the spec.
+
+## 9. Clarify
+
+Follow the repository's own clarify prompt, `.claude/skills/speckit-clarify/SKILL.md`, read from the clone, as a conversation with the author:
+
+- Ask its questions one at a time, each with suggested answers as buttons (and a free-text option).
+- Record each answer where that prompt records it: under `## Clarifications` in `spec.md`, in a `### Session YYYY-MM-DD` subsection for today, and in the section the answer changes. Write through `write_spec_file`.
+- If the prompt finds nothing worth asking, still add today's session with the single line `- No questions: no critical ambiguity found.`, so approval knows clarification ran.
+
+Clarification must run at least once on the spec as it now stands before it can be approved, including after a reopen.
+
+## 10. Approve
+
+When the author is satisfied, ask with buttons: **Approve the spec** or **Keep editing**. On approve, call `approve_spec` with the `revision` from your last read or write.
+
+- It commits the spec folder, publishes the feature branch, and moves the proposal to ready to plan with a comment linking the folder (`spec_url`). Tell the author the branch and the link, and that an Architect picks it up from the ready list in Claude Code.
+- `spec_has_markers`: list the open markers it returned and clarify them first.
+- `spec_not_clarified`: run step 9, then approve again.
+- `pane_edit_pending`: the spec changed since you read it; call `get_spec`, show the author what changed, then approve again.
+- `git_identity_missing`: git on this computer has no name or email set; say so, and that it is set once in Git for Windows.
+- `publish_failed`: the commit is kept on this computer and the stage did not move; approving again retries.
+- `document_locked`: planning has started, so nothing can change here.

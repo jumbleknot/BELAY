@@ -377,13 +377,13 @@ plan.
   - **Scenarios covered**: US2-AC1, US2-AC4, US2-AC5, US2-AC6, FR-008, FR-009
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/spec-approval.test.mjs` → expected: failing —
     `Cannot find module '../../src/spec-approval.mjs'`
-- [ ] T031 [US2] Test: the `approve_spec` tool in `tools.test.mjs`, and the contract in `tool-contract.test.mjs`:
+- [X] T031 [US2] Test: the `approve_spec` tool in `tools.test.mjs`, and the contract in `tool-contract.test.mjs`:
   - `ready-to-plan` with a trailer and a linked comment (contracts/stages.md text);
   - `pane_edit_pending` on a stale `base_revision`.
   - **Scenarios covered**: US2-AC5
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/unit/tools.test.mjs` → expected: failing —
     `unknown tool approve_spec`
-- [ ] T032 [US2] Integration: extend `spec-lifecycle.integration.test.mjs`. Write `spec.md` with a clarifications
+- [X] T032 [US2] Integration: extend `spec-lifecycle.integration.test.mjs`. Write `spec.md` with a clarifications
   session, approve, then assert:
   - the bare remote has the branch, with one commit touching only `specs/003-<slug>/`;
   - the remote's `main` is unchanged;
@@ -391,16 +391,20 @@ plan.
   - **Scenarios covered**: US2-AC3, US2-AC5, SC-001 (machine half), SC-007
   - **Verify RED**: `node --test mcp-servers/pdlc/tests/integration/spec-lifecycle.integration.test.mjs` → expected:
     failing — `unknown tool approve_spec`
+  - **Done 2026-11-28, as built**: the integration tier has no forge, so the test drives `spec-approval.mjs` directly
+    (check, then publish with the real git runner), not the tool. It was written after T033 was GREEN, so no RED was
+    observed; instead a mutation check (the push removed from `publish`) made it fail, and the file was restored. It also
+    asserts a direct push to `main` in a valid shape is refused `push_target_refused` (quickstart §1)
 
 ### Implementation for User Story 2
 
 - [X] T033 [US2] Implement `mcp-servers/pdlc/src/spec-approval.mjs` (prerequisite: T030 RED)
   - **Verify GREEN**: `node --test mcp-servers/pdlc/tests/unit/spec-approval.test.mjs` → expected: 0 failures
-- [ ] T034 [US2] Add `approve_spec` to the contract, the handlers and the manifest (prerequisite: T031, T032 RED;
+- [X] T034 [US2] Add `approve_spec` to the contract, the handlers and the manifest (prerequisite: T031, T032 RED;
   T033 GREEN)
   - **Verify GREEN**: same commands as T031 and T032 → expected: 0 failures; then `pnpm nx run pdlc:test` and
     `pnpm nx run pdlc:integration` pass
-- [ ] T035 [US2] Extend the master skill:
+- [X] T035 [US2] Extend the master skill:
   - clarify by following the repository's `speckit-clarify` prompt, one question at a time with suggested answers as
     buttons, recording the session (or the "No questions" line);
   - review section by section, showing each edit before keeping it;

@@ -18,6 +18,7 @@ const FIELDS = new Set([
   // and the refusal codes it branches on
   'not_ready_proposal', 'spec_already_in_progress', 'spec_kit_unavailable', 'spec_hook_unsupported', 'branch_exists',
   'no_spec_for_proposal', 'pane_edit_pending', 'path_outside_feature', 'document_locked', 'stage_transition_refused',
+  'spec_has_markers', 'spec_not_clarified', 'git_identity_missing', 'publish_failed', 'spec_url',
 ]);
 
 test('the skill has front matter naming it proposal-intake', () => {
@@ -76,4 +77,33 @@ test('016: the skill no longer says a proposal closes when its spec exists; it s
 test('016: a second start offers to resume, and a pane_edit_pending write is re-read before retrying', () => {
   assert.match(skill, /`spec_already_in_progress`[^\n]*resume/i);
   assert.match(skill, /`pane_edit_pending`[^\n]*`get_spec`/);
+});
+
+test('016 US2: the skill clarifies by the repository\'s own speckit-clarify prompt, one question at a time with suggested answers as buttons', () => {
+  const step = skill.slice(skill.indexOf('## 9.'));
+  assert.ok(skill.includes('## 9.'), 'a clarify step');
+  assert.match(step, /\.claude\/skills\/speckit-clarify\/SKILL\.md/);
+  assert.match(step, /one (question )?at a time/i);
+  assert.match(step, /suggested answers[^\n]*buttons/i);
+});
+
+test('016 US2-AC1, U6: the clarify step records the session where the clarify prompt does, and the "No questions" line when there is nothing to ask', () => {
+  const step = skill.slice(skill.indexOf('## 9.'));
+  assert.match(step, /`## Clarifications`/);
+  assert.match(step, /`### Session YYYY-MM-DD`/);
+  assert.match(step, /`- No questions: no critical ambiguity found\.`/);
+});
+
+test('016 US2-AC2: review shows each edit before keeping it', () => {
+  assert.match(skill, /show (the changed text|each edit)[^\n]*before (you )?(keep|write)/i);
+});
+
+test('016 US2: Approve calls approve_spec and relays every refusal in plain words', () => {
+  const step = skill.slice(skill.indexOf('## 10.'));
+  assert.ok(skill.includes('## 10.'), 'an approve step');
+  assert.match(step, /`approve_spec`/);
+  for (const code of ['spec_has_markers', 'spec_not_clarified', 'git_identity_missing', 'publish_failed', 'pane_edit_pending']) {
+    assert.match(step, new RegExp(`\`${code}\``), code);
+  }
+  assert.match(step, /ready to plan/);
 });

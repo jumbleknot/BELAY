@@ -101,6 +101,10 @@ export const TOOLS = Object.freeze({
     description: "Write one file of the spec in progress: spec.md or checklists/<name>.md, inside the spec folder only, against the revision last read. Refuses outside spec in progress and when the spec changed since that revision.",
     input: strict({ repo, number, path: specPath, content: specContent, base_revision: revision }),
   },
+  approve_spec: {
+    description: "Approve the spec in progress: refuse while [NEEDS CLARIFICATION] markers remain or clarification has not run, then commit the spec folder, publish the feature branch, and move the proposal to ready to plan with a comment linking the folder.",
+    input: strict({ repo, number, base_revision: revision }),
+  },
 });
 
 export const TOOL_NAMES = Object.freeze(Object.keys(TOOLS));

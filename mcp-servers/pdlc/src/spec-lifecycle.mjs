@@ -36,7 +36,7 @@ export function fillTemplate(template, { number, title, body, branch, date }) {
  * @param {{forge: object, allowlist: object, proposals: object, localCopy: object, specKit: object, worktree: object,
  *          files: object, config: {owner: string}, now?: () => Date}} deps
  */
-export function createSpecLifecycle({ forge, allowlist, proposals, localCopy, specKit, worktree, files, now = () => new Date() }) {
+export function createSpecLifecycle({ forge, allowlist, proposals, localCopy, specKit, worktree, files, approval, config, now = () => new Date() }) {
   const comments = async (path, number) => (await forge.getAll(`${path}/issues/${number}/comments`, { capability: 'read comments', maxPages: 20 })).items;
 
   /** The proposal, for a spec operation: not_ready_proposal when the issue is not a proposal at all (US1-AC4). */
@@ -69,6 +69,18 @@ export function createSpecLifecycle({ forge, allowlist, proposals, localCopy, sp
   };
 
   const startedText = (branch, specDir) => `Spec started on branch \`${branch}\` in \`${specDir}/\` (Claude Desktop).`;
+  /** The forge page for the spec folder on its branch (contracts/stages.md "→ ready-to-plan"). */
+  const specUrl = (repo, branch, specDir) => `${config.forgeUrl}/${encodeURIComponent(config.owner)}/${encodeURIComponent(repo.name)}/src/branch/${branch}/${specDir}`;
+  const gitCtx = (repo, state) => ({ cloneRoot: config.cloneRoot, repo: repo.name, copyPath: localCopy.pathOf(repo.name), defaultBranch: repo.default_branch,
+    featureBranch: state.branch, specDir: state.spec_dir.replace(/\/$/, ''), recordedRemoteTip: state.recorded_remote_tip });
+
+  /** The stage, and the guards every spec write shares: locked from in-engineering on, editable only in spec-in-progress. */
+  const editableStage = (issue, number, what) => {
+    const stage = stageFromLabels(names(issue));
+    if (LOCKED.has(stage)) throw new Refusal('document_locked', `planning has started for proposal #${number} (stage "${stage}"), so the spec is locked from Claude Desktop`);
+    if (stage !== 'spec-in-progress') throw new Refusal('stage_transition_refused', `the spec for proposal #${number} is at stage "${stage}"; reopen it with reopen_spec before ${what}`);
+    return stage;
+  };
 
   return {
     /** check_spec_kit: reports only, changes nothing (R3, R14; FR-005). */
@@ -143,15 +155,35 @@ export function createSpecLifecycle({ forge, allowlist, proposals, localCopy, sp
       };
     },
 
+    /**
+     * approve_spec (US2; FR-008, FR-009; R15): the checks, then commit and publish the feature branch, then, only after
+     * the push succeeded, move the stage to ready-to-plan with its linked comment.
+     */
+    async approve({ repo: repoArg, number, base_revision: base }) {
+      const { repo, path, issue } = await proposals.loadProposal(repoArg, number, { write: true });
+      const { state, specDir } = await specOf(repo, number);
+      editableStage(issue, number, 'approving');
+      const { files: list, revision } = await files.read({ worktree: state.worktree_path, specDir });
+      if (revision !== base) {
+        throw new Refusal('pane_edit_pending', 'the spec changed since you last read it (an edit in the pane, or another session); read it again with get_spec, show the author, then approve', { revision });
+      }
+      approval.check({ spec: list.find((f) => f.path === 'spec.md')?.content ?? '', state });
+      const { commit } = await approval.publish({ state, ctx: gitCtx(repo, state) });
+      await worktree.update({ repo, specDir }, { recorded_remote_tip: commit, approvals: (state.approvals ?? 0) + 1 });
+      const url = specUrl(repo, state.branch, specDir);
+      const verb = (state.approvals ?? 0) > 0 ? 're-approved' : 'approved';
+      const after = await moveStage({ path, issue, to: 'ready-to-plan', by: 'approve_spec',
+        text: `Spec ${verb} by its author and published on branch \`${state.branch}\`: [${state.spec_dir}](${url}). Ready to plan.`,
+        trailer: { stage: 'ready-to-plan', branch: state.branch, spec: state.spec_dir } });
+      await worktree.update({ repo, specDir }, { proposal_updated_at_start: after.updated_at });
+      return { repo: repo.name, number, commit, branch: state.branch, spec_url: url, stage: 'ready-to-plan' };
+    },
+
     /** write_spec_file: one path-guarded write, against the revision the caller last read (FR-007, FR-020, FR-036). */
     async writeFile({ repo: repoArg, number, path: file, content, base_revision: base }) {
       const { repo, issue } = await proposals.loadProposal(repoArg, number, { write: true });
       const { state, specDir } = await specOf(repo, number);
-      const stage = stageFromLabels(names(issue));
-      if (LOCKED.has(stage)) throw new Refusal('document_locked', `planning has started for proposal #${number} (stage "${stage}"), so the spec is locked from Claude Desktop`);
-      if (stage !== 'spec-in-progress') {
-        throw new Refusal('stage_transition_refused', `the spec for proposal #${number} is at stage "${stage}"; reopen it with reopen_spec before editing`);
-      }
+      editableStage(issue, number, 'editing');
       const current = await files.revision({ worktree: state.worktree_path, specDir });
       if (current !== base) {
         throw new Refusal('pane_edit_pending', 'the spec changed since you last read it (an edit in the pane, or another session); read it again with get_spec, take the change in, then write', { revision: current });

@@ -16,6 +16,7 @@ import { createSpecKitRunner } from '../../src/spec-kit-runner.mjs';
 import { createSpecWorktree } from '../../src/spec-worktree.mjs';
 import { createSpecFiles } from '../../src/spec-files.mjs';
 import { fillTemplate } from '../../src/spec-lifecycle.mjs';
+import { createSpecApproval } from '../../src/spec-approval.mjs';
 import { bareForge, sh, copyState } from './helpers/bare-forge.mjs';
 
 const TOKEN = 'canary-integration-0123456789abcdef';
@@ -100,4 +101,54 @@ test('a second spec on this workstation takes the next number even though the fi
   const copyPath = join(forge.cloneRoot, 'target');
   const prep = await specKit.prepare({ repo, copyPath, shortName: 'second-probe' });
   assert.equal(prep.branch, '004-second-probe', 'the unpublished 003 branch in the copy counts (its local heads are the scratch clone\'s origin)');
+});
+
+test('approve for real: one commit touching only the spec folder, on the published feature branch; main untouched; a fresh instance resumes the same files (T032)', async () => {
+  const repo = { name: 'target', default_branch: 'main' };
+  const copyPath = join(forge.cloneRoot, 'target');
+  const bare = forge.originUrlFor('target');
+  const mainBefore = sh(forge.root, 'ls-remote', bare, 'refs/heads/main');
+  // the workstation's identity: the operator's own (research R4); the test sets one in the copy's config
+  sh(copyPath, 'config', 'user.name', 'pdlc-test');
+  sh(copyPath, 'config', 'user.email', 'pdlc-test@example.invalid');
+
+  const state = await worktree.resume({ repo, copyPath, number: 91 });
+  const spec = '# Feature Specification: Int probe\n\n## Clarifications\n\n### Session 2026-11-28\n\n- No questions: no critical ambiguity found.\n\n## Requirements\n\n- **FR-001**: x\n';
+  await files.write({ worktree: state.worktree_path, specDir: 'specs/003-int-probe', path: 'spec.md', content: spec });
+  await files.write({ worktree: state.worktree_path, specDir: 'specs/003-int-probe', path: 'checklists/requirements.md', content: '- [x] ok\n' });
+
+  const approval = createSpecApproval({ git });
+  approval.check({ spec, state });
+  const ctx = { cloneRoot: forge.cloneRoot, repo: 'target', copyPath, defaultBranch: 'main', featureBranch: state.branch, specDir: 'specs/003-int-probe', recordedRemoteTip: null };
+  const { commit, committed } = await approval.publish({ state, ctx });
+  assert.equal(committed, true);
+
+  // the bare remote has the branch at that commit, one commit ahead of main, touching only specs/003-int-probe/
+  assert.equal(sh(forge.root, 'ls-remote', bare, 'refs/heads/003-int-probe').split(/\s+/)[0], commit);
+  const work = join(forge.root, 'verify');
+  sh(forge.root, 'clone', '--quiet', bare, work);
+  assert.equal(sh(work, 'rev-list', '--count', 'origin/main..origin/003-int-probe'), '1');
+  const touched = sh(work, 'diff', '--name-only', 'origin/main', 'origin/003-int-probe').split('\n');
+  assert.deepEqual(touched.sort(), ['specs/003-int-probe/checklists/requirements.md', 'specs/003-int-probe/spec.md']);
+  assert.equal(sh(work, 'log', '-1', '--format=%s', 'origin/003-int-probe'), 'docs(003): approve spec for proposal item #91');
+  assert.equal(sh(work, 'log', '-1', '--format=%an', 'origin/003-int-probe'), 'pdlc-test');
+
+  // SC-007: main on the forge is unchanged, the copy is still on main, and nothing but the feature branch was published
+  assert.equal(sh(forge.root, 'ls-remote', bare, 'refs/heads/main'), mainBefore);
+  assert.equal(sh(copyPath, 'symbolic-ref', '--short', 'HEAD'), 'main');
+  assert.deepEqual(sh(forge.root, 'ls-remote', '--heads', bare).split('\n').map((l) => l.split('refs/heads/')[1]).sort(), ['002-other-feature', '003-int-probe', 'main']);
+
+  // US2-AC3: a fresh server instance (new modules, nothing in memory) resumes the spec exactly as it was left
+  const fresh = createSpecWorktree({ cloneRoot: forge.cloneRoot, git: createGitRunner({ token: TOKEN }) });
+  const again = await fresh.resume({ repo, copyPath, number: 91 });
+  const read = await createSpecFiles().read({ worktree: again.worktree_path, specDir: 'specs/003-int-probe' });
+  assert.deepEqual(read.files.map((f) => f.path), ['checklists/requirements.md', 'spec.md']);
+  assert.equal(read.files.find((f) => f.path === 'spec.md').content, spec);
+});
+
+test('a push straight to the default branch is refused by the server, even in a valid shape (push_target_refused)', async () => {
+  const copyPath = join(forge.cloneRoot, 'target');
+  const state = await worktree.resume({ repo: { name: 'target', default_branch: 'main' }, copyPath, number: 91 });
+  const ctx = { cloneRoot: forge.cloneRoot, repo: 'target', copyPath, defaultBranch: 'main', featureBranch: 'main', specDir: 'specs/003-int-probe' };
+  await assert.rejects(git.run(['push', 'origin', 'refs/heads/main:refs/heads/main'], { cwd: state.worktree_path, spec: ctx }), (e) => e.code === 'push_target_refused');
 });

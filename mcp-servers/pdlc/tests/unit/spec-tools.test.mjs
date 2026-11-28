@@ -281,3 +281,107 @@ test('a start that stopped after the worktree but before the stage moved is fini
     ok(await w.c.call('get_spec', { repo: 'BELAY', number: p.number }));
   } finally { await w.close(); }
 });
+
+// ── approve_spec (US2; FR-008, FR-009) ──────────────────────────────────────────────────────────────────────────
+
+const CLARIFIED = `# Feature Specification: Pane probe
+
+**Feature Branch**: \`017-pane-probe\`
+
+**Input**: User description: "Proposal #1: Proposal: Pane probe"
+
+## Clarifications
+
+### Session 2026-11-28
+
+- Q: Who reviews? → A: The author.
+
+## Requirements
+
+- **FR-001**: The pane MUST show the spec.
+`;
+
+async function clarified() {
+  const { w, p, revision } = await started();
+  const r = await w.c.call('write_spec_file', { repo: 'BELAY', number: p.number, path: 'spec.md', content: CLARIFIED, base_revision: revision });
+  ok(r);
+  return { w, p, revision: r.payload.revision };
+}
+
+test('US2-AC5 approve_spec commits, publishes the branch, then moves to ready-to-plan with the linked comment and its trailer', async () => {
+  const { w, p, revision } = await clarified();
+  try {
+    const r = await w.c.call('approve_spec', { repo: 'BELAY', number: p.number, base_revision: revision });
+    ok(r);
+    assert.equal(r.payload.stage, 'ready-to-plan');
+    assert.equal(r.payload.branch, BRANCH);
+    assert.equal(r.payload.spec_url, `https://forge.example/operator/BELAY/src/branch/${BRANCH}/specs/${BRANCH}`);
+    assert.match(r.payload.commit, /^[0-9a-f]{40}$/);
+    assert.deepEqual(w.pushes, [BRANCH]);
+    assert.equal(w.commits.length, 1);
+    assert.equal(w.commits[0].message, `docs(017): approve spec for proposal item #${p.number}\n\nApproved in Claude Desktop by the spec's author.`);
+    assert.ok(w.labelsOf(p.number).includes('status/ready-to-plan'));
+    assert.ok(!w.labelsOf(p.number).includes('status/spec-in-progress'));
+    const last = w.forge.issue('BELAY', p.number).comments.at(-1).body;
+    assert.equal(last, `Spec approved by its author and published on branch \`${BRANCH}\`: [${SPEC_DIR}](https://forge.example/operator/BELAY/src/branch/${BRANCH}/specs/${BRANCH}). Ready to plan.\n\n<!-- pdlc-stage: stage=ready-to-plan branch=${BRANCH} spec=${SPEC_DIR} -->`);
+    // the published tip is recorded for the take-latest check (R8)
+    const state = JSON.parse(readFileSync(join(w.cloneRoot, '.pdlc-specs', 'BELAY', `${BRANCH}.state.json`), 'utf8'));
+    assert.equal(state.recorded_remote_tip, r.payload.commit);
+  } finally { await w.close(); }
+});
+
+test('approve_spec refuses pane_edit_pending on a stale base_revision, publishing nothing', async () => {
+  const { w, p, revision } = await clarified();
+  try {
+    writeFileSync(join(w.worktreePath, 'specs', BRANCH, 'spec.md'), `${CLARIFIED}\n- typed in the pane\n`);
+    refused(await w.c.call('approve_spec', { repo: 'BELAY', number: p.number, base_revision: revision }), 'pane_edit_pending');
+    assert.deepEqual(w.pushes, []);
+    assert.ok(w.labelsOf(p.number).includes('status/spec-in-progress'));
+  } finally { await w.close(); }
+});
+
+test('US2-AC6 approve_spec refuses spec_has_markers, listing the markers, and US2-AC4 spec_not_clarified, before any git write', async () => {
+  const { w, p, revision } = await started();
+  try {
+    const r = await w.c.call('approve_spec', { repo: 'BELAY', number: p.number, base_revision: revision });
+    refused(r, 'spec_has_markers');
+    assert.ok(Array.isArray(r.payload.markers) && r.payload.markers.length > 0);
+    const noMarkers = await w.c.call('write_spec_file', { repo: 'BELAY', number: p.number, path: 'spec.md', content: '# Feature Specification: Pane probe\n', base_revision: revision });
+    refused(await w.c.call('approve_spec', { repo: 'BELAY', number: p.number, base_revision: noMarkers.payload.revision }), 'spec_not_clarified');
+    assert.ok(!w.calls.some((c) => ['add', 'commit', 'push'].includes(c.args[0])));
+  } finally { await w.close(); }
+});
+
+test('FR-009 publish_failed: the commit is kept and the stage does NOT move; approving again publishes it', async () => {
+  const { w, p, revision } = await clarified();
+  try {
+    w.pushFails.on = true;
+    const r = await w.c.call('approve_spec', { repo: 'BELAY', number: p.number, base_revision: revision });
+    refused(r, 'publish_failed');
+    assert.ok(w.labelsOf(p.number).includes('status/spec-in-progress'), 'no stage says ready to plan for a spec not on the forge');
+    assert.equal(w.commits.length, 1);
+    w.pushFails.on = false;
+    const again = await w.c.call('get_spec', { repo: 'BELAY', number: p.number });
+    ok(await w.c.call('approve_spec', { repo: 'BELAY', number: p.number, base_revision: again.payload.revision }));
+    assert.equal(w.commits.length, 1, 'no second, empty commit');
+    assert.deepEqual(w.pushes, [BRANCH]);
+    assert.ok(w.labelsOf(p.number).includes('status/ready-to-plan'));
+  } finally { await w.close(); }
+});
+
+test('approve_spec refuses git_identity_missing before anything is staged', async () => {
+  const { w, p, revision } = await clarified();
+  try {
+    w.identity.email = '';
+    refused(await w.c.call('approve_spec', { repo: 'BELAY', number: p.number, base_revision: revision }), 'git_identity_missing');
+    assert.ok(!w.calls.some((c) => ['add', 'commit', 'push'].includes(c.args[0])));
+  } finally { await w.close(); }
+});
+
+test('the audit line for approve_spec names the branch', async () => {
+  const { w, p, revision } = await clarified();
+  try {
+    ok(await w.c.call('approve_spec', { repo: 'BELAY', number: p.number, base_revision: revision }));
+    assert.equal(w.c.audits().find((a) => a.tool === 'approve_spec').branch, BRANCH);
+  } finally { await w.close(); }
+});

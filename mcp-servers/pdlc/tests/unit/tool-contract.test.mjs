@@ -27,6 +27,7 @@ const CONTRACT = {
   start_spec: { props: ['repo', 'number', 'short_name'], required: ['repo', 'number', 'short_name'] },
   get_spec: { props: ['repo', 'number'], required: ['repo', 'number'] },
   write_spec_file: { props: ['repo', 'number', 'path', 'content', 'base_revision'], required: ['repo', 'number', 'path', 'content', 'base_revision'] },
+  approve_spec: { props: ['repo', 'number', 'base_revision'], required: ['repo', 'number', 'base_revision'] },
 };
 
 const sorted = (a) => [...a].sort();
